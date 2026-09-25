@@ -11,6 +11,7 @@ from app.core.engine import InvestigationEngine
 from app.db.repository import MemoryRepository, SQLRepository
 from app.integrations.demo import DemoTools
 from app.integrations.http_tools import ReadOnlyHTTPTools
+from app.llm.hypotheses import NullHypothesisGenerator, OpenAICompatibleHypothesisGenerator
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 repo = SQLRepository(settings.database_url) if settings.database_url else MemoryRepository()
 tools = DemoTools() if settings.demo_mode else ReadOnlyHTTPTools(settings)
+hypothesis_generator = OpenAICompatibleHypothesisGenerator(settings) if settings.llm_enabled else NullHypothesisGenerator()
 
 
 @asynccontextmanager
@@ -29,8 +31,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.1.0",
-    description="Evidence-first, read-only SRE incident investigator",
+    version="0.2.0",
+    description="Evidence-first, read-only SRE incident investigator with topology, change correlation and incident memory",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -42,13 +44,24 @@ app.add_middleware(
 )
 
 app.state.tools = tools
-app.state.engine = InvestigationEngine(tools)
 app.state.repo = repo
+app.state.engine = InvestigationEngine(
+    tools=tools,
+    memory=repo,
+    hypothesis_generator=hypothesis_generator,
+    settings=settings,
+)
 
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok", "demo_mode": settings.demo_mode, "persistence": "postgres" if settings.database_url else "memory"}
+    return {
+        "status": "ok",
+        "version": "0.2.0",
+        "demo_mode": settings.demo_mode,
+        "persistence": "postgres+pgvector" if settings.database_url else "memory",
+        "llm_hypotheses": settings.llm_enabled,
+    }
 
 
 app.include_router(incidents_router)

@@ -1,43 +1,64 @@
-# Roadmap
+# Roadmap after v0.2
 
-## Phase 1 — Kubernetes RCA
+## Completed in v0.2
 
-- Pod Evicted / DiskPressure
-- OOMKilled
-- CrashLoopBackOff
-- ImagePullBackOff
-- FailedScheduling
-- NodeNotReady
-- HPA saturation
-- Karpenter provisioning failures
+- [x] Kubernetes pod eviction / ephemeral-storage RCA
+- [x] explicit Awareness Graph edges
+- [x] OpenTelemetry/Tempo service graph via Prometheus metrics
+- [x] Argo CD revision/time correlation
+- [x] GitHub commit lookup
+- [x] Karpenter NodeClaim/NodePool correlation
+- [x] PostgreSQL + pgvector incident memory
+- [x] HNSW cosine index
+- [x] optional LLM hypothesis proposer with no tool access
+- [x] safety tests preventing LLM-proposed hypotheses from becoming root cause
 
-## Phase 2 — Change correlation
+## v0.3 — broader Kubernetes RCA
 
-- Argo CD revision history
-- Git commits and pull requests
-- Kubernetes rollout history
-- feature-flag changes
-- cloud audit events
+- [ ] OOMKilled / memory saturation
+- [ ] CrashLoopBackOff
+- [ ] FailedScheduling
+- [ ] ImagePullBackOff
+- [ ] NodeNotReady
+- [ ] HPA/KEDA saturation
+- [ ] Karpenter insufficient capacity / disruption / consolidation
+- [ ] PDB and topology-spread constraints
 
-## Phase 3 — Service dependency awareness
+## v0.4 — trace-aware causal propagation
 
-- OpenTelemetry service graph
-- traces around the alert window
-- upstream/downstream error propagation
-- PostgreSQL, Kafka and Redis entity adapters
+- [ ] Tempo/TraceQL adapter
+- [ ] representative trace IDs around incident window
+- [ ] upstream/downstream error propagation
+- [ ] edge RED metrics: rate, error, duration
+- [ ] virtual database/messaging nodes
+- [ ] trace-to-deployment correlation
 
-## Phase 4 — Incident memory
+## v0.5 — stateful dependencies
 
-- PostgreSQL + pgvector embeddings
-- similar incident retrieval
-- duplicate incident clustering
-- recurring-pattern reports
-- never reuse an old root cause without fresh telemetry verification
+- [ ] PostgreSQL adapter: saturation, locks, replication lag, connection exhaustion
+- [ ] Kafka adapter: consumer lag, ISR, partition leadership
+- [ ] Redis adapter: memory pressure, evictions, latency
+- [ ] dependency-specific deterministic hypotheses
 
-## Phase 5 — Optional model reasoning
+## v0.6 — operational productization
 
-Allow a model to propose additional hypotheses from the structured context. The model does not receive arbitrary shell access, does not invent evidence, and does not determine the evidence score. Every proposed check must map to an allow-listed typed tool.
+- [ ] Slack/PagerDuty delivery
+- [ ] evidence hash/audit log
+- [ ] NetworkPolicy templates
+- [ ] OIDC/RBAC for UI/API
+- [ ] multi-cluster tenancy
+- [ ] query budget/cost controls
+- [ ] retention policies
 
-## Phase 6 — Remediation plane
+## v0.7 — guarded remediation plane
 
-A separate service identity can offer guarded remediation workflows. It must require explicit approval, include dry-run/plan output, enforce per-action policy, and remain isolated from the read-only investigator identity.
+Separate service and identity:
+
+- [ ] proposed action plan
+- [ ] policy validation
+- [ ] dry-run where supported
+- [ ] explicit human approval
+- [ ] narrow per-action credentials
+- [ ] rollback plan and audit record
+
+The read-only investigator should remain usable independently of remediation.

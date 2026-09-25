@@ -1,4 +1,5 @@
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,18 @@ class Settings(BaseSettings):
     loki_url: str = "http://loki-gateway.logging.svc:3100"
     argocd_url: str = "http://argocd-server.argocd.svc"
     argocd_token: str | None = None
+
+    github_api_url: str = "https://api.github.com"
+    github_token: str | None = None
+
+    change_correlation_window_minutes: int = 180
+    service_graph_window_minutes: int = 15
+
+    llm_enabled: bool = False
+    llm_base_url: str = "http://localhost:11434/v1"
+    llm_api_key: str | None = None
+    llm_model: str = "local-model"
+    llm_max_hypotheses: int = 4
 
     cors_origins: str = "http://localhost:3000"
 

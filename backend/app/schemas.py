@@ -38,6 +38,14 @@ class Entity(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    relationship: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class Evidence(BaseModel):
     id: str = Field(default_factory=lambda: f"ev-{uuid4().hex[:10]}")
     source: str
@@ -54,6 +62,7 @@ class Hypothesis(BaseModel):
     id: str
     statement: str
     status: HypothesisStatus = HypothesisStatus.PROPOSED
+    origin: Literal["playbook", "llm"] = "playbook"
     supporting_evidence: list[str] = Field(default_factory=list)
     contradicting_evidence: list[str] = Field(default_factory=list)
     required_checks: list[str] = Field(default_factory=list)
@@ -83,13 +92,25 @@ class Remediation(BaseModel):
     requires_approval: bool = True
 
 
+class SimilarIncident(BaseModel):
+    incident_id: str
+    title: str
+    root_cause: str
+    similarity: float
+    occurred_at: datetime
+    cluster: str
+    namespace: str | None = None
+
+
 class InvestigationResult(BaseModel):
     incident_id: str
     status: Literal["investigating", "resolved", "inconclusive"]
     incident: IncidentInput
     entities: list[Entity]
+    graph_edges: list[GraphEdge] = Field(default_factory=list)
     evidence: list[Evidence]
     hypotheses: list[Hypothesis]
+    similar_incidents: list[SimilarIncident] = Field(default_factory=list)
     timeline: list[TimelineEvent]
     root_cause: RootCause
     remediation: list[Remediation]

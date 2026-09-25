@@ -28,4 +28,14 @@ def pod_eviction_hypotheses() -> list[Hypothesis]:
             statement="Missing ephemeral-storage requests/limits allowed storage overcommit and contributed to the eviction.",
             required_checks=["container resource requests", "container resource limits"],
         ),
+        Hypothesis(
+            id="recent-change-regression",
+            statement="A recent deployment or source change caused the incident.",
+            required_checks=["Argo CD sync time", "Git revision", "incident start time", "direct failure signal"],
+        ),
+        Hypothesis(
+            id="node-capacity-churn",
+            statement="Karpenter node lifecycle or capacity churn materially contributed to the incident.",
+            required_checks=["NodeClaim state", "NodePool", "Karpenter conditions", "node lifecycle events"],
+        ),
     ]

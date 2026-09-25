@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.1.0"
+    tag: "0.2.0"
   replicas: 2
   service:
     port: 8080
@@ -10,12 +10,18 @@ backend:
     PROMETHEUS_URL: "http://prometheus-operated.monitoring.svc:9090"
     LOKI_URL: "http://loki-gateway.logging.svc:3100"
     ARGOCD_URL: "http://argocd-server.argocd.svc"
+    GITHUB_API_URL: "https://api.github.com"
+    CHANGE_CORRELATION_WINDOW_MINUTES: "180"
+    SERVICE_GRAPH_WINDOW_MINUTES: "15"
+    LLM_ENABLED: "false"
+    LLM_BASE_URL: "http://ollama.ai.svc:11434/v1"
+    LLM_MODEL: "local-model"
     CORS_ORIGINS: "http://ai-sre-rca-frontend"
 
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.1.0"
+    tag: "0.2.0"
   replicas: 2
   service:
     port: 3000
@@ -26,8 +32,8 @@ serviceAccount:
 
 resources:
   backend:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits: { cpu: 1, memory: 512Mi }
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: 1, memory: 768Mi }
   frontend:
     requests: { cpu: 50m, memory: 96Mi }
     limits: { cpu: 500m, memory: 256Mi }
