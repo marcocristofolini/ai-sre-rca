@@ -1,4 +1,6 @@
-# AI SRE RCA — v0.2
+# AI SRE RCA — v0.2.1
+
+[Português do Brasil](README_PT-BR.md) · **English**
 
 Evidence-first, read-only Kubernetes incident investigator inspired by autonomous RCA systems, but designed so that telemetry and typed checks—not an LLM—decide the root cause.
 
@@ -28,45 +30,34 @@ The service receives an incident, resolves Kubernetes ownership and runtime topo
 
 ## Architecture
 
-```text
-                           Alertmanager / API
-                                  |
-                                  v
-                         Incident Normalizer
-                                  |
-                                  v
-                    +---------------------------+
-                    |   Investigation Engine    |
-                    | deterministic playbooks   |
-                    +-------------+-------------+
-                                  |
-             +--------------------+---------------------+
-             |                    |                     |
-             v                    v                     v
-        Kubernetes           Observability           Changes
-    Pod/RS/Deploy/Node    Prometheus/Loki/OTel    ArgoCD/GitHub
-             |                    |                     |
-             +-----------+--------+----------+----------+
-                         |                   |
-                         v                   v
-                 Awareness Graph      Karpenter context
-                         |
-                         v
-                 Evidence evaluator
-                         |
-             +-----------+-----------+
-             |                       |
-             v                       v
-       pgvector memory       optional LLM proposer
-      similarity hints        (proposed only)
-             |                       |
-             +-----------+-----------+
-                         |
-                         v
-                 Evidence-backed RCA
-                         |
-                     REST / UI
+```mermaid
+flowchart TD
+    A[Alertmanager / API] --> B[Incident Normalizer]
+    B --> C[Investigation Engine<br/>Deterministic Playbooks]
+
+    C --> K[Kubernetes<br/>Pod / ReplicaSet / Deployment / Node]
+    C --> O[Observability<br/>Prometheus / Loki / OpenTelemetry]
+    C --> CH[Change Sources<br/>Argo CD / GitHub]
+    C --> KA[Karpenter<br/>NodeClaim / NodePool]
+
+    K --> G[Awareness Graph]
+    O --> G
+    CH --> G
+    KA --> G
+
+    G --> E[Evidence Evaluator]
+    E --> M[Incident Memory<br/>PostgreSQL + pgvector]
+    E --> L[Optional LLM<br/>Hypothesis Proposer Only]
+
+    M --> R[Evidence-backed RCA]
+    L --> R
+    E --> R
+
+    R --> API[REST API]
+    R --> UI[Next.js UI]
 ```
+
+More diagrams are available in [docs/architecture.md](docs/architecture.md).
 
 ## Quick start
 
@@ -153,13 +144,16 @@ Your Tempo metrics-generator, Grafana Alloy or OTel Collector servicegraph conne
 
 For a pod managed by Argo CD, the engine resolves:
 
-```text
-Pod
-  -> ReplicaSet
-  -> Deployment
-  -> Argo CD Application
-  -> deployed Git revision
-  -> GitHub commit
+```mermaid
+flowchart LR
+    P[Pod] --> RS[ReplicaSet]
+    RS --> D[Deployment]
+    D --> A[Argo CD Application]
+    A --> REV[Deployed Git Revision]
+    REV --> C[GitHub Commit]
+    C --> W{Inside correlation window?}
+    W -->|Yes| S[Supporting evidence only]
+    W -->|No| X[Contradicting evidence]
 ```
 
 `CHANGE_CORRELATION_WINDOW_MINUTES` defaults to `180`.
@@ -185,15 +179,15 @@ A healthy, long-lived Ready NodeClaim contradicts the `node-capacity-churn` hypo
 
 Each persisted incident gets a normalized 128-dimensional local fingerprint embedding. The default implementation deliberately has zero external dependency; it can later be swapped for a dedicated embedding model.
 
-Search uses pgvector cosine distance:
-
-```text
-current incident
-    -> local embedding
-    -> pgvector cosine search
-    -> top 3 historical incidents
-    -> context only
-    -> fresh telemetry still required
+```mermaid
+flowchart LR
+    I[Current Incident] --> F[Normalized Fingerprint]
+    F --> V[128-d Local Embedding]
+    V --> PG[(PostgreSQL + pgvector)]
+    PG --> S[Cosine Similarity Search]
+    S --> H[Top Historical Incidents]
+    H --> C[Context / Hints Only]
+    C --> E[Fresh Evidence Still Required]
 ```
 
 The database creates an HNSW `vector_cosine_ops` index for scale.
@@ -213,16 +207,23 @@ Any OpenAI-compatible `/chat/completions` endpoint can be used.
 
 The model receives structured incident context, entities and evidence summaries. It does **not** receive Kubernetes credentials, infrastructure tools, shell access or write permissions.
 
-LLM output is forced into this conceptual state:
+```mermaid
+flowchart TD
+    CTX[Incident + Entities + Evidence Summaries] --> LLM[LLM Hypothesis Proposer]
+    LLM --> P[Hypothesis<br/>origin=llm<br/>status=proposed<br/>score=0]
+    P --> HC[Allow-listed Required Checks]
+    HC --> T[Typed Read-only Tools]
+    T --> EV[Fresh Evidence]
+    EV --> D[Deterministic Evaluator]
+    D -->|Validated| H[Deterministic Hypothesis State]
+    D -->|Not validated| P
 
-```text
-origin = llm
-status = proposed
-score = 0
-supporting_evidence = []
+    LLM -. no credentials .-> N1[No Kubernetes direct access]
+    LLM -. no shell .-> N2[No command execution]
+    LLM -. no mutation .-> N3[No write permissions]
 ```
 
-It can only provide additional candidate hypotheses and required observable checks. The deterministic engine excludes LLM hypotheses from root-cause selection.
+The deterministic engine excludes unverified LLM hypotheses from root-cause selection.
 
 ## Current deterministic pod-eviction playbook
 
@@ -274,6 +275,18 @@ watch
 ```
 
 for the Kubernetes resources it needs. There is no `pods/exec` permission and no mutating verb.
+
+```mermaid
+flowchart LR
+    INV[Investigator Identity<br/>get / list / watch] --> OBS[Read-only Evidence Sources]
+    OBS --> RCA[RCA + Recommended Actions]
+    RCA --> APPROVAL{Human Approval}
+    APPROVAL -->|Approved| REM[Separate Remediation Identity]
+    REM --> ACT[Narrow Allow-listed Action]
+    APPROVAL -->|Rejected| STOP[No Mutation]
+
+    INV -. cannot .-> ACT
+```
 
 For production, store Argo/Git/model credentials in Kubernetes Secrets or workload identity—not in Helm values committed to Git.
 
