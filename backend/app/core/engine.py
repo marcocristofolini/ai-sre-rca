@@ -6,6 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 from app.config import Settings, get_settings
+from app.core.k8s_signals import classify_pod_scenario
+from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
 from app.core.scoring import score_hypothesis
 from app.memory.base import IncidentMemory
@@ -95,6 +97,15 @@ class InvestigationEngine:
     async def investigate(self, incident: IncidentInput) -> InvestigationResult:
         incident_id = f"inc-{uuid4().hex[:12]}"
         similar = await self._similar_incidents(incident)
+        alert = incident.alert_name.lower()
+        if incident.node and ("nodenotready" in alert or "node-not-ready" in alert or not incident.pod):
+            return await investigate_node_not_ready(
+                incident_id=incident_id,
+                incident=incident,
+                similar=similar,
+                tools=self.tools,
+                hypothesis_generator=self.hypothesis_generator,
+            )
         if incident.pod and incident.namespace:
             return await self._investigate_pod(incident_id, incident, similar)
         return self._generic_result(incident_id, incident, similar)
@@ -116,6 +127,23 @@ class InvestigationEngine:
     ) -> InvestigationResult:
         assert incident.namespace and incident.pod
         pod = await self.tools.get_pod(incident.namespace, incident.pod)
+        preloaded_events = await self.tools.get_events(incident.namespace, incident.pod)
+        scenario = classify_pod_scenario(incident, pod, preloaded_events)
+        if scenario != "eviction":
+            if scenario == "generic-pod":
+                return self._generic_result(incident_id, incident, similar)
+            return await investigate_pod_scenario(
+                incident_id=incident_id,
+                incident=incident,
+                similar=similar,
+                pod=pod,
+                events=preloaded_events,
+                scenario=scenario,
+                tools=self.tools,
+                settings=self.settings,
+                hypothesis_generator=self.hypothesis_generator,
+            )
+
         node_name = incident.node or pod.get("spec", {}).get("nodeName")
         labels = pod.get("metadata", {}).get("labels", {})
         service_name = labels.get("app.kubernetes.io/name") or labels.get("app") or incident.pod
@@ -129,7 +157,7 @@ class InvestigationEngine:
             argo_app_name = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/instance", argo_app_name)
 
         start = incident.starts_at
-        event_task = self.tools.get_events(incident.namespace, incident.pod)
+        event_task = asyncio.sleep(0, result=preloaded_events)
         node_task = self.tools.get_node(node_name) if node_name else asyncio.sleep(0, result={})
         logs_task = self.tools.loki_query_range(
             f'{{namespace="{incident.namespace}", pod="{incident.pod}"}}',
