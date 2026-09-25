@@ -1,0 +1,270 @@
+{
+  "incident_id": "inc-f598cb49a96d",
+  "status": "resolved",
+  "incident": {
+    "title": "Pod evicted from node: ephemeral-storage exhaustion",
+    "cluster": "prod-india-exchange",
+    "namespace": "exchange",
+    "pod": "landing-page-7d8b6d9b-x9k2p",
+    "node": "ip-10-0-1-42",
+    "alert_name": "KubePodEvicted",
+    "severity": "warning",
+    "starts_at": "2026-09-24T20:47:00Z",
+    "labels": {},
+    "annotations": {}
+  },
+  "entities": [
+    {
+      "id": "pod",
+      "kind": "Pod",
+      "name": "landing-page-7d8b6d9b-x9k2p",
+      "namespace": "exchange",
+      "relationship": null,
+      "metadata": {}
+    },
+    {
+      "id": "node",
+      "kind": "Node",
+      "name": "ip-10-0-1-42",
+      "namespace": null,
+      "relationship": "scheduled_on",
+      "metadata": {}
+    },
+    {
+      "id": "owner-0",
+      "kind": "ReplicaSet",
+      "name": "landing-page-7d8b6d9b",
+      "namespace": "exchange",
+      "relationship": "owned_by",
+      "metadata": {}
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ev-8f6cae5831",
+      "source": "kubernetes",
+      "category": "pod-status",
+      "summary": "Pod terminal reason is Evicted.",
+      "observed_at": "2026-09-24T21:34:12.660256Z",
+      "facts": {
+        "phase": "Failed",
+        "reason": "Evicted",
+        "message": "The node was low on resource: ephemeral-storage. Threshold quantity: 2147483648, available: 534773760Ki."
+      },
+      "query": null,
+      "raw_reference": "k8s://pod/exchange/landing-page-7d8b6d9b-x9k2p",
+      "strength": "strong"
+    },
+    {
+      "id": "ev-b28317908d",
+      "source": "kubernetes",
+      "category": "node-conditions",
+      "summary": "Node conditions: DiskPressure=True, MemoryPressure=False, PIDPressure=False.",
+      "observed_at": "2026-09-24T21:34:12.660383Z",
+      "facts": {
+        "DiskPressure": "True",
+        "MemoryPressure": "False",
+        "PIDPressure": "False"
+      },
+      "query": null,
+      "raw_reference": "k8s://node/ip-10-0-1-42",
+      "strength": "strong"
+    },
+    {
+      "id": "ev-0561b7ddd9",
+      "source": "kubernetes",
+      "category": "event",
+      "summary": "The node was low on resource: ephemeral-storage.",
+      "observed_at": "2026-09-24T20:47:03Z",
+      "facts": {
+        "reason": "Evicted",
+        "type": "Warning"
+      },
+      "query": null,
+      "raw_reference": "k8s://event/exchange/landing-page-7d8b6d9b-x9k2p",
+      "strength": "strong"
+    },
+    {
+      "id": "ev-b1cf6a688d",
+      "source": "kubernetes",
+      "category": "resource-policy",
+      "summary": "Pod has no ephemeral-storage requests or limits.",
+      "observed_at": "2026-09-24T21:34:12.660406Z",
+      "facts": {
+        "has_ephemeral_request": false,
+        "has_ephemeral_limit": false,
+        "resources": [
+          {
+            "name": "web",
+            "requests": {
+              "cpu": "200m",
+              "memory": "256Mi"
+            },
+            "limits": {
+              "cpu": "1",
+              "memory": "512Mi"
+            }
+          }
+        ]
+      },
+      "query": null,
+      "raw_reference": "k8s://pod/exchange/landing-page-7d8b6d9b-x9k2p/resources",
+      "strength": "strong"
+    },
+    {
+      "id": "ev-1a50194dc6",
+      "source": "prometheus",
+      "category": "metric",
+      "summary": "Node filesystem had approximately 512 MiB available near the incident.",
+      "observed_at": "2026-09-24T21:34:12.660428Z",
+      "facts": {
+        "available_bytes": 536870912.0
+      },
+      "query": "node_filesystem_avail_bytes{instance=~\"ip-10-0-1-42.*\",mountpoint=\"/\"}",
+      "raw_reference": "prometheus:/api/v1/query",
+      "strength": "strong"
+    },
+    {
+      "id": "ev-40c3dea5ad",
+      "source": "loki",
+      "category": "logs",
+      "summary": "Retrieved 1 application log entries around the incident window; no independent crash signature was established by the playbook.",
+      "observed_at": "2026-09-24T21:34:12.660435Z",
+      "facts": {
+        "entries": 1
+      },
+      "query": "{namespace=\"exchange\", pod=\"landing-page-7d8b6d9b-x9k2p\"}",
+      "raw_reference": "loki:/loki/api/v1/query_range",
+      "strength": "weak"
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "app-crash",
+      "statement": "The application crashed independently of node resource pressure.",
+      "status": "ruled_out",
+      "supporting_evidence": [],
+      "contradicting_evidence": [
+        "ev-8f6cae5831",
+        "ev-0561b7ddd9"
+      ],
+      "required_checks": [
+        "pod terminal reason",
+        "restart count",
+        "application logs"
+      ],
+      "score": -6.0,
+      "rationale": "Contradicting: Pod terminal reason is Evicted. The node was low on resource: ephemeral-storage."
+    },
+    {
+      "id": "memory-pressure",
+      "statement": "The pod was evicted because the node was under memory pressure.",
+      "status": "ruled_out",
+      "supporting_evidence": [],
+      "contradicting_evidence": [
+        "ev-b28317908d"
+      ],
+      "required_checks": [
+        "Node MemoryPressure condition",
+        "pod OOMKilled state"
+      ],
+      "score": -3.0,
+      "rationale": "Contradicting: Node conditions: DiskPressure=True, MemoryPressure=False, PIDPressure=False."
+    },
+    {
+      "id": "pid-pressure",
+      "statement": "The pod was evicted because the node exhausted process IDs.",
+      "status": "ruled_out",
+      "supporting_evidence": [],
+      "contradicting_evidence": [
+        "ev-b28317908d"
+      ],
+      "required_checks": [
+        "Node PIDPressure condition"
+      ],
+      "score": -3.0,
+      "rationale": "Contradicting: Node conditions: DiskPressure=True, MemoryPressure=False, PIDPressure=False."
+    },
+    {
+      "id": "disk-pressure",
+      "statement": "Node ephemeral-storage exhaustion triggered DiskPressure and pod eviction.",
+      "status": "confirmed",
+      "supporting_evidence": [
+        "ev-b28317908d",
+        "ev-8f6cae5831",
+        "ev-0561b7ddd9",
+        "ev-1a50194dc6"
+      ],
+      "contradicting_evidence": [],
+      "required_checks": [
+        "Node DiskPressure",
+        "eviction message",
+        "filesystem availability trend"
+      ],
+      "score": 12.0,
+      "rationale": "Supporting: Node conditions: DiskPressure=True, MemoryPressure=False, PIDPressure=False. Pod terminal reason is Evicted. The node was low on resource: ephemeral-storage. Node filesystem had approximately 512 MiB available near the incident."
+    },
+    {
+      "id": "missing-storage-reservations",
+      "statement": "Missing ephemeral-storage requests/limits allowed storage overcommit and contributed to the eviction.",
+      "status": "testing",
+      "supporting_evidence": [
+        "ev-b1cf6a688d"
+      ],
+      "contradicting_evidence": [],
+      "required_checks": [
+        "container resource requests",
+        "container resource limits"
+      ],
+      "score": 3.0,
+      "rationale": "Supporting: Pod has no ephemeral-storage requests or limits."
+    }
+  ],
+  "timeline": [
+    {
+      "timestamp": "2026-09-24T20:47:03Z",
+      "source": "kubernetes",
+      "message": "Evicted: The node was low on resource: ephemeral-storage."
+    },
+    {
+      "timestamp": "2026-09-24T20:47:04Z",
+      "source": "kubernetes",
+      "message": "Killing: Stopping container web"
+    }
+  ],
+  "root_cause": {
+    "title": "Ephemeral-storage exhaustion caused kubelet eviction",
+    "summary": "The pod was evicted by kubelet while its node reported DiskPressure. Kubernetes explicitly identified ephemeral-storage as the scarce resource. The workload did not declare ephemeral-storage requests/limits, which can permit storage overcommit; that condition is treated as a contributing factor rather than the direct eviction trigger.",
+    "hypothesis_id": "disk-pressure",
+    "evidence_strength": "strong",
+    "supporting_signals": 4,
+    "contradicting_signals": 0
+  },
+  "remediation": [
+    {
+      "priority": "P1",
+      "action": "Define ephemeral-storage requests and limits for the affected workload after measuring normal and burst usage.",
+      "reason": "Prevents unbounded local-storage consumption and improves scheduler accounting.",
+      "requires_approval": true
+    },
+    {
+      "priority": "P1",
+      "action": "Alert on node filesystem availability and DiskPressure before kubelet eviction thresholds are reached.",
+      "reason": "Provides lead time before workload eviction.",
+      "requires_approval": true
+    },
+    {
+      "priority": "P2",
+      "action": "Identify high ephemeral-storage consumers on the node and validate log/cache/temp-file retention.",
+      "reason": "Finds the workload or host path producing the storage pressure.",
+      "requires_approval": true
+    },
+    {
+      "priority": "P2",
+      "action": "Review kubelet eviction thresholds and node root-volume sizing against observed production usage.",
+      "reason": "Validates capacity and safety margins without masking runaway disk usage.",
+      "requires_approval": true
+    }
+  ],
+  "created_at": "2026-09-24T21:34:12.660570Z"
+}
