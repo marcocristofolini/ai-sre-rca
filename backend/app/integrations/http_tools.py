@@ -73,6 +73,27 @@ class ReadOnlyHTTPTools:
         data = await self._k8s_get("/api/v1/pods", {"fieldSelector": f"spec.nodeName={node}"})
         return data.get("items", [])
 
+    async def get_hpa_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
+        data = await self._k8s_get(
+            f"/apis/autoscaling/v2/namespaces/{quote(namespace)}/horizontalpodautoscalers"
+        )
+        for item in data.get("items", []):
+            target = item.get("spec", {}).get("scaleTargetRef", {})
+            if target.get("kind", "").lower() == kind.lower() and target.get("name") == name:
+                return item
+        return {}
+
+    async def get_scaledobject_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
+        data = await self._k8s_get(
+            f"/apis/keda.sh/v1alpha1/namespaces/{quote(namespace)}/scaledobjects"
+        )
+        for item in data.get("items", []):
+            target = item.get("spec", {}).get("scaleTargetRef", {})
+            target_kind = target.get("kind") or "Deployment"
+            if str(target_kind).lower() == kind.lower() and target.get("name") == name:
+                return item
+        return {}
+
     async def prometheus_query(self, query: str, at: datetime | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"query": query}
         if at:
