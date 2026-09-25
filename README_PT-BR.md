@@ -1,5 +1,7 @@
 # AI SRE RCA — v0.2.1
 
+[![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Português do Brasil** · [English](README.md)
 
 Investigador de incidentes Kubernetes **evidence-first** e **read-only**, inspirado em sistemas autônomos de RCA, mas desenhado para que telemetria e verificações tipadas — e não um LLM — determinem a causa raiz.

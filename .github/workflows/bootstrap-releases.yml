@@ -1,0 +1,32 @@
+name: Bootstrap historical releases
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Create missing releases for existing version tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          for tag in $(git tag --list 'v*.*.*' --sort=version:refname); do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release $tag already exists"
+              continue
+            fi
+            mkdir -p dist
+            git archive --format=zip --prefix=ai-sre-rca-${tag}/ -o dist/ai-sre-rca-${tag}.zip "$tag"
+            git archive --format=tar.gz --prefix=ai-sre-rca-${tag}/ -o dist/ai-sre-rca-${tag}.tar.gz "$tag"
+            gh release create "$tag" dist/ai-sre-rca-${tag}.zip dist/ai-sre-rca-${tag}.tar.gz --generate-notes --verify-tag
+            rm -rf dist
+          done
