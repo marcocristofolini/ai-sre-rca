@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.2.1
+# AI SRE RCA — v0.3.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -8,18 +8,16 @@ Evidence-first, read-only Kubernetes incident investigator inspired by autonomou
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, gathers evidence from Kubernetes, Prometheus, Loki, OpenTelemetry service-graph metrics, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
-## What changed in v0.2
+## What changed in v0.3
 
-- OpenTelemetry/Tempo service dependency graph from `traces_service_graph_request_total`.
-- Awareness Graph edges for Pod → ReplicaSet → Deployment → Argo CD → Git and Node → NodeClaim → NodePool.
-- Argo CD deploy/revision correlation against incident time.
-- GitHub commit metadata for the revision deployed by Argo CD.
-- Karpenter NodeClaim/NodePool context and lifecycle evidence.
-- PostgreSQL + pgvector incident memory with cosine similarity retrieval.
-- HNSW vector index for incident history.
-- Optional OpenAI-compatible LLM hypothesis proposer with a hard safety boundary: model output always remains `proposed` and has no evidence/score.
-- UI sections for service topology, change correlation, incident memory and LLM-proposed checks.
-- Regression tests that prove model hypotheses cannot become the root cause.
+- Deterministic **OOMKilled** RCA that separates container-limit exhaustion from node-wide MemoryPressure.
+- **CrashLoopBackOff** RCA that distinguishes OOM restarts, health-probe failures and non-zero application exits.
+- **FailedScheduling** classification for insufficient resources, taints/tolerations, affinity/selectors, volume binding and Karpenter capacity failures.
+- **NodeNotReady** RCA for unreachable nodes, kubelet health, resource pressure and Karpenter lifecycle context.
+- **HPA** diagnostics for maxReplicas saturation, missing metrics and blocked scale operations.
+- **KEDA** diagnostics for scaler errors, paused autoscaling, fallback activation and inactive triggers.
+- Typed, read-only Kubernetes API lookups for HPA and KEDA ScaledObjects.
+- Seven new v0.3 regression scenarios; the full backend suite now covers ten deterministic/safety cases.
 
 ## Core design rules
 
@@ -227,19 +225,21 @@ flowchart TD
 
 The deterministic engine excludes unverified LLM hypotheses from root-cause selection.
 
-## Current deterministic pod-eviction playbook
+## Deterministic Kubernetes playbooks
 
-It evaluates:
+| Scenario | Evidence used | Example root causes |
+| --- | --- | --- |
+| Pod eviction | Pod reason/events, node pressure, filesystem trend, resource policy | DiskPressure / ephemeral-storage exhaustion |
+| OOMKilled | Current/previous container state, memory limits, working set, Node MemoryPressure | container memory exhaustion, node-wide pressure |
+| CrashLoopBackOff | waiting state, restart count, previous exit, probe events, logs | application exit, OOM restart, probe failure |
+| FailedScheduling | scheduler events and Karpenter provisioning events | insufficient resources, taints, affinity, volume binding, cloud capacity |
+| HPA | AbleToScale, ScalingActive, ScalingLimited, current/desired/max replicas | maxReplicas saturation, metric failure, blocked scaling |
+| KEDA | ScaledObject Ready/Active, pause annotations, fallback/warning events | scaler error, pause, fallback, inactive trigger |
+| NodeNotReady | Ready condition, taints, node events, pressure conditions, NodeClaim state | unreachable node, kubelet unhealthy, pressure, lifecycle disruption |
 
-- application crash
-- MemoryPressure
-- PIDPressure
-- DiskPressure / ephemeral-storage
-- missing ephemeral-storage requests/limits
-- recent deployment/source regression
-- Karpenter/node-capacity churn
+The engine selects the playbook from alert context plus live Kubernetes state. Direct platform evidence remains stronger than temporal correlations such as a recent deployment.
 
-The demo intentionally includes an older Argo deployment and a healthy NodeClaim so both tempting correlations are rejected while the direct ephemeral-storage evidence is confirmed.
+The demo still reproduces the original ephemeral-storage eviction case, while the regression suite exercises the new v0.3 scenarios.
 
 ## API
 
@@ -309,12 +309,12 @@ docs/                 architecture and roadmap
 
 ## Next evolution
 
-The highest-value next increment is to add more deterministic playbooks and richer trace evidence:
+v0.3 completes the first broader Kubernetes RCA layer. The next highest-value increments are:
 
-1. CrashLoopBackOff / OOMKilled / FailedScheduling / NodeNotReady.
-2. HPA/KEDA/Karpenter provisioning and saturation playbooks.
+1. ImagePullBackOff / ErrImagePull, PDB blocking, topology-spread and deeper PVC/runtime-volume diagnostics.
+2. Karpenter consolidation-specific RCA and richer provisioning evidence.
 3. Trace exemplars and trace-ID drill-down through Tempo/TraceQL.
-4. PostgreSQL, Kafka and Redis entity adapters.
+4. PostgreSQL, Kafka and Redis entity adapters and deterministic dependency playbooks.
 5. GitHub PR metadata and Kubernetes rollout-history correlation.
 6. NetworkPolicy, evidence hashing/audit trail and per-query budgets.
 7. Slack/PagerDuty delivery and a separate human-approved remediation plane.
