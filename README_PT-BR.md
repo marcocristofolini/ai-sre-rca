@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.2.1
+# AI SRE RCA — v0.3.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -8,18 +8,16 @@ Investigador de incidentes Kubernetes **evidence-first** e **read-only**, inspir
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, coleta evidências de Kubernetes, Prometheus, Loki, métricas de service graph do OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
 
-## O que mudou na v0.2
+## O que mudou na v0.3
 
-- Grafo de dependências entre serviços via OpenTelemetry/Tempo usando `traces_service_graph_request_total`.
-- Awareness Graph com relações Pod → ReplicaSet → Deployment → Argo CD → Git e Node → NodeClaim → NodePool.
-- Correlação entre deploy/revisão do Argo CD e o horário do incidente.
-- Metadados do commit GitHub correspondente à revisão implantada pelo Argo CD.
-- Contexto de NodeClaim/NodePool do Karpenter e evidências de ciclo de vida.
-- Memória de incidentes com PostgreSQL + pgvector e busca por similaridade de cosseno.
-- Índice vetorial HNSW para o histórico de incidentes.
-- Propositor opcional de hipóteses via LLM compatível com API OpenAI, com limite rígido de segurança: toda saída do modelo permanece `proposed` e não recebe evidência nem score automaticamente.
-- UI com topologia de serviços, correlação de mudanças, memória de incidentes e checks propostos pelo LLM.
-- Testes de regressão que garantem que hipóteses geradas pelo modelo não possam se tornar causa raiz diretamente.
+- RCA determinístico para **OOMKilled**, separando estouro do limite do container de MemoryPressure no node.
+- RCA para **CrashLoopBackOff**, diferenciando reinícios por OOM, falhas de health probe e encerramentos da aplicação com código diferente de zero.
+- Classificação de **FailedScheduling** para recursos insuficientes, taints/tolerations, affinity/selectors, volume binding e falha de capacidade do Karpenter.
+- RCA para **NodeNotReady**, distinguindo node inalcançável, kubelet não saudável, pressão de recursos e contexto de ciclo de vida do Karpenter.
+- Diagnóstico de **HPA** para saturação em maxReplicas, métricas indisponíveis e bloqueio de scaling.
+- Diagnóstico de **KEDA** para erro de scaler, autoscaling pausado, fallback e triggers inativos.
+- Consultas tipadas e read-only à API Kubernetes para HPA e ScaledObjects do KEDA.
+- Sete novos cenários de regressão na v0.3; a suíte do backend passa a cobrir dez casos determinísticos/de segurança.
 
 ## Princípios de design
 
@@ -227,19 +225,21 @@ flowchart TD
 
 A engine determinística exclui hipóteses não verificadas do LLM da seleção da causa raiz.
 
-## Playbook determinístico atual: Pod eviction
+## Playbooks determinísticos Kubernetes
 
-Ele avalia:
+| Cenário | Evidências utilizadas | Exemplos de causa raiz |
+| --- | --- | --- |
+| Pod eviction | reason/events do Pod, pressão do node, tendência de filesystem, política de recursos | DiskPressure / esgotamento de ephemeral-storage |
+| OOMKilled | estado atual/anterior do container, limites de memória, working set, MemoryPressure | esgotamento de memória do container, pressão no node |
+| CrashLoopBackOff | waiting state, restart count, último exit, eventos de probe, logs | erro da aplicação, OOM, falha de probe |
+| FailedScheduling | eventos do scheduler e eventos de provisionamento do Karpenter | recursos insuficientes, taints, affinity, volume binding, capacidade cloud |
+| HPA | AbleToScale, ScalingActive, ScalingLimited, réplicas atuais/desejadas/máximas | saturação em maxReplicas, falha de métrica, scaling bloqueado |
+| KEDA | Ready/Active do ScaledObject, annotations de pause, eventos de fallback/erro | erro de scaler, pause, fallback, trigger inativo |
+| NodeNotReady | condição Ready, taints, eventos do node, pressões, estado do NodeClaim | node inalcançável, kubelet não saudável, pressão, lifecycle disruption |
 
-- crash da aplicação
-- MemoryPressure
-- PIDPressure
-- DiskPressure / ephemeral-storage
-- ausência de requests/limits de ephemeral-storage
-- regressão recente por deploy/código
-- churn de capacidade / Karpenter
+A engine escolhe o playbook usando o contexto do alerta e o estado real do Kubernetes. Evidência direta da plataforma continua tendo mais peso do que correlações temporais, como um deploy recente.
 
-O demo inclui intencionalmente um deploy antigo no Argo CD e um NodeClaim saudável, para que ambas as correlações tentadoras sejam rejeitadas enquanto a evidência direta de ephemeral-storage é confirmada.
+O demo continua reproduzindo o caso original de eviction por ephemeral-storage, enquanto a suíte de regressão cobre os novos cenários da v0.3.
 
 ## API
 
@@ -309,12 +309,12 @@ docs/                 arquitetura e roadmap
 
 ## Próxima evolução
 
-O próximo incremento de maior valor é adicionar mais playbooks determinísticos e evidências mais ricas de traces:
+A v0.3 conclui a primeira camada mais ampla de RCA para Kubernetes. Os próximos incrementos de maior valor são:
 
-1. CrashLoopBackOff / OOMKilled / FailedScheduling / NodeNotReady.
-2. Playbooks de provisionamento e saturação para HPA/KEDA/Karpenter.
+1. ImagePullBackOff / ErrImagePull, PDB blocking, topology-spread e diagnóstico mais profundo de PVC/volumes em runtime.
+2. RCA específico de consolidação do Karpenter e evidências mais ricas de provisionamento.
 3. Exemplars e drill-down por trace ID usando Tempo/TraceQL.
-4. Adapters para PostgreSQL, Kafka e Redis.
+4. Adapters e playbooks determinísticos para PostgreSQL, Kafka e Redis.
 5. Metadados de PR do GitHub e correlação com rollout history do Kubernetes.
 6. NetworkPolicy, hashing/audit trail de evidências e budgets por consulta.
 7. Entrega em Slack/PagerDuty e plano separado de remediação com aprovação humana.
