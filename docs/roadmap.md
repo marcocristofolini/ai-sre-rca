@@ -1,4 +1,4 @@
-# Roadmap after v0.2
+# Roadmap after v0.3
 
 ## Completed in v0.2
 
@@ -13,16 +13,27 @@
 - [x] optional LLM hypothesis proposer with no tool access
 - [x] safety tests preventing LLM-proposed hypotheses from becoming root cause
 
-## v0.3 — broader Kubernetes RCA
+## Completed in v0.3 — broader Kubernetes RCA
 
-- [ ] OOMKilled / memory saturation
-- [ ] CrashLoopBackOff
-- [ ] FailedScheduling
-- [ ] ImagePullBackOff
-- [ ] NodeNotReady
-- [ ] HPA/KEDA saturation
-- [ ] Karpenter insufficient capacity / disruption / consolidation
-- [ ] PDB and topology-spread constraints
+- [x] OOMKilled / memory-limit correlation
+- [x] CrashLoopBackOff with OOM, probe and non-zero exit differentiation
+- [x] FailedScheduling resource / taint / affinity / volume classification
+- [x] NodeNotReady / unreachable node investigation
+- [x] HPA maxReplicas saturation and controller-condition checks
+- [x] KEDA Ready / Active / pause / fallback evidence model
+- [x] Karpenter insufficient-capacity provisioning correlation
+- [x] Karpenter NodeClaim lifecycle evidence in NodeNotReady investigations
+- [x] read-only autoscaling discovery through typed Kubernetes API calls
+- [x] regression coverage for all v0.3 deterministic scenarios
+
+## v0.3.x — remaining Kubernetes depth
+
+- [ ] ImagePullBackOff / ErrImagePull
+- [ ] PDB blocking and disruption-budget analysis
+- [ ] topology-spread and advanced affinity explanations
+- [ ] Karpenter consolidation-specific RCA
+- [ ] PVC attach/mount runtime failures beyond scheduler binding
+- [ ] per-container memory metric correlation instead of pod aggregate only
 
 ## v0.4 — trace-aware causal propagation
 
