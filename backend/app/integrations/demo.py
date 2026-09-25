@@ -106,6 +106,12 @@ class DemoTools:
             {"metadata": {"namespace": "logging", "name": "fluent-bit-zm44q"}, "spec": {"nodeName": node}},
         ]
 
+    async def get_hpa_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
+        return {}
+
+    async def get_scaledobject_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
+        return {}
+
     async def prometheus_query(self, query: str, at: datetime | None = None) -> dict[str, Any]:
         if "node_filesystem_avail_bytes" in query:
             value = "536870912"
