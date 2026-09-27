@@ -148,6 +148,37 @@ class DemoTools:
     async def tempo_metrics_query(self, query: str, start: datetime, end: datetime, step: str = "30s") -> dict[str, Any]:
         return {}
 
+    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+        return {
+            "kind": "postgresql",
+            "database": database,
+            "window_minutes": window_minutes,
+            "signals": {},
+        }
+
+    async def kafka_dependency_metrics(
+        self,
+        topic: str | None,
+        consumer_group: str | None,
+        at: datetime,
+        window_minutes: int = 15,
+    ) -> dict[str, Any]:
+        return {
+            "kind": "kafka",
+            "topic": topic,
+            "consumer_group": consumer_group,
+            "window_minutes": window_minutes,
+            "signals": {},
+        }
+
+    async def redis_dependency_metrics(self, instance_hint: str | None, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+        return {
+            "kind": "redis",
+            "instance_hint": instance_hint,
+            "window_minutes": window_minutes,
+            "signals": {},
+        }
+
     async def loki_query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> dict[str, Any]:
         return {
             "status": "success",
