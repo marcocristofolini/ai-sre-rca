@@ -68,6 +68,9 @@ frontend:
   replicas: 2
   service:
     port: 3000
+  env:
+    DEFAULT_CLUSTER: "prod-us-east-1"
+    AUTH_FORWARD_HEADER: "x-auth-request-access-token"
 
 serviceAccount:
   create: true
