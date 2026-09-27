@@ -37,6 +37,7 @@ export default function InvestigationView({ data }: { data: Investigation }) {
           <a className="demoLink" href="/">K8S DEMO</a>
           <a className="demoLink" href="/trace">TRACE DEMO</a>
           <a className="demoLink" href="/stateful/postgresql">STATEFUL DEMO</a>
+          <a className="demoLink" href="/ops">OPS</a>
           <div className="readonly">READ ONLY · EVIDENCE FIRST</div>
         </div>
       </header>
@@ -46,7 +47,7 @@ export default function InvestigationView({ data }: { data: Investigation }) {
           <div className="eyebrow">{data.incident.severity.toUpperCase()} · {data.incident.alert_name}</div>
           <h1>{data.incident.title}</h1>
           <p className="muted">
-            {[data.incident.cluster, data.incident.namespace, data.incident.pod ?? data.incident.service].filter(Boolean).join(' / ')}
+            {[data.incident.tenant_id, data.incident.cluster, data.incident.namespace, data.incident.pod ?? data.incident.service].filter(Boolean).join(' / ')}
           </p>
         </div>
         <div className="statusBadge">{data.status.toUpperCase()}</div>
@@ -61,6 +62,8 @@ export default function InvestigationView({ data }: { data: Investigation }) {
           <span>{data.root_cause.supporting_signals} supporting</span>
           <span>{data.root_cause.contradicting_signals} contradicting</span>
           <span>{data.graph_edges.length} graph edges</span>
+          <span>{data.query_budget.total_calls ?? 0} queries</span>
+          {!!data.query_budget.denied?.length && <span>{data.query_budget.denied.length} budget denied</span>}
         </div>
       </section>
 
