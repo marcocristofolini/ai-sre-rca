@@ -87,6 +87,16 @@ def test_principal_role_hierarchy_and_cluster_scope():
     assert not principal.can_access_tenant("tenant-b")
 
 
+def test_cluster_registry_fails_closed_for_unknown_cluster():
+    settings = Settings(
+        cluster_config_json='{"prod-a":{"prometheus_url":"http://prom-a:9090"}}'
+    )
+    tools = ReadOnlyHTTPTools(settings)
+
+    with pytest.raises(ValueError, match="cluster is not configured"):
+        tools.set_cluster("prod-b")
+
+
 def test_cluster_registry_overrides_endpoints_without_cross_request_state():
     settings = Settings(
         cluster_config_json=(
