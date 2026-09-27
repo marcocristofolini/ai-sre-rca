@@ -290,6 +290,27 @@ def analyze_trace(
         candidate_operation = candidate["operation"]
 
     services = sorted({str(span["service"]) for span in spans})
+    deployment_context: dict[str, dict[str, Any]] = {}
+    context_keys = (
+        "service.version",
+        "deployment.environment.name",
+        "deployment.environment",
+        "k8s.namespace.name",
+        "k8s.deployment.name",
+        "k8s.pod.name",
+        "k8s.node.name",
+    )
+    for span in spans:
+        service_name = str(span["service"])
+        attrs = span.get("attributes", {})
+        context = {
+            key: attrs.get(key)
+            for key in context_keys
+            if attrs.get(key) not in {None, ""}
+        }
+        if context:
+            deployment_context.setdefault(service_name, {}).update(context)
+
     return TraceAnalysis(
         trace_id=trace_id,
         root_service=root["service"],
@@ -303,6 +324,7 @@ def analyze_trace(
         candidate_reason=candidate_reason,
         candidate_strength=strength,
         source_query=source_query,
+        deployment_context=deployment_context,
     )
 
 
@@ -534,7 +556,11 @@ async def enrich_with_trace_causality(
         ev = evidence_by_trace.get(analysis.trace_id)
         for hop in analysis.causal_chain:
             kind = "TraceDependency" if hop.kind in {"database", "messaging", "external-service"} else "Service"
-            entity_id = f"trace:{hop.service}"
+            entity_id = (
+                f"dependency:{hop.service}"
+                if kind == "TraceDependency"
+                else f"service:{hop.service}"
+            )
             ensure_entity(
                 entity_id,
                 hop.service,
@@ -544,8 +570,16 @@ async def enrich_with_trace_causality(
         for source_hop, target_hop in zip(analysis.causal_chain, analysis.causal_chain[1:]):
             if source_hop.service == target_hop.service:
                 continue
-            source_id = f"trace:{source_hop.service}"
-            target_id = f"trace:{target_hop.service}"
+            source_id = (
+                f"dependency:{source_hop.service}"
+                if source_hop.kind in {"database", "messaging", "external-service"}
+                else f"service:{source_hop.service}"
+            )
+            target_id = (
+                f"dependency:{target_hop.service}"
+                if target_hop.kind in {"database", "messaging", "external-service"}
+                else f"service:{target_hop.service}"
+            )
             evidence_ids = [ev.id] if ev else []
             key = (source_id, target_id, "trace_calls", tuple(evidence_ids))
             if key in existing_edges:
