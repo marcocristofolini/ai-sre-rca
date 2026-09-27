@@ -139,6 +139,107 @@ class ReadOnlyHTTPTools:
                 })
         return edges
 
+    def _tempo_headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self.settings.tempo_tenant_id:
+            headers["X-Scope-OrgID"] = self.settings.tempo_tenant_id
+        return headers
+
+    async def tempo_search_traces(
+        self,
+        service: str,
+        start: datetime,
+        end: datetime,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        escaped = service.replace("\\", "\\\\").replace('"', '\\"')
+        queries = [
+            f'{{ resource.service.name = "{escaped}" && status = error }}',
+            f'{{ resource.service.name = "{escaped}" }}',
+        ]
+        traces: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            for query in queries:
+                if len(traces) >= limit:
+                    break
+                response = await client.get(
+                    "/api/search",
+                    params={
+                        "q": query,
+                        "start": int(start.timestamp()),
+                        "end": int(end.timestamp()),
+                        "limit": max(1, limit - len(traces)),
+                        "spss": 5,
+                    },
+                )
+                if response.status_code in {404, 501}:
+                    return traces
+                response.raise_for_status()
+                for item in response.json().get("traces", []):
+                    trace_id = str(item.get("traceID") or "")
+                    if not trace_id or trace_id in seen:
+                        continue
+                    seen.add(trace_id)
+                    copy = dict(item)
+                    copy["_source_query"] = query
+                    traces.append(copy)
+                    if len(traces) >= limit:
+                        break
+        return traces
+
+    async def tempo_get_trace(
+        self,
+        trace_id: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if start:
+            params["start"] = int(start.timestamp())
+        if end:
+            params["end"] = int(end.timestamp())
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            response = await client.get(f"/api/v2/traces/{quote(trace_id)}", params=params)
+            if response.status_code == 404:
+                return {}
+            response.raise_for_status()
+            return response.json()
+
+    async def tempo_metrics_query(
+        self,
+        query: str,
+        start: datetime,
+        end: datetime,
+        step: str = "30s",
+    ) -> dict[str, Any]:
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            response = await client.get(
+                "/api/metrics/query_range",
+                params={
+                    "q": query,
+                    "start": int(start.timestamp()),
+                    "end": int(end.timestamp()),
+                    "step": step,
+                },
+            )
+            if response.status_code in {404, 501}:
+                return {}
+            response.raise_for_status()
+            return response.json()
+
     async def loki_query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> dict[str, Any]:
         async with httpx.AsyncClient(base_url=self.settings.loki_url, timeout=15) as client:
             response = await client.get(
