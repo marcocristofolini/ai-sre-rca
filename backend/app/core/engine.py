@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 from app.core.k8s_signals import classify_pod_scenario
 from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
+from app.core.query_safety import prom_regex_literal, quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.stateful_dependency import enrich_with_stateful_dependencies
 from app.core.trace_analysis import enrich_with_trace_causality
@@ -174,8 +175,11 @@ class InvestigationEngine:
         start = incident.starts_at
         event_task = asyncio.sleep(0, result=preloaded_events)
         node_task = self.tools.get_node(node_name) if node_name else asyncio.sleep(0, result={})
+        namespace_label = quoted_string(incident.namespace)
+        pod_label = quoted_string(incident.pod)
+        logs_query = f'{{namespace="{namespace_label}", pod="{pod_label}"}}'
         logs_task = self.tools.loki_query_range(
-            f'{{namespace="{incident.namespace}", pod="{incident.pod}"}}',
+            logs_query,
             start - timedelta(minutes=20),
             start + timedelta(minutes=5),
             100,
@@ -191,7 +195,10 @@ class InvestigationEngine:
         fs_current: dict[str, Any] = {}
         fs_trend: dict[str, Any] = {}
         if node_name:
-            fs_query = f'node_filesystem_avail_bytes{{instance=~"{node_name}.*",mountpoint="/"}}'
+            node_pattern = prom_regex_literal(node_name)
+            fs_query = (
+                f'node_filesystem_avail_bytes{{instance=~"^{node_pattern}(:[0-9]+)?$",mountpoint="/"}}'
+            )
             fs_current, fs_trend = await asyncio.gather(
                 self.tools.prometheus_query(fs_query, start),
                 self.tools.prometheus_query_range(
@@ -328,7 +335,7 @@ class InvestigationEngine:
             category="logs",
             summary=f"Retrieved {log_count} application log entries around the incident window; the deterministic playbook found no independent application-crash signal.",
             facts={"entries": log_count},
-            query=f'{{namespace="{incident.namespace}", pod="{incident.pod}"}}',
+            query=logs_query,
             raw_reference="loki:/loki/api/v1/query_range",
             strength="weak",
         )
