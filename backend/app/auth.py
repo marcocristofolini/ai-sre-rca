@@ -25,7 +25,8 @@ class Principal:
             settings.investigator_role: 2,
             settings.admin_role: 3,
         }
-        required = hierarchy.get(role, 99)
+        semantic = {"viewer": 1, "investigator": 2, "admin": 3}
+        required = semantic.get(role, hierarchy.get(role, 99))
         highest = max((hierarchy.get(item, 0) for item in self.roles), default=0)
         return highest >= required
 
