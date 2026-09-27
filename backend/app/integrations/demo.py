@@ -239,11 +239,40 @@ def _demo_b64(raw: bytes) -> str:
     return base64.b64encode(raw).decode()
 
 
-def _demo_trace_payload(seed: int) -> dict[str, Any]:
+def _demo_trace_payload(seed: int, dependency: str = "postgresql") -> dict[str, Any]:
     trace_id = _demo_b64(bytes([seed]) * 16)
     root_id = _demo_b64(bytes([seed, 1, 1, 1, 1, 1, 1, 1]))
     checkout_id = _demo_b64(bytes([seed, 2, 2, 2, 2, 2, 2, 2]))
     db_id = _demo_b64(bytes([seed, 3, 3, 3, 3, 3, 3, 3]))
+
+    if dependency == "postgresql":
+        dependency_operation = "SELECT orders"
+        dependency_kind = "SPAN_KIND_CLIENT"
+        dependency_attributes = [
+            {"key": "db.system", "value": {"stringValue": "postgresql"}},
+            {"key": "db.namespace", "value": {"stringValue": "orders"}},
+            {"key": "server.address", "value": {"stringValue": "orders-db"}},
+        ]
+    elif dependency == "kafka":
+        dependency_operation = "publish orders-events"
+        dependency_kind = "SPAN_KIND_PRODUCER"
+        dependency_attributes = [
+            {"key": "messaging.system", "value": {"stringValue": "kafka"}},
+            {"key": "messaging.destination.name", "value": {"stringValue": "orders-events"}},
+            {"key": "messaging.consumer.group.name", "value": {"stringValue": "checkout-workers"}},
+            {"key": "server.address", "value": {"stringValue": "kafka-prod"}},
+        ]
+    elif dependency == "redis":
+        dependency_operation = "GET cart"
+        dependency_kind = "SPAN_KIND_CLIENT"
+        dependency_attributes = [
+            {"key": "db.system", "value": {"stringValue": "redis"}},
+            {"key": "db.namespace", "value": {"stringValue": "cache"}},
+            {"key": "server.address", "value": {"stringValue": "redis-cache"}},
+        ]
+    else:
+        raise ValueError(f"unsupported demo dependency: {dependency}")
+
     return {
         "trace": {
             "resourceSpans": [
@@ -283,15 +312,12 @@ def _demo_trace_payload(seed: int) -> dict[str, Any]:
                             "traceId": trace_id,
                             "spanId": db_id,
                             "parentSpanId": checkout_id,
-                            "name": "SELECT orders",
-                            "kind": "SPAN_KIND_CLIENT",
+                            "name": dependency_operation,
+                            "kind": dependency_kind,
                             "startTimeUnixNano": "1100000000",
                             "endTimeUnixNano": "1800000000",
                             "status": {"code": "STATUS_CODE_ERROR"},
-                            "attributes": [
-                                {"key": "db.system", "value": {"stringValue": "postgresql"}},
-                                {"key": "db.namespace", "value": {"stringValue": "orders"}},
-                            ],
+                            "attributes": dependency_attributes,
                         },
                     ]}],
                 },
@@ -324,3 +350,77 @@ class TraceDemoTools(DemoTools):
         else:
             value = 12.0
         return {"series": [{"values": [[start.timestamp(), value], [end.timestamp(), value]]}]}
+
+
+
+class StatefulDemoTools(TraceDemoTools):
+    def __init__(self, dependency: str = "postgresql"):
+        if dependency not in {"postgresql", "kafka", "redis"}:
+            raise ValueError(f"unsupported demo dependency: {dependency}")
+        self.dependency = dependency
+
+    async def tempo_get_trace(self, trace_id: str, start: datetime | None = None, end: datetime | None = None) -> dict[str, Any]:
+        seed = int(trace_id.rsplit("-", 1)[1])
+        return _demo_trace_payload(seed, self.dependency)
+
+    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+        if self.dependency != "postgresql":
+            return await super().postgres_dependency_metrics(database, at, window_minutes)
+        return {
+            "kind": "postgresql",
+            "database": database,
+            "window_minutes": window_minutes,
+            "signals": {
+                "connections": {"value": 97.0, "query": 'sum(pg_stat_activity_count{datname="orders"})'},
+                "active_connections": {"value": 82.0, "query": 'sum(pg_stat_activity_count{datname="orders",state="active"})'},
+                "idle_in_transaction": {"value": 8.0, "query": 'sum(pg_stat_activity_count{datname="orders",state=~"idle in transaction.*"})'},
+                "max_connections": {"value": 100.0, "query": "max(pg_settings_max_connections)"},
+                "locks": {"value": 12.0, "query": 'sum(pg_locks_count{datname="orders"})'},
+                "access_exclusive_locks": {"value": 0.0, "query": 'sum(pg_locks_count{datname="orders",mode="accessexclusivelock"})'},
+                "deadlocks_delta": {"value": 0.0, "query": 'sum(increase(pg_stat_database_deadlocks{datname="orders"}[15m]))'},
+                "replication_lag_bytes": {"value": 0.0, "query": "max(pg_stat_replication_pg_wal_lsn_diff)"},
+                "long_tx_seconds": {"value": 18.0, "query": "max(pg_long_running_transactions)"},
+            },
+        }
+
+    async def kafka_dependency_metrics(
+        self,
+        topic: str | None,
+        consumer_group: str | None,
+        at: datetime,
+        window_minutes: int = 15,
+    ) -> dict[str, Any]:
+        if self.dependency != "kafka":
+            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes)
+        return {
+            "kind": "kafka",
+            "topic": topic,
+            "consumer_group": consumer_group,
+            "window_minutes": window_minutes,
+            "signals": {
+                "consumer_lag": {"value": 25000.0, "query": 'sum(kafka_consumergroup_lag{topic="orders-events",consumergroup="checkout-workers"})'},
+                "under_replicated_partitions": {"value": 0.0, "query": 'sum(kafka_topic_partition_under_replicated_partition{topic="orders-events"})'},
+                "offline_partitions": {"value": 0.0, "query": 'count(kafka_topic_partition_leader{topic="orders-events"} < 0)'},
+                "consumer_group_members": {"value": 4.0, "query": 'min(kafka_consumergroup_members{consumergroup="checkout-workers"})'},
+            },
+        }
+
+    async def redis_dependency_metrics(self, instance_hint: str | None, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+        if self.dependency != "redis":
+            return await super().redis_dependency_metrics(instance_hint, at, window_minutes)
+        mib = 1024 * 1024
+        return {
+            "kind": "redis",
+            "instance_hint": instance_hint,
+            "window_minutes": window_minutes,
+            "signals": {
+                "memory_used_bytes": {"value": 950.0 * mib, "query": "max(redis_memory_used_bytes)"},
+                "memory_max_bytes": {"value": 1000.0 * mib, "query": "max(redis_memory_max_bytes)"},
+                "config_maxmemory_bytes": {"value": 1000.0 * mib, "query": "max(redis_config_maxmemory)"},
+                "evictions_delta": {"value": 37.0, "query": "sum(increase(redis_evicted_keys_total[15m]))"},
+                "blocked_clients": {"value": 0.0, "query": "max(redis_blocked_clients)"},
+                "connected_clients": {"value": 280.0, "query": "max(redis_connected_clients)"},
+                "max_clients": {"value": 1000.0, "query": "max(redis_config_maxclients)"},
+                "command_latency_seconds": {"value": 0.008, "query": "redis command duration / command rate"},
+            },
+        }
