@@ -34,6 +34,37 @@ jobs:
       - run: cd frontend && npm run build
 
 
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Helm 4.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz
+          echo "86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb  helm-v4.3.0-linux-amd64.tar.gz" | sha256sum -c -
+          tar -xzf helm-v4.3.0-linux-amd64.tar.gz
+          sudo install -m 0755 linux-amd64/helm /usr/local/bin/helm
+          helm version
+
+      - name: Lint chart
+        run: helm lint --strict helm/ai-sre-rca
+
+      - name: Render default chart
+        run: helm template ai-sre-rca helm/ai-sre-rca > /tmp/ai-sre-rca-default.yaml
+
+      - name: Render hardened chart
+        run: |
+          helm template ai-sre-rca helm/ai-sre-rca \
+            --set networkPolicy.enabled=true \
+            --set backend.existingSecret=ai-sre-secrets \
+            > /tmp/ai-sre-rca-hardened.yaml
+          grep -q "kind: NetworkPolicy" /tmp/ai-sre-rca-hardened.yaml
+          grep -q "name: ai-sre-secrets" /tmp/ai-sre-rca-hardened.yaml
+
+
   smoke:
     needs: [backend, frontend]
     runs-on: ubuntu-latest
