@@ -244,6 +244,7 @@ def analyze_trace(
         dependency_metadata = candidate.get("dependency_metadata", {})
         candidate_instance = str(dependency_metadata.get("server.address") or "") or None
         candidate_instance = dependency_instance(candidate.get("dependency_metadata"))
+        candidate_instance = dependency_instance(candidate.get("dependency_metadata"))
         target = candidate.get("target")
         if target and candidate.get("kind") in {"client", "producer"}:
             candidate_reason = f"downstream {candidate.get('target_kind', 'dependency')} call failed"
