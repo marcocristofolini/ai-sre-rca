@@ -155,13 +155,14 @@ class StatefulTools(DemoTools):
             }),
         }
 
-    async def kafka_dependency_metrics(self, topic, consumer_group, at, window_minutes=15):
+    async def kafka_dependency_metrics(self, topic, consumer_group, at, window_minutes=15, instance_hint=None):
         if self.dependency != "kafka":
-            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes)
+            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes, instance_hint)
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "signals": _signals({
                 "consumer_lag": 25000,
                 "under_replicated_partitions": 0,
@@ -225,6 +226,7 @@ async def test_kafka_consumer_lag_promotes_trace_origin():
     kafka = next(item for item in result.stateful_dependencies if item.kind == "kafka")
     assert kafka.target == "orders-events"
     assert kafka.metadata["consumer_group"] == "checkout-workers"
+    assert kafka.metadata["instance_hint"] == "kafka-prod"
     assert kafka.health == "critical"
     lag = next(item for item in kafka.signals if item.name == "consumer_lag")
     assert lag.value == 25000
