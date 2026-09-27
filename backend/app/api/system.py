@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from app.auth import Principal, authorize_cluster, require_role
-from app.schemas import CapabilityReport, SourceCapability
+from app.schemas import AuditEvent, CapabilityReport, SourceCapability
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
@@ -56,7 +56,7 @@ async def purge_retention(
         settings.audit_retention_days,
     )
     await request.app.state.repo.append_audit(
-        __import__("app.schemas", fromlist=["AuditEvent"]).AuditEvent(
+        AuditEvent(
             tenant_id=principal.tenant_id,
             actor=principal.subject,
             action="retention.purge",
