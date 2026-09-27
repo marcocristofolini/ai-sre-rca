@@ -379,7 +379,7 @@ class StatefulDemoTools(TraceDemoTools):
                 "access_exclusive_locks": {"value": 0.0, "query": 'sum(pg_locks_count{datname="orders",mode="accessexclusivelock"})'},
                 "deadlocks_delta": {"value": 0.0, "query": 'sum(increase(pg_stat_database_deadlocks{datname="orders"}[15m]))'},
                 "replication_lag_bytes": {"value": 0.0, "query": "max(pg_stat_replication_pg_wal_lsn_diff)"},
-                "long_tx_seconds": {"value": 18.0, "query": "max(pg_long_running_transactions)"},
+                "long_tx_seconds": {"value": 18.0, "query": 'max(pg_stat_activity_max_tx_duration{datname="orders",instance=~".*orders-db.*"})'},
             },
         }
 
