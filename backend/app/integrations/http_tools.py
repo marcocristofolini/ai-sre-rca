@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import math
+import time
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import Settings
+from app.core.query_budget import consume_query
 from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
 
 
@@ -22,20 +25,45 @@ class ReadOnlyHTTPTools:
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._cluster_ctx: ContextVar[str | None] = ContextVar(
+            f"ai_sre_cluster_{id(self)}",
+            default=None,
+        )
+
+    def set_cluster(self, cluster: str):
+        return self._cluster_ctx.set(cluster)
+
+    def reset_cluster(self, token) -> None:
+        self._cluster_ctx.reset(token)
+
+    @property
+    def current_cluster(self) -> str | None:
+        return self._cluster_ctx.get()
+
+    def _cluster_value(self, key: str, default: Any) -> Any:
+        cluster = self.current_cluster
+        if not cluster:
+            return default
+        return self.settings.cluster_config.get(cluster, {}).get(key, default)
+
+    def _allow(self, source: str) -> bool:
+        return consume_query(source)
 
     def _k8s_headers(self) -> dict[str, str]:
-        token_path = Path(self.settings.kubernetes_token_file)
+        token_path = Path(self._cluster_value("kubernetes_token_file", self.settings.kubernetes_token_file))
         if not token_path.exists():
             return {}
         return {"Authorization": f"Bearer {token_path.read_text().strip()}"}
 
     def _k8s_verify(self) -> str | bool:
-        ca = Path(self.settings.kubernetes_ca_file)
+        ca = Path(self._cluster_value("kubernetes_ca_file", self.settings.kubernetes_ca_file))
         return str(ca) if ca.exists() else True
 
     async def _k8s_get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        if not self._allow("kubernetes"):
+            return {}
         async with httpx.AsyncClient(
-            base_url=self.settings.kubernetes_api_url,
+            base_url=self._cluster_value("kubernetes_api_url", self.settings.kubernetes_api_url),
             headers=self._k8s_headers(),
             verify=self._k8s_verify(),
             timeout=10,
@@ -98,16 +126,26 @@ class ReadOnlyHTTPTools:
         return {}
 
     async def prometheus_query(self, query: str, at: datetime | None = None) -> dict[str, Any]:
+        if not self._allow("prometheus"):
+            return {"status": "success", "data": {"result": []}, "_budget_denied": True}
         params: dict[str, Any] = {"query": query}
         if at:
             params["time"] = at.isoformat()
-        async with httpx.AsyncClient(base_url=self.settings.prometheus_url, timeout=10) as client:
+        async with httpx.AsyncClient(
+            base_url=self._cluster_value("prometheus_url", self.settings.prometheus_url),
+            timeout=10,
+        ) as client:
             response = await client.get("/api/v1/query", params=params)
             response.raise_for_status()
             return response.json()
 
     async def prometheus_query_range(self, query: str, start: datetime, end: datetime, step: str = "60s") -> dict[str, Any]:
-        async with httpx.AsyncClient(base_url=self.settings.prometheus_url, timeout=15) as client:
+        if not self._allow("prometheus"):
+            return {"status": "success", "data": {"result": []}, "_budget_denied": True}
+        async with httpx.AsyncClient(
+            base_url=self._cluster_value("prometheus_url", self.settings.prometheus_url),
+            timeout=15,
+        ) as client:
             response = await client.get(
                 "/api/v1/query_range",
                 params={"query": query, "start": start.isoformat(), "end": end.isoformat(), "step": step},
@@ -442,8 +480,10 @@ class ReadOnlyHTTPTools:
         ]
         traces: list[dict[str, Any]] = []
         seen: set[str] = set()
+        if not self._allow("tempo"):
+            return traces
         async with httpx.AsyncClient(
-            base_url=self.settings.tempo_url,
+            base_url=self._cluster_value("tempo_url", self.settings.tempo_url),
             headers=self._tempo_headers(),
             timeout=20,
         ) as client:
@@ -486,8 +526,10 @@ class ReadOnlyHTTPTools:
             params["start"] = int(start.timestamp())
         if end:
             params["end"] = int(end.timestamp())
+        if not self._allow("tempo"):
+            return {}
         async with httpx.AsyncClient(
-            base_url=self.settings.tempo_url,
+            base_url=self._cluster_value("tempo_url", self.settings.tempo_url),
             headers=self._tempo_headers(),
             timeout=20,
         ) as client:
@@ -504,8 +546,10 @@ class ReadOnlyHTTPTools:
         end: datetime,
         step: str = "30s",
     ) -> dict[str, Any]:
+        if not self._allow("tempo"):
+            return {}
         async with httpx.AsyncClient(
-            base_url=self.settings.tempo_url,
+            base_url=self._cluster_value("tempo_url", self.settings.tempo_url),
             headers=self._tempo_headers(),
             timeout=20,
         ) as client:
@@ -524,7 +568,12 @@ class ReadOnlyHTTPTools:
             return response.json()
 
     async def loki_query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> dict[str, Any]:
-        async with httpx.AsyncClient(base_url=self.settings.loki_url, timeout=15) as client:
+        if not self._allow("loki"):
+            return {"data": {"result": []}, "_budget_denied": True}
+        async with httpx.AsyncClient(
+            base_url=self._cluster_value("loki_url", self.settings.loki_url),
+            timeout=15,
+        ) as client:
             response = await client.get(
                 "/loki/api/v1/query_range",
                 params={
@@ -539,10 +588,16 @@ class ReadOnlyHTTPTools:
             return response.json()
 
     async def argocd_application(self, app_name: str) -> dict[str, Any]:
+        if not self._allow("argocd"):
+            return {}
         headers = {}
         if self.settings.argocd_token:
             headers["Authorization"] = f"Bearer {self.settings.argocd_token}"
-        async with httpx.AsyncClient(base_url=self.settings.argocd_url, headers=headers, timeout=10) as client:
+        async with httpx.AsyncClient(
+            base_url=self._cluster_value("argocd_url", self.settings.argocd_url),
+            headers=headers,
+            timeout=10,
+        ) as client:
             response = await client.get(f"/api/v1/applications/{path_segment(app_name)}")
             if response.status_code == 404:
                 return {}
@@ -550,6 +605,8 @@ class ReadOnlyHTTPTools:
             return response.json()
 
     async def github_commit(self, repo_url: str, revision: str) -> dict[str, Any]:
+        if not self._allow("github"):
+            return {}
         parsed = urlparse(repo_url)
         if parsed.hostname not in {"github.com", "www.github.com"}:
             return {}
