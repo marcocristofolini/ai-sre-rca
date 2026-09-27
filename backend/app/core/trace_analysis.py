@@ -239,6 +239,8 @@ def analyze_trace(
         )[0]
         dependency_metadata = candidate.get("dependency_metadata", {})
         candidate_instance = str(dependency_metadata.get("server.address") or "") or None
+        dependency_metadata = candidate.get("dependency_metadata", {})
+        candidate_instance = str(dependency_metadata.get("server.address") or "") or None
         target = candidate.get("target")
         if target and candidate.get("kind") in {"client", "producer"}:
             candidate_reason = f"downstream {candidate.get('target_kind', 'dependency')} call failed"
@@ -857,7 +859,7 @@ async def enrich_with_trace_causality(
     score_hypothesis(hypothesis, evidence_by_id)
     hypothesis.rationale = (
         f"{repeated} of {len(analyses)} analyzed traces converged on "
-        f"{candidate_service}:{candidate_operation}. "
+        f"{candidate_display}:{candidate_operation}. "
         + (
             "The same error origin repeats across independent traces and follows explicit parent/child span ancestry."
             if repeated >= 2
@@ -876,7 +878,7 @@ async def enrich_with_trace_causality(
             title=f"Downstream trace failure propagated from {candidate_display}",
             summary=(
                 f"{repeated} representative traces independently identify "
-                f"{candidate_service}:{candidate_operation} as the deepest failing dependency/operation "
+                f"{candidate_display}:{candidate_operation} as the deepest failing dependency/operation "
                 f"and show the error propagating through parent/child spans to {service}. "
                 "This conclusion is trace-derived and does not rely on temporal coincidence alone."
             ),
@@ -888,7 +890,7 @@ async def enrich_with_trace_causality(
         result.remediation = [
             Remediation(
                 priority="P1",
-                action=f"Inspect {candidate_service}:{candidate_operation} and its direct dependency health before changing upstream capacity.",
+                action=f"Inspect {candidate_display}:{candidate_operation} and its direct dependency health before changing upstream capacity.",
                 reason="Independent traces place the deepest repeated failure at this downstream hop.",
             ),
             Remediation(
