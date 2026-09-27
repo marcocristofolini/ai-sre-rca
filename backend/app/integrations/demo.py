@@ -371,8 +371,9 @@ class StatefulDemoTools(TraceDemoTools):
             "database": database,
             "window_minutes": window_minutes,
             "signals": {
-                "connections": {"value": 97.0, "query": 'sum(pg_stat_activity_count{datname="orders"})'},
-                "active_connections": {"value": 82.0, "query": 'sum(pg_stat_activity_count{datname="orders",state="active"})'},
+                "connections": {"value": 97.0, "query": 'sum(pg_stat_activity_count{instance=~".*orders-db.*"})'},
+                "database_connections": {"value": 88.0, "query": 'sum(pg_stat_activity_count{datname="orders",instance=~".*orders-db.*"})'},
+                "active_connections": {"value": 82.0, "query": 'sum(pg_stat_activity_count{datname="orders",state="active",instance=~".*orders-db.*"})'},
                 "idle_in_transaction": {"value": 8.0, "query": 'sum(pg_stat_activity_count{datname="orders",state=~"idle in transaction.*"})'},
                 "max_connections": {"value": 100.0, "query": "max(pg_settings_max_connections)"},
                 "locks": {"value": 12.0, "query": 'sum(pg_locks_count{datname="orders"})'},
