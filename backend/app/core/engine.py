@@ -351,7 +351,13 @@ class InvestigationEngine:
                     source=client_id,
                     target=server_id,
                     relationship="calls",
-                    metadata={"requests": edge.get("requests"), "connection_type": edge.get("connection_type")},
+                    metadata={
+                        "requests": edge.get("requests"),
+                        "failures": edge.get("failures"),
+                        "error_ratio": edge.get("error_ratio"),
+                        "p95_seconds": edge.get("p95_seconds"),
+                        "connection_type": edge.get("connection_type"),
+                    },
                     evidence_ids=[topology_ev.id],
                 ))
 
