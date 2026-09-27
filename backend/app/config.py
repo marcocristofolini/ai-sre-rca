@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     trace_slow_span_root_fraction: float = 0.5
 
     stateful_dependency_analysis_enabled: bool = True
+    stateful_dependency_max_targets: int = 4
     dependency_window_minutes: int = 15
 
     postgres_connection_utilization_critical: float = 0.90
