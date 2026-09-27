@@ -50,7 +50,11 @@ def trace_payload(seed: int) -> dict:
                 {
                     "resource": {
                         "attributes": [
-                            {"key": "service.name", "value": {"stringValue": "checkout"}}
+                            {"key": "service.name", "value": {"stringValue": "checkout"}},
+                            {"key": "service.version", "value": {"stringValue": "7d37e39"}},
+                            {"key": "k8s.namespace.name", "value": {"stringValue": "checkout"}},
+                            {"key": "k8s.deployment.name", "value": {"stringValue": "checkout"}},
+                            {"key": "k8s.pod.name", "value": {"stringValue": "checkout-7d37e39-x2k9m"}}
                         ]
                     },
                     "scopeSpans": [{
@@ -135,7 +139,15 @@ async def test_repeated_trace_origin_resolves_generic_service_incident():
     assert len(result.trace_analyses) == 2
     assert all(item.candidate_service == "postgresql/orders" for item in result.trace_analyses)
     assert any(edge.relationship == "trace_calls" for edge in result.graph_edges)
+    assert any(edge.relationship == "runs_as" for edge in result.graph_edges)
+    assert any(
+        edge.relationship == "calls"
+        and "error_ratio" in edge.metadata
+        and "p95_seconds" in edge.metadata
+        for edge in result.graph_edges
+    )
     assert any(item.category == "trace-red" for item in result.evidence)
+    assert any(item.category == "trace-deployment-correlation" for item in result.evidence)
 
 
 @pytest.mark.asyncio
