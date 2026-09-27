@@ -1,4 +1,4 @@
-# Arquitetura — v0.2
+# Arquitetura — v0.4
 
 **Português do Brasil** · [English](architecture.md)
 
@@ -13,6 +13,7 @@ flowchart TD
     I --> P[Adapter Prometheus]
     I --> L[Adapter Loki]
     I --> O[Service Graph OpenTelemetry]
+    I --> T[Tempo / TraceQL<br/>Causalidade por Traces]
     I --> AR[Adapter Argo CD]
     I --> GH[Adapter GitHub]
     I --> KA[Adapter Karpenter]
@@ -21,6 +22,7 @@ flowchart TD
     P --> G
     L --> G
     O --> G
+    T --> G
     AR --> G
     GH --> G
     KA --> G
@@ -46,7 +48,8 @@ flowchart TD
     N --> M[Recuperar incidentes históricos semelhantes]
     M --> KO[Resolver ownership no Kubernetes]
     KO --> SG[Resolver identidade do serviço e dependências]
-    SG --> CH[Resolver revisão no Argo CD e metadados Git]
+    SG --> TR[Buscar traces representativos e reconstruir causalidade]
+    TR --> CH[Resolver revisão no Argo CD e metadados Git]
     CH --> KP[Resolver NodeClaim / NodePool no Karpenter]
     KP --> HP[Carregar hipóteses determinísticas]
     HP --> CE[Coletar evidências tipadas read-only]
@@ -71,6 +74,7 @@ sequenceDiagram
     participant ENG as Investigation Engine
     participant K8S as Kubernetes
     participant OBS as Prometheus/Loki/OTel
+    participant TEMPO as Tempo/TraceQL
     participant CHG as Argo CD/GitHub
     participant KAR as Karpenter
     participant MEM as Memória pgvector
@@ -84,6 +88,8 @@ sequenceDiagram
     K8S-->>ENG: Evidências de runtime e ownership
     ENG->>OBS: Consultar métricas/logs/service graph
     OBS-->>ENG: Evidências de telemetria
+    ENG->>TEMPO: Buscar traces de erro + consultar OTLP e RED metrics
+    TEMPO-->>ENG: Cadeias pai/filho + candidatos de origem + RED
     ENG->>CHG: Resolver revisão implantada e commit
     CHG-->>ENG: Evidências de mudança
     ENG->>KAR: Resolver ciclo de vida de NodeClaim/NodePool
@@ -168,7 +174,29 @@ flowchart LR
     RCA --> GRAPH[Awareness Graph]
 ```
 
-Isso mantém o MVP de topologia baseado em consultas PromQL tipadas em vez de acesso arbitrário ao sistema de traces.
+Isso mantém a topologia agregada baseada em consultas PromQL tipadas. A partir da v0.4, o investigador também possui acesso **read-only e limitado** ao Tempo para causalidade por trace.
+
+## Propagação causal por traces — v0.4
+
+```mermaid
+flowchart LR
+    ALERT[Alerta + Serviço] --> SEARCH[TraceQL Search]
+    SEARCH --> IDS[Trace IDs Representativos]
+    IDS --> OTLP[Tempo v2 OTLP JSON]
+    OTLP --> TREE[Árvore parentSpanId]
+    TREE --> ORIGIN[Deepest Failing Span]
+    ORIGIN --> MULTI{Mesma origem em vários traces?}
+    MULTI -->|Sim| CONF[Hipótese Confirmada]
+    MULTI -->|Não| TEST[Testing]
+    OTLP --> DEP[Nós virtuais DB / Mensageria / Externo]
+    OTLP --> K8S[Correlação Service → Deployment]
+    CONF --> GRAPH[Awareness Graph]
+    TEST --> GRAPH
+```
+
+A confirmação puramente trace-aware exige repetição da mesma origem downstream em traces independentes. Um único trace não confirma causa raiz. Um RCA Kubernetes já confirmado também mantém precedência sobre evidência de trace.
+
+Detalhes: [docs/trace-causality.pt-BR.md](trace-causality.pt-BR.md).
 
 ## Memória de incidentes
 

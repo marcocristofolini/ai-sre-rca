@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.3.0
+# AI SRE RCA — v0.4.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -8,16 +8,17 @@ Evidence-first, read-only Kubernetes incident investigator inspired by autonomou
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, gathers evidence from Kubernetes, Prometheus, Loki, OpenTelemetry service-graph metrics, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
-## What changed in v0.3
+## What changed in v0.4
 
-- Deterministic **OOMKilled** RCA that separates container-limit exhaustion from node-wide MemoryPressure.
-- **CrashLoopBackOff** RCA that distinguishes OOM restarts, health-probe failures and non-zero application exits.
-- **FailedScheduling** classification for insufficient resources, taints/tolerations, affinity/selectors, volume binding and Karpenter capacity failures.
-- **NodeNotReady** RCA for unreachable nodes, kubelet health, resource pressure and Karpenter lifecycle context.
-- **HPA** diagnostics for maxReplicas saturation, missing metrics and blocked scale operations.
-- **KEDA** diagnostics for scaler errors, paused autoscaling, fallback activation and inactive triggers.
-- Typed, read-only Kubernetes API lookups for HPA and KEDA ScaledObjects.
-- Seven new v0.3 regression scenarios; the full backend suite now covers ten deterministic/safety cases.
+- **Tempo/TraceQL trace discovery** around the incident window using typed, read-only HTTP calls.
+- Fetch and parse standard OTLP JSON traces from Tempo v2 without relying on LLM-oriented response formats.
+- Deterministic **deepest failing span** selection and parent/child ancestry reconstruction.
+- Cross-trace confirmation: the same downstream origin must repeat across representative traces before trace-only RCA can be confirmed.
+- **TraceQL RED metrics** (rate, error rate and p95 duration) plus service-graph RED metrics on dependency edges.
+- Virtual dependency nodes for database, messaging and external-service calls.
+- **Trace → Deployment correlation** from OpenTelemetry resource attributes such as `k8s.deployment.name`, `k8s.namespace.name` and `service.version`.
+- New `/trace` UI and `/api/v1/incidents/demo/trace` demo flow.
+- Guardrail: trace evidence can enrich an already-confirmed Kubernetes RCA, but cannot silently replace it.
 
 ## Core design rules
 
@@ -70,7 +71,9 @@ Open:
 
 - UI: `http://localhost:3000`
 - Swagger: `http://localhost:8080/docs`
-- Demo RCA: `http://localhost:8080/api/v1/incidents/demo`
+- Kubernetes demo RCA: `http://localhost:8080/api/v1/incidents/demo`
+- Trace-aware demo RCA: `http://localhost:8080/api/v1/incidents/demo/trace`
+- Trace-aware UI: `http://localhost:3000/trace`
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 
@@ -122,6 +125,12 @@ KUBERNETES_CA_FILE=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
 PROMETHEUS_URL=http://prometheus-operated.monitoring.svc:9090
 LOKI_URL=http://loki-gateway.logging.svc:3100
+TEMPO_URL=http://tempo-query-frontend.tracing.svc:3200
+TEMPO_TENANT_ID=
+TRACE_ANALYSIS_ENABLED=true
+TRACE_WINDOW_MINUTES=15
+TRACE_SEARCH_LIMIT=8
+TRACE_FETCH_LIMIT=4
 
 ARGOCD_URL=http://argocd-server.argocd.svc
 ARGOCD_TOKEN=...
@@ -139,6 +148,41 @@ sum(increase(traces_service_graph_request_total{client="landing-page"}[15m])) by
 ```
 
 Your Tempo metrics-generator, Grafana Alloy or OTel Collector servicegraph connector must export these metrics to the Prometheus-compatible backend used by `PROMETHEUS_URL`.
+
+### Trace-aware causal propagation
+
+v0.4 also talks directly to Tempo's read-only query API. The engine first searches error traces for the affected service, then fetches a bounded number of representative traces and parses their OTLP span trees.
+
+```mermaid
+flowchart LR
+    A[Alert / Service Identity] --> Q[TraceQL Search<br/>error traces first]
+    Q --> T[Representative Trace IDs]
+    T --> P[OTLP Trace Parser]
+    P --> TREE[Parent / Child Span Tree]
+    TREE --> LEAF[Deepest Failing Span]
+    LEAF --> PATH[Causal Path to Root]
+    PATH --> REP{Repeated Across Traces?}
+    REP -->|Yes| RCA[Confirmed Trace RCA]
+    REP -->|No| TEST[Testing / Supporting Evidence]
+
+    TREE --> DEP[Virtual DB / Messaging / External Nodes]
+    TREE --> K8S[OTel Resource Attributes]
+    K8S --> D[Deployment Correlation]
+    PATH --> G[Awareness Graph]
+```
+
+The trace-only root cause is confirmed only when independent representative traces converge on the same downstream service/operation. A single trace remains `testing`. If Kubernetes already produced a stronger confirmed RCA, trace evidence is attached as context and does not override it.
+
+The current TraceQL queries include:
+
+```traceql
+{ resource.service.name = "frontend" && status = error }
+{ resource.service.name = "frontend" } | rate()
+{ resource.service.name = "frontend" && status = error } | rate()
+{ resource.service.name = "frontend" } | quantile_over_time(span:duration, .95)
+```
+
+Tempo v2 trace lookup uses `GET /api/v2/traces/<traceID>`; the standard OTLP JSON response is parsed programmatically.
 
 ## Change correlation
 
@@ -246,6 +290,7 @@ The demo still reproduces the original ephemeral-storage eviction case, while th
 ```text
 GET  /healthz
 GET  /api/v1/incidents/demo
+GET  /api/v1/incidents/demo/trace
 GET  /api/v1/incidents/{id}
 POST /api/v1/incidents/investigate
 POST /api/v1/webhooks/alertmanager
@@ -309,12 +354,13 @@ docs/                 architecture and roadmap
 
 ## Next evolution
 
-v0.3 completes the first broader Kubernetes RCA layer. The next highest-value increments are:
+v0.4 completes the first trace-aware causal-propagation layer. The next highest-value increments are:
 
-1. ImagePullBackOff / ErrImagePull, PDB blocking, topology-spread and deeper PVC/runtime-volume diagnostics.
-2. Karpenter consolidation-specific RCA and richer provisioning evidence.
-3. Trace exemplars and trace-ID drill-down through Tempo/TraceQL.
-4. PostgreSQL, Kafka and Redis entity adapters and deterministic dependency playbooks.
-5. GitHub PR metadata and Kubernetes rollout-history correlation.
-6. NetworkPolicy, evidence hashing/audit trail and per-query budgets.
-7. Slack/PagerDuty delivery and a separate human-approved remediation plane.
+1. PostgreSQL RCA adapter: connection exhaustion, locks, replication lag, slow queries and saturation.
+2. Kafka RCA adapter: consumer lag, ISR/leader issues and partition-level failure propagation.
+3. Redis RCA adapter: memory pressure, evictions, latency and hot-key context.
+4. ImagePullBackOff / ErrImagePull, PDB blocking and deeper PVC/runtime-volume diagnostics.
+5. Trace-to-log derived-field correlation and richer operation-level exemplars.
+6. GitHub PR metadata plus Kubernetes rollout-history correlation.
+7. NetworkPolicy, evidence hashing/audit trail, OIDC/RBAC and per-query budgets.
+8. Slack/PagerDuty delivery and a separate human-approved remediation plane.

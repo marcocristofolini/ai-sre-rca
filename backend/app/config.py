@@ -17,6 +17,15 @@ class Settings(BaseSettings):
 
     prometheus_url: str = "http://prometheus-operated.monitoring.svc:9090"
     loki_url: str = "http://loki-gateway.logging.svc:3100"
+    tempo_url: str = "http://tempo-query-frontend.tracing.svc:3200"
+    tempo_tenant_id: str | None = None
+    trace_analysis_enabled: bool = True
+    trace_window_minutes: int = 15
+    trace_search_limit: int = 8
+    trace_fetch_limit: int = 4
+    trace_slow_span_min_ms: float = 500.0
+    trace_slow_span_root_fraction: float = 0.5
+
     argocd_url: str = "http://argocd-server.argocd.svc"
     argocd_token: str | None = None
 
