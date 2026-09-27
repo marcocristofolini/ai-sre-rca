@@ -1,24 +1,25 @@
-# AI SRE RCA — v0.4.0
+# AI SRE RCA — v0.5.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Português do Brasil](README_PT-BR.md) · **English**
 
-Evidence-first, read-only Kubernetes incident investigator inspired by autonomous RCA systems, but designed so that telemetry and typed checks—not an LLM—decide the root cause.
+Evidence-first, read-only SRE incident investigator for Kubernetes, distributed traces and stateful dependencies, designed so that telemetry and typed checks—not an LLM—decide the root cause.
 
-The service receives an incident, resolves Kubernetes ownership and runtime topology, gathers evidence from Kubernetes, Prometheus, Loki, OpenTelemetry service-graph metrics, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
+The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
-## What changed in v0.4
+## What changed in v0.5
 
-- **Tempo/TraceQL trace discovery** around the incident window using typed, read-only HTTP calls.
-- Fetch and parse standard OTLP JSON traces from Tempo v2 without relying on LLM-oriented response formats.
-- Deterministic **deepest failing span** selection and parent/child ancestry reconstruction.
-- Cross-trace confirmation: the same downstream origin must repeat across representative traces before trace-only RCA can be confirmed.
-- **TraceQL RED metrics** (rate, error rate and p95 duration) plus service-graph RED metrics on dependency edges.
-- Virtual dependency nodes for database, messaging and external-service calls.
-- **Trace → Deployment correlation** from OpenTelemetry resource attributes such as `k8s.deployment.name`, `k8s.namespace.name` and `service.version`.
-- New `/trace` UI and `/api/v1/incidents/demo/trace` demo flow.
-- Guardrail: trace evidence can enrich an already-confirmed Kubernetes RCA, but cannot silently replace it.
+- **Stateful dependency promotion.** Trace-derived database/messaging dependency nodes can now become deterministic PostgreSQL, Kafka or Redis investigation targets.
+- **PostgreSQL RCA** for connection exhaustion, lock contention, deadlocks, replication lag and long-running transactions.
+- **Kafka RCA** for consumer lag, under-replicated partitions, offline/leaderless partitions and missing consumer-group members.
+- **Redis RCA** for memory pressure, evictions, blocked clients, client-capacity saturation and elevated command latency.
+- **Causal promotion guardrail.** A stateful cause is promoted only when the dependency is the trace origin and dependency-specific current telemetry independently confirms the anomaly.
+- **Kubernetes precedence remains intact.** A confirmed infrastructure cause such as kubelet DiskPressure is not replaced by a downstream dependency anomaly.
+- **Typed, read-only Prometheus adapters** for common postgres_exporter, kafka_exporter and redis_exporter metrics; missing metrics become `unknown`, never fabricated healthy signals.
+- New structured `stateful_dependencies` API payload with health, causal role, signal values, thresholds, evidence and dependency-specific hypotheses.
+- New stateful demo UI at `/stateful/{postgresql|kafka|redis}` and API demo endpoints for each dependency type.
+- Configurable investigation budget and per-dependency thresholds through environment variables and Helm values.
 
 ## Core design rules
 
@@ -74,6 +75,9 @@ Open:
 - Kubernetes demo RCA: `http://localhost:8080/api/v1/incidents/demo`
 - Trace-aware demo RCA: `http://localhost:8080/api/v1/incidents/demo/trace`
 - Trace-aware UI: `http://localhost:3000/trace`
+- Stateful PostgreSQL demo: `http://localhost:3000/stateful/postgresql`
+- Stateful Kafka demo: `http://localhost:3000/stateful/kafka`
+- Stateful Redis demo: `http://localhost:3000/stateful/redis`
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 
@@ -132,6 +136,29 @@ TRACE_WINDOW_MINUTES=15
 TRACE_SEARCH_LIMIT=8
 TRACE_FETCH_LIMIT=4
 
+STATEFUL_DEPENDENCY_ANALYSIS_ENABLED=true
+STATEFUL_DEPENDENCY_MAX_TARGETS=4
+DEPENDENCY_WINDOW_MINUTES=15
+
+# Example thresholds; tune to your production SLOs and exporter semantics.
+POSTGRES_CONNECTION_UTILIZATION_CRITICAL=0.90
+POSTGRES_LOCKS_CRITICAL=50
+POSTGRES_ACCESS_EXCLUSIVE_LOCKS_CRITICAL=1
+POSTGRES_DEADLOCKS_DELTA_CRITICAL=1
+POSTGRES_REPLICATION_LAG_BYTES_CRITICAL=16777216
+POSTGRES_LONG_TX_SECONDS_CRITICAL=60
+
+KAFKA_CONSUMER_LAG_CRITICAL=10000
+KAFKA_UNDER_REPLICATED_PARTITIONS_CRITICAL=1
+KAFKA_OFFLINE_PARTITIONS_CRITICAL=1
+KAFKA_CONSUMER_GROUP_MEMBERS_MIN=1
+
+REDIS_MEMORY_UTILIZATION_CRITICAL=0.90
+REDIS_EVICTIONS_DELTA_CRITICAL=1
+REDIS_BLOCKED_CLIENTS_CRITICAL=1
+REDIS_CLIENT_UTILIZATION_CRITICAL=0.90
+REDIS_COMMAND_LATENCY_SECONDS_CRITICAL=0.05
+
 ARGOCD_URL=http://argocd-server.argocd.svc
 ARGOCD_TOKEN=...
 GITHUB_TOKEN=...
@@ -183,6 +210,52 @@ The current TraceQL queries include:
 ```
 
 Tempo v2 trace lookup uses `GET /api/v2/traces/<traceID>`; the standard OTLP JSON response is parsed programmatically.
+
+### Stateful dependency RCA
+
+v0.5 turns a trace dependency node into a typed investigator only when its protocol metadata is specific enough to classify it as PostgreSQL, Kafka or Redis.
+
+```mermaid
+flowchart LR
+    ALERT[Service Incident] --> TRACE[Trace-aware Causal Propagation]
+    TRACE --> DEP[TraceDependency Origin]
+    DEP --> CLASS{Classify Dependency}
+
+    CLASS -->|db.system=postgresql| PG[PostgreSQL Adapter]
+    CLASS -->|messaging.system=kafka| KF[Kafka Adapter]
+    CLASS -->|db.system=redis| RD[Redis Adapter]
+
+    PG --> PM[Connections / Locks / Deadlocks<br/>Replication Lag / Long Tx]
+    KF --> KM[Consumer Lag / ISR<br/>Leader Availability / Group Members]
+    RD --> RM[Memory / Evictions<br/>Blocked Clients / Client Capacity / Latency]
+
+    PM --> SCORE[Deterministic Evidence Scoring]
+    KM --> SCORE
+    RM --> SCORE
+
+    SCORE --> GATE{Dependency is trace origin<br/>and anomaly confirmed?}
+    GATE -->|Yes| SPECIFIC[Promote Specific Stateful RCA]
+    GATE -->|No| CONTEXT[Keep as Supporting Context]
+
+    K8S[Existing Confirmed Kubernetes RCA] --> PRECEDENCE{Stronger Existing Cause?}
+    SPECIFIC --> PRECEDENCE
+    PRECEDENCE -->|Yes| KEEP[Keep Kubernetes Root Cause]
+    PRECEDENCE -->|No| ROOT[Use Stateful Root Cause]
+```
+
+The stateful adapters do not connect to databases, brokers or Redis with privileged credentials. They consume allow-listed Prometheus queries through the existing read-only telemetry boundary.
+
+Current deterministic signal families:
+
+| Dependency | Signals | Example hypotheses |
+| --- | --- | --- |
+| PostgreSQL | connections/max_connections, active/idle-in-transaction sessions, locks, AccessExclusiveLock, deadlocks, replication lag, long transaction age | connection exhaustion, lock contention, deadlocks, replica lag, long transaction |
+| Kafka | consumer lag, under-replicated partitions, leaderless/offline partitions, consumer-group members | consumer backlog, replication degradation, leader unavailability, empty consumer group |
+| Redis | memory/maxmemory, evictions, blocked clients, clients/maxclients, command latency | memory pressure, eviction storm, blocked clients, client saturation, slow command execution |
+
+If an exporter does not expose one of these signals, that check remains `unknown`. It is not converted into supporting or contradicting evidence.
+
+Full diagrams and signal details: [docs/stateful-dependencies.md](docs/stateful-dependencies.md).
 
 ## Change correlation
 
@@ -283,7 +356,7 @@ The deterministic engine excludes unverified LLM hypotheses from root-cause sele
 
 The engine selects the playbook from alert context plus live Kubernetes state. Direct platform evidence remains stronger than temporal correlations such as a recent deployment.
 
-The demo still reproduces the original ephemeral-storage eviction case, while the regression suite exercises the new v0.3 scenarios.
+The regression suite covers Kubernetes playbooks, trace-only causal propagation, PostgreSQL/Kafka/Redis dependency promotion and precedence safety.
 
 ## API
 
@@ -291,6 +364,7 @@ The demo still reproduces the original ephemeral-storage eviction case, while th
 GET  /healthz
 GET  /api/v1/incidents/demo
 GET  /api/v1/incidents/demo/trace
+GET  /api/v1/incidents/demo/stateful/{postgresql|kafka|redis}
 GET  /api/v1/incidents/{id}
 POST /api/v1/incidents/investigate
 POST /api/v1/webhooks/alertmanager
@@ -354,13 +428,14 @@ docs/                 architecture and roadmap
 
 ## Next evolution
 
-v0.4 completes the first trace-aware causal-propagation layer. The next highest-value increments are:
+v0.5 completes the first deterministic stateful-dependency layer. The next highest-value increments are:
 
-1. PostgreSQL RCA adapter: connection exhaustion, locks, replication lag, slow queries and saturation.
-2. Kafka RCA adapter: consumer lag, ISR/leader issues and partition-level failure propagation.
-3. Redis RCA adapter: memory pressure, evictions, latency and hot-key context.
-4. ImagePullBackOff / ErrImagePull, PDB blocking and deeper PVC/runtime-volume diagnostics.
-5. Trace-to-log derived-field correlation and richer operation-level exemplars.
-6. GitHub PR metadata plus Kubernetes rollout-history correlation.
-7. NetworkPolicy, evidence hashing/audit trail, OIDC/RBAC and per-query budgets.
-8. Slack/PagerDuty delivery and a separate human-approved remediation plane.
+1. Operational productization: OIDC/RBAC for UI/API, NetworkPolicy templates, multi-cluster tenancy, retention and per-query budgets.
+2. Slack/PagerDuty delivery with evidence-backed incident summaries.
+3. Evidence hashing and immutable audit metadata.
+4. PostgreSQL depth: blocker/blockee graphs, pg_stat_statements correlation and database-specific saturation baselines.
+5. Kafka depth: rebalance history, broker/JMX throughput and partition-level leader/ISR timelines.
+6. Redis depth: slowlog/hot-key and keyspace/TTL analysis with cardinality-safe collection.
+7. Remaining Kubernetes depth: ImagePullBackOff, PDB blocking and runtime PVC/volume failures.
+8. Trace-to-log derived fields, explicit exemplars and sampling-aware trace evidence.
+9. A separate human-approved remediation plane with policy validation and rollback metadata.
