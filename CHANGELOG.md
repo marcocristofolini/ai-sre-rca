@@ -5,9 +5,43 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Planned
-- OIDC/RBAC, NetworkPolicy, audit/evidence hashing and multi-cluster operational hardening.
+- Guarded remediation plane with explicit human approval.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 - Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
+
+## [0.6.0] - 2026-09-27
+
+### Added
+- Optional OIDC JWT validation with issuer/audience/signature verification through JWKS.
+- Hierarchical viewer/investigator/admin RBAC and bearer-token forwarding from the Next.js UI.
+- Tenant-scoped incident memory, incident reads, audit events and exports.
+- Cluster claims plus per-cluster Kubernetes/Prometheus/Loki/Tempo/Argo CD routing through `CLUSTER_CONFIG_JSON`.
+- Per-incident total/per-source/wall-time query budgets with explicit budget evidence.
+- SHA-256 integrity hash on every evidence object.
+- Tenant-scoped audit log for investigation, view, export, notification and retention operations.
+- `ai-sre-rca.export.v1` incident sharing/export payload with integrity verification.
+- Slack incoming-webhook and PagerDuty Events API v2 delivery.
+- Incident and audit retention policies plus admin purge endpoint.
+- Per-source capability probes for Kubernetes, Prometheus, Loki, Tempo, Argo CD and GitHub.
+- New operational UI at `/ops`.
+- Alertmanager machine-token authentication.
+- Opt-in Helm NetworkPolicy templates.
+- External Kubernetes Secret injection through `backend.existingSecret`.
+- Bilingual operational architecture documentation.
+
+### Changed
+- Investigation results now include a query-budget snapshot.
+- Similar-incident search is tenant scoped.
+- The live HTTP integration uses context-local cluster routing so concurrent incidents can target different clusters safely.
+- Demo endpoints are available only when `DEMO_MODE=true`.
+- API, backend package, frontend and Helm chart versions are now 0.6.0.
+
+### Safety
+- OIDC tenant and cluster claims are server-enforced; caller-supplied tenant IDs are overwritten.
+- Query-budget exhaustion returns bounded empty telemetry instead of widening a query or bypassing limits.
+- Notification delivery occurs only after RCA persistence and cannot erase the investigation when delivery fails.
+- NetworkPolicy is opt-in to avoid breaking unknown cluster topologies; sensitive values are intended to come from an external Secret.
+- v0.6 does not add workload-remediation credentials or infrastructure write methods.
 
 ## [0.5.1] - 2026-09-27
 
@@ -146,7 +180,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...v0.6.0
 [0.5.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.1...v0.3.0
