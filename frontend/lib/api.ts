@@ -74,6 +74,7 @@ export type Investigation = {
     services: string[];
     candidate_service?: string;
     candidate_operation?: string;
+    candidate_instance?: string;
     candidate_reason?: string;
     candidate_strength: string;
     source_query?: string;

@@ -16,6 +16,7 @@ from app.core.k8s_signals import (
     waiting_states,
 )
 from app.core.playbooks import hypotheses_for_scenario
+from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
 from app.llm.hypotheses import HypothesisGenerator
@@ -280,9 +281,17 @@ async def _workload_context(
     service_name = labels.get("app.kubernetes.io/name") or labels.get("app") or incident.pod
     argo_app_name = labels.get("app.kubernetes.io/instance") or service_name
     rs_ref = _owner(pod, "ReplicaSet")
-    rs = await tools.get_replicaset(incident.namespace, rs_ref["name"]) if rs_ref else {}
+    rs = (
+        await _optional(tools.get_replicaset(incident.namespace, rs_ref["name"]), {})
+        if rs_ref
+        else {}
+    )
     deploy_ref = _owner(rs, "Deployment")
-    deployment = await tools.get_deployment(incident.namespace, deploy_ref["name"]) if deploy_ref else {}
+    deployment = (
+        await _optional(tools.get_deployment(incident.namespace, deploy_ref["name"]), {})
+        if deploy_ref
+        else {}
+    )
     if deployment:
         argo_app_name = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/instance", argo_app_name)
     return rs, deployment, service_name, argo_app_name
@@ -308,17 +317,31 @@ async def investigate_pod_scenario(
     target_name = deploy_ref.get("name") if deploy_ref else ""
 
     node_name = incident.node or pod.get("spec", {}).get("nodeName")
-    node_task = tools.get_node(node_name) if node_name else _empty_dict()
-    logs_task = tools.loki_query_range(
-        f'{{namespace="{incident.namespace}", pod="{incident.pod}"}}',
-        start - timedelta(minutes=20),
-        start + timedelta(minutes=5),
-        200,
+    node_task = _optional(tools.get_node(node_name), {}) if node_name else _empty_dict()
+    namespace_label = quoted_string(incident.namespace)
+    pod_label = quoted_string(incident.pod)
+    logs_query = f'{{namespace="{namespace_label}", pod="{pod_label}"}}'
+    logs_task = _optional(
+        tools.loki_query_range(
+            logs_query,
+            start - timedelta(minutes=20),
+            start + timedelta(minutes=5),
+            200,
+        ),
+        {"data": {"result": []}},
     )
-    argo_task = tools.argocd_application(argo_app_name)
-    hpa_task = tools.get_hpa_for_target(incident.namespace, target_kind, target_name) if target_name else _empty_dict()
-    keda_task = tools.get_scaledobject_for_target(incident.namespace, target_kind, target_name) if target_name else _empty_dict()
-    pod_cluster_events_task = tools.get_cluster_events(incident.pod)
+    argo_task = _optional(tools.argocd_application(argo_app_name), {})
+    hpa_task = (
+        _optional(tools.get_hpa_for_target(incident.namespace, target_kind, target_name), {})
+        if target_name
+        else _empty_dict()
+    )
+    keda_task = (
+        _optional(tools.get_scaledobject_for_target(incident.namespace, target_kind, target_name), {})
+        if target_name
+        else _empty_dict()
+    )
+    pod_cluster_events_task = _optional(tools.get_cluster_events(incident.pod), [])
     node, logs, argo_app, hpa, scaledobject, cluster_events = await _gather(
         node_task, logs_task, argo_task, hpa_task, keda_task, pod_cluster_events_task
     )
@@ -326,10 +349,10 @@ async def investigate_pod_scenario(
     nodeclaim: dict[str, Any] = {}
     karpenter_events: list[dict[str, Any]] = []
     if node_name:
-        nodeclaim = await tools.karpenter_nodeclaim_for_node(node_name)
+        nodeclaim = await _optional(tools.karpenter_nodeclaim_for_node(node_name), {})
         claim_name = nodeclaim.get("metadata", {}).get("name")
         if claim_name:
-            karpenter_events = await tools.get_cluster_events(claim_name)
+            karpenter_events = await _optional(tools.get_cluster_events(claim_name), [])
 
     evidence: list[Evidence] = []
     entities: list[Entity] = []
@@ -432,7 +455,7 @@ async def investigate_pod_scenario(
         category="logs",
         summary=f"Retrieved {len(log_entries)} log entries around the incident window.",
         facts={"entries": len(log_entries), "samples": log_entries[:5]},
-        query=f'{{namespace="{incident.namespace}", pod="{incident.pod}"}}',
+        query=logs_query,
         raw_reference="loki:/loki/api/v1/query_range",
         strength="medium" if log_entries else "weak",
     )
@@ -452,10 +475,10 @@ async def investigate_pod_scenario(
     working_set_ev: Evidence | None = None
     if scenario in {"oomkilled", "crashloop"}:
         query = (
-            f'sum(container_memory_working_set_bytes{{namespace="{incident.namespace}",pod="{incident.pod}",'
+            f'sum(container_memory_working_set_bytes{{namespace="{namespace_label}",pod="{pod_label}",'
             'container!="",image!=""})'
         )
-        payload = await tools.prometheus_query(query, start)
+        payload = await _optional(tools.prometheus_query(query, start), {})
         working_set = _prom_value(payload)
         if working_set is not None:
             working_set_ev = Evidence(
@@ -493,7 +516,7 @@ async def investigate_pod_scenario(
         if deploy_ref:
             graph_edges.append(GraphEdge(source="deployment", target="argocd", relationship="managed_by", evidence_ids=[argo_ev.id]))
         if repo_url and revision:
-            commit = await tools.github_commit(repo_url, revision)
+            commit = await _optional(tools.github_commit(repo_url, revision), {})
             if commit:
                 author = commit.get("commit", {}).get("author", {})
                 git_ev = Evidence(
@@ -540,7 +563,7 @@ async def investigate_pod_scenario(
             strength="strong",
         )
         evidence.append(hpa_replica_ev)
-        hpa_events = await tools.get_cluster_events(name)
+        hpa_events = await _optional(tools.get_cluster_events(name), [])
         for item in hpa_events:
             if item.get("type") == "Warning":
                 evidence.append(_event_evidence("kubernetes", "hpa-event", item, f"k8s://hpa/{incident.namespace}/{name}", start))
@@ -572,7 +595,7 @@ async def investigate_pod_scenario(
             strength="strong",
         )
         evidence.append(keda_annotation_ev)
-        keda_events = await tools.get_cluster_events(name)
+        keda_events = await _optional(tools.get_cluster_events(name), [])
         for item in keda_events:
             evidence.append(_event_evidence("keda", "scaledobject-event", item, f"k8s://scaledobject/{incident.namespace}/{name}", start))
 
@@ -755,11 +778,11 @@ async def investigate_node_not_ready(
 ) -> InvestigationResult:
     assert incident.node
     start = incident.starts_at
-    node, events, pods, nodeclaim = await _gather(
-        tools.get_node(incident.node),
-        tools.get_cluster_events(incident.node),
-        tools.list_pods_on_node(incident.node),
-        tools.karpenter_nodeclaim_for_node(incident.node),
+    node = await tools.get_node(incident.node)
+    events, pods, nodeclaim = await _gather(
+        _optional(tools.get_cluster_events(incident.node), []),
+        _optional(tools.list_pods_on_node(incident.node), []),
+        _optional(tools.karpenter_nodeclaim_for_node(incident.node), {}),
     )
 
     evidence: list[Evidence] = []
@@ -824,7 +847,7 @@ async def investigate_node_not_ready(
             strength="strong",
         )
         evidence.append(nodeclaim_ev)
-        karpenter_events = await tools.get_cluster_events(claim_name)
+        karpenter_events = await _optional(tools.get_cluster_events(claim_name), [])
         for item in karpenter_events:
             evidence.append(_event_evidence("karpenter", "nodeclaim-event", item, f"k8s://nodeclaim/{claim_name}", start))
 
@@ -929,6 +952,13 @@ async def investigate_node_not_ready(
 
 async def _empty_dict() -> dict[str, Any]:
     return {}
+
+
+async def _optional(operation, default):
+    try:
+        return await operation
+    except Exception:
+        return default
 
 
 async def _gather(*tasks):

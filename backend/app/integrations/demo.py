@@ -371,15 +371,16 @@ class StatefulDemoTools(TraceDemoTools):
             "database": database,
             "window_minutes": window_minutes,
             "signals": {
-                "connections": {"value": 97.0, "query": 'sum(pg_stat_activity_count{datname="orders"})'},
-                "active_connections": {"value": 82.0, "query": 'sum(pg_stat_activity_count{datname="orders",state="active"})'},
+                "connections": {"value": 97.0, "query": 'sum(pg_stat_activity_count{instance=~".*orders-db.*"})'},
+                "database_connections": {"value": 88.0, "query": 'sum(pg_stat_activity_count{datname="orders",instance=~".*orders-db.*"})'},
+                "active_connections": {"value": 82.0, "query": 'sum(pg_stat_activity_count{datname="orders",state="active",instance=~".*orders-db.*"})'},
                 "idle_in_transaction": {"value": 8.0, "query": 'sum(pg_stat_activity_count{datname="orders",state=~"idle in transaction.*"})'},
                 "max_connections": {"value": 100.0, "query": "max(pg_settings_max_connections)"},
                 "locks": {"value": 12.0, "query": 'sum(pg_locks_count{datname="orders"})'},
                 "access_exclusive_locks": {"value": 0.0, "query": 'sum(pg_locks_count{datname="orders",mode="accessexclusivelock"})'},
                 "deadlocks_delta": {"value": 0.0, "query": 'sum(increase(pg_stat_database_deadlocks{datname="orders"}[15m]))'},
                 "replication_lag_bytes": {"value": 0.0, "query": "max(pg_stat_replication_pg_wal_lsn_diff)"},
-                "long_tx_seconds": {"value": 18.0, "query": "max(pg_long_running_transactions)"},
+                "long_tx_seconds": {"value": 18.0, "query": 'max(pg_stat_activity_max_tx_duration{datname="orders",instance=~".*orders-db.*"})'},
             },
         }
 
@@ -389,19 +390,21 @@ class StatefulDemoTools(TraceDemoTools):
         consumer_group: str | None,
         at: datetime,
         window_minutes: int = 15,
+        instance_hint: str | None = None,
     ) -> dict[str, Any]:
         if self.dependency != "kafka":
-            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes)
+            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes, instance_hint)
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "window_minutes": window_minutes,
             "signals": {
-                "consumer_lag": {"value": 25000.0, "query": 'sum(kafka_consumergroup_lag{topic="orders-events",consumergroup="checkout-workers"})'},
-                "under_replicated_partitions": {"value": 0.0, "query": 'sum(kafka_topic_partition_under_replicated_partition{topic="orders-events"})'},
-                "offline_partitions": {"value": 0.0, "query": 'count(kafka_topic_partition_leader{topic="orders-events"} < 0)'},
-                "consumer_group_members": {"value": 4.0, "query": 'min(kafka_consumergroup_members{consumergroup="checkout-workers"})'},
+                "consumer_lag": {"value": 25000.0, "query": 'sum(kafka_consumergroup_lag{topic="orders-events",consumergroup="checkout-workers",instance=~".*kafka-prod.*"})'},
+                "under_replicated_partitions": {"value": 0.0, "query": 'sum(kafka_topic_partition_under_replicated_partition{topic="orders-events",instance=~".*kafka-prod.*"})'},
+                "offline_partitions": {"value": 0.0, "query": 'count(kafka_topic_partition_leader{topic="orders-events",instance=~".*kafka-prod.*"} < 0)'},
+                "consumer_group_members": {"value": 4.0, "query": 'min(kafka_consumergroup_members{consumergroup="checkout-workers",instance=~".*kafka-prod.*"})'},
             },
         }
 

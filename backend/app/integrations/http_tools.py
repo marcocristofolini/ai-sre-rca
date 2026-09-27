@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import math
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import Settings
+from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
 
 
 class ReadOnlyHTTPTools:
@@ -47,14 +47,14 @@ class ReadOnlyHTTPTools:
             return response.json()
 
     async def get_pod(self, namespace: str, pod: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/api/v1/namespaces/{quote(namespace)}/pods/{quote(pod)}")
+        return await self._k8s_get(f"/api/v1/namespaces/{path_segment(namespace)}/pods/{path_segment(pod)}")
 
     async def get_node(self, node: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/api/v1/nodes/{quote(node)}")
+        return await self._k8s_get(f"/api/v1/nodes/{path_segment(node)}")
 
     async def get_events(self, namespace: str, object_name: str) -> list[dict[str, Any]]:
         data = await self._k8s_get(
-            f"/api/v1/namespaces/{quote(namespace)}/events",
+            f"/api/v1/namespaces/{path_segment(namespace)}/events",
             {"fieldSelector": f"involvedObject.name={object_name}"},
         )
         return data.get("items", [])
@@ -67,10 +67,10 @@ class ReadOnlyHTTPTools:
         return data.get("items", [])
 
     async def get_replicaset(self, namespace: str, name: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/apis/apps/v1/namespaces/{quote(namespace)}/replicasets/{quote(name)}")
+        return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/replicasets/{path_segment(name)}")
 
     async def get_deployment(self, namespace: str, name: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/apis/apps/v1/namespaces/{quote(namespace)}/deployments/{quote(name)}")
+        return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/deployments/{path_segment(name)}")
 
     async def list_pods_on_node(self, node: str) -> list[dict[str, Any]]:
         data = await self._k8s_get("/api/v1/pods", {"fieldSelector": f"spec.nodeName={node}"})
@@ -78,7 +78,7 @@ class ReadOnlyHTTPTools:
 
     async def get_hpa_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
         data = await self._k8s_get(
-            f"/apis/autoscaling/v2/namespaces/{quote(namespace)}/horizontalpodautoscalers"
+            f"/apis/autoscaling/v2/namespaces/{path_segment(namespace)}/horizontalpodautoscalers"
         )
         for item in data.get("items", []):
             target = item.get("spec", {}).get("scaleTargetRef", {})
@@ -88,7 +88,7 @@ class ReadOnlyHTTPTools:
 
     async def get_scaledobject_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
         data = await self._k8s_get(
-            f"/apis/keda.sh/v1alpha1/namespaces/{quote(namespace)}/scaledobjects"
+            f"/apis/keda.sh/v1alpha1/namespaces/{path_segment(namespace)}/scaledobjects"
         )
         for item in data.get("items", []):
             target = item.get("spec", {}).get("scaleTargetRef", {})
@@ -125,7 +125,19 @@ class ReadOnlyHTTPTools:
 
     @staticmethod
     def _prom_label(value: str) -> str:
-        return value.replace("\\", "\\\\").replace('"', '\\"')
+        return quoted_string(value)
+
+    @staticmethod
+    def _prom_regex_literal(value: str) -> str:
+        return escape_prom_regex_literal(value)
+
+    @classmethod
+    def _prom_instance_matcher(cls, value: str) -> str:
+        raw = str(value).strip()
+        explicit_port = raw.count(":") == 1 and raw.rsplit(":", 1)[1].isdigit()
+        safe = cls._prom_regex_literal(raw)
+        suffix = "" if explicit_port else "(:[0-9]+)?"
+        return f'instance=~"^{safe}{suffix}$"'
 
     async def _named_prometheus_scalars(
         self,
@@ -156,39 +168,53 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        db = self._prom_label(database)
-        instance_matcher = ""
-        if instance_hint:
-            safe_instance = self._prom_label(re.escape(instance_hint))
-            instance_matcher = f',instance=~".*{safe_instance}.*"'
+        signal_names = (
+            "connections",
+            "database_connections",
+            "active_connections",
+            "idle_in_transaction",
+            "max_connections",
+            "locks",
+            "access_exclusive_locks",
+            "deadlocks_delta",
+            "replication_lag_bytes",
+            "long_tx_seconds",
+        )
+        if not instance_hint:
+            return {
+                "kind": "postgresql",
+                "database": database,
+                "instance_hint": None,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {
+                        "value": None,
+                        "query": None,
+                        "error": "instance identity required to scope PostgreSQL telemetry",
+                    }
+                    for name in signal_names
+                },
+            }
 
+        db = self._prom_label(database)
+        instance_label_matcher = self._prom_instance_matcher(instance_hint)
+        instance_matcher = f",{instance_label_matcher}"
+        instance_selector = f"{{{instance_label_matcher}}}"
         db_selector = f'{{datname="{db}"{instance_matcher}}}'
+
         queries = {
-            "connections": f"sum(pg_stat_activity_count{db_selector})",
+            "connections": f"sum(pg_stat_activity_count{instance_selector})",
+            "database_connections": f"sum(pg_stat_activity_count{db_selector})",
             "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"{instance_matcher}}})',
             "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"{instance_matcher}}})',
+            "max_connections": f"max(pg_settings_max_connections{instance_selector})",
             "locks": f"sum(pg_locks_count{db_selector})",
-            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="AccessExclusiveLock"{instance_matcher}}})',
+            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"{instance_matcher}}})',
             "deadlocks_delta": f"sum(increase(pg_stat_database_deadlocks{db_selector}[{window_minutes}m]))",
-            "long_tx_seconds": f"max(pg_long_running_transactions{db_selector})",
+            "replication_lag_bytes": f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})",
+            "long_tx_seconds": f"max(pg_stat_activity_max_tx_duration{db_selector})",
         }
-        if instance_hint:
-            instance_selector = f'{{instance=~".*{self._prom_label(re.escape(instance_hint))}.*"}}'
-            queries["max_connections"] = f"max(pg_settings_max_connections{instance_selector})"
-            queries["replication_lag_bytes"] = f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})"
-
         result = await self._named_prometheus_scalars(queries, at)
-        if not instance_hint:
-            result["max_connections"] = {
-                "value": None,
-                "query": None,
-                "error": "instance identity required to scope max_connections",
-            }
-            result["replication_lag_bytes"] = {
-                "value": None,
-                "query": None,
-                "error": "instance identity required to scope replication lag",
-            }
         return {
             "kind": "postgresql",
             "database": database,
@@ -203,39 +229,70 @@ class ReadOnlyHTTPTools:
         consumer_group: str | None,
         at: datetime,
         window_minutes: int = 15,
+        instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        queries: dict[str, str] = {}
-        if topic:
-            topic_label = self._prom_label(topic)
-            topic_selector = f'{{topic="{topic_label}"}}'
-            queries["under_replicated_partitions"] = (
+        signal_names = (
+            "consumer_lag",
+            "under_replicated_partitions",
+            "offline_partitions",
+            "consumer_group_members",
+        )
+        if not topic or not instance_hint:
+            missing = (
+                "topic identity required to scope Kafka telemetry"
+                if not topic
+                else "instance identity required to scope Kafka telemetry"
+            )
+            return {
+                "kind": "kafka",
+                "topic": topic,
+                "consumer_group": consumer_group,
+                "instance_hint": instance_hint,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {"value": None, "query": None, "error": missing}
+                    for name in signal_names
+                },
+            }
+
+        topic_label = self._prom_label(topic)
+        instance_label_matcher = self._prom_instance_matcher(instance_hint)
+        instance_matcher = f",{instance_label_matcher}"
+        topic_selector = f'{{topic="{topic_label}"{instance_matcher}}}'
+        queries: dict[str, str] = {
+            "under_replicated_partitions": (
                 f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})"
+            ),
+            "offline_partitions": (
+                f"sum(kafka_topic_partition_leader{topic_selector} < bool 0)"
+            ),
+        }
+
+        if consumer_group:
+            group = self._prom_label(consumer_group)
+            group_selector = (
+                f'{{topic="{topic_label}",consumergroup="{group}"{instance_matcher}}}'
             )
-            queries["offline_partitions"] = (
-                f"count(kafka_topic_partition_leader{topic_selector} < 0)"
+            member_selector = f'{{consumergroup="{group}"{instance_matcher}}}'
+            queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
+            queries["consumer_group_members"] = (
+                f"min(kafka_consumergroup_members{member_selector})"
             )
-            if consumer_group:
-                group = self._prom_label(consumer_group)
-                group_selector = f'{{topic="{topic_label}",consumergroup="{group}"}}'
-                queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
-                queries["consumer_group_members"] = (
-                    f'min(kafka_consumergroup_members{{consumergroup="{group}"}})'
-                )
 
         result = await self._named_prometheus_scalars(queries, at)
-        missing_reason = (
-            "topic identity required to scope Kafka telemetry"
-            if not topic
-            else "consumer group identity required for consumer-specific telemetry"
-        )
-        for name in ("consumer_lag", "under_replicated_partitions", "offline_partitions", "consumer_group_members"):
-            if name not in result:
-                result[name] = {"value": None, "query": None, "error": missing_reason}
+        if not consumer_group:
+            for name in ("consumer_lag", "consumer_group_members"):
+                result[name] = {
+                    "value": None,
+                    "query": None,
+                    "error": "consumer group identity required for consumer-specific telemetry",
+                }
 
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "window_minutes": window_minutes,
             "signals": result,
         }
@@ -246,11 +303,32 @@ class ReadOnlyHTTPTools:
         at: datetime,
         window_minutes: int = 15,
     ) -> dict[str, Any]:
-        selector = ""
-        if instance_hint:
-            safe_hint = self._prom_label(re.escape(instance_hint))
-            selector = f'{{instance=~".*{safe_hint}.*"}}'
+        signal_names = (
+            "memory_used_bytes",
+            "memory_max_bytes",
+            "config_maxmemory_bytes",
+            "evictions_delta",
+            "blocked_clients",
+            "connected_clients",
+            "max_clients",
+            "command_latency_seconds",
+        )
+        if not instance_hint:
+            return {
+                "kind": "redis",
+                "instance_hint": None,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {
+                        "value": None,
+                        "query": None,
+                        "error": "instance identity required to scope Redis telemetry",
+                    }
+                    for name in signal_names
+                },
+            }
 
+        selector = f"{{{self._prom_instance_matcher(instance_hint)}}}"
         queries = {
             "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
             "memory_max_bytes": f"max(redis_memory_max_bytes{selector})",
@@ -274,7 +352,7 @@ class ReadOnlyHTTPTools:
 
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         window = self.settings.service_graph_window_minutes
-        escaped = service.replace('"', '\\"')
+        escaped = self._prom_label(service)
         selector_server = f'{{server="{escaped}"}}'
         selector_client = f'{{client="{escaped}"}}'
         grouping = "by (client, server, connection_type)"
@@ -357,7 +435,7 @@ class ReadOnlyHTTPTools:
         end: datetime,
         limit: int = 8,
     ) -> list[dict[str, Any]]:
-        escaped = service.replace("\\", "\\\\").replace('"', '\\"')
+        escaped = quoted_string(service)
         queries = [
             f'{{ resource.service.name = "{escaped}" && status = error }}',
             f'{{ resource.service.name = "{escaped}" }}',
@@ -413,7 +491,7 @@ class ReadOnlyHTTPTools:
             headers=self._tempo_headers(),
             timeout=20,
         ) as client:
-            response = await client.get(f"/api/v2/traces/{quote(trace_id)}", params=params)
+            response = await client.get(f"/api/v2/traces/{path_segment(trace_id)}", params=params)
             if response.status_code == 404:
                 return {}
             response.raise_for_status()
@@ -465,7 +543,7 @@ class ReadOnlyHTTPTools:
         if self.settings.argocd_token:
             headers["Authorization"] = f"Bearer {self.settings.argocd_token}"
         async with httpx.AsyncClient(base_url=self.settings.argocd_url, headers=headers, timeout=10) as client:
-            response = await client.get(f"/api/v1/applications/{quote(app_name)}")
+            response = await client.get(f"/api/v1/applications/{path_segment(app_name)}")
             if response.status_code == 404:
                 return {}
             response.raise_for_status()
@@ -483,7 +561,7 @@ class ReadOnlyHTTPTools:
         if self.settings.github_token:
             headers["Authorization"] = f"Bearer {self.settings.github_token}"
         async with httpx.AsyncClient(base_url=self.settings.github_api_url, headers=headers, timeout=10) as client:
-            response = await client.get(f"/repos/{quote(owner)}/{quote(repo)}/commits/{quote(revision)}")
+            response = await client.get(f"/repos/{path_segment(owner)}/{path_segment(repo)}/commits/{path_segment(revision)}")
             if response.status_code in {401, 403, 404}:
                 return {}
             response.raise_for_status()

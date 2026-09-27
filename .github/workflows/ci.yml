@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.13'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: backend/pyproject.toml
       - run: python -m pip install -e './backend[dev]'
@@ -29,6 +29,210 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
       - run: cd frontend && npm ci
       - run: cd frontend && npm run build
+
+
+  smoke:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend
+        run: python -m pip install -e './backend[dev]'
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
+          if [ -d public ]; then cp -r public .next/standalone/public; fi
+
+      - name: End-to-end demo smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          (
+            cd backend
+            DEMO_MODE=true DATABASE_URL= LLM_ENABLED=false \
+              python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
+          ) >/tmp/ai-sre-backend.log 2>&1 &
+          BACKEND_PID=$!
+
+          (
+            cd frontend/.next/standalone
+            API_URL=http://127.0.0.1:18080 HOSTNAME=127.0.0.1 PORT=13000 \
+              node server.js
+          ) >/tmp/ai-sre-frontend.log 2>&1 &
+          FRONTEND_PID=$!
+
+          cleanup() {
+            kill "$FRONTEND_PID" "$BACKEND_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          BACKEND = "http://127.0.0.1:18080"
+          FRONTEND = "http://127.0.0.1:13000"
+
+          def get(url, expected=200, attempts=40):
+              last = None
+              for _ in range(attempts):
+                  try:
+                      with urllib.request.urlopen(url, timeout=3) as response:
+                          status = response.status
+                          body = response.read()
+                      if status != expected:
+                          raise AssertionError(f"{url}: expected {expected}, got {status}")
+                      return body
+                  except urllib.error.HTTPError as exc:
+                      if exc.code == expected:
+                          return exc.read()
+                      last = exc
+                  except (OSError, urllib.error.URLError) as exc:
+                      last = exc
+                  time.sleep(0.5)
+              raise AssertionError(f"{url} did not become ready: {last}")
+
+          health = json.loads(get(f"{BACKEND}/healthz"))
+          assert health["status"] == "ok"
+          assert health["version"] == "0.5.1"
+          assert health["demo_mode"] is True
+          assert health["stateful_dependency_rca"] is True
+
+          kube = json.loads(get(f"{BACKEND}/api/v1/incidents/demo"))
+          assert kube["status"] == "resolved"
+          assert kube["root_cause"]["hypothesis_id"] == "disk-pressure"
+
+          trace = json.loads(get(f"{BACKEND}/api/v1/incidents/demo/trace"))
+          assert trace["status"] == "resolved"
+          assert len(trace["trace_analyses"]) >= 2
+
+          expected_prefixes = {
+              "postgresql": "postgres-connection-exhaustion:",
+              "kafka": "kafka-consumer-lag:",
+              "redis": "redis-memory-pressure:",
+          }
+          for dependency, prefix in expected_prefixes.items():
+              result = json.loads(get(f"{BACKEND}/api/v1/incidents/demo/stateful/{dependency}"))
+              assert result["status"] == "resolved"
+              assert result["root_cause"]["hypothesis_id"].startswith(prefix)
+              analysis = next(item for item in result["stateful_dependencies"] if item["kind"] == dependency)
+              assert analysis["health"] == "critical"
+              assert analysis["causal_role"] == "origin"
+
+          get(f"{BACKEND}/api/v1/incidents/demo/stateful/mysql", expected=422)
+
+          for path in (
+              "/",
+              "/trace",
+              "/stateful/postgresql",
+              "/stateful/kafka",
+              "/stateful/redis",
+          ):
+              html = get(f"{FRONTEND}{path}")
+              assert b"AI SRE RCA" in html or b"SRE" in html
+
+          get(f"{FRONTEND}/stateful/mysql", expected=404)
+          print("E2E smoke test passed")
+          PY
+
+      - name: Print service logs on failure
+        if: failure()
+        run: |
+          echo "=== backend ==="
+          cat /tmp/ai-sre-backend.log || true
+          echo "=== frontend ==="
+          cat /tmp/ai-sre-frontend.log || true
+
+
+  container-smoke:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build production images
+        run: |
+          docker build -t ai-sre-rca-backend:ci ./backend
+          docker build -t ai-sre-rca-frontend:ci ./frontend
+
+      - name: Run production images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker network create ai-sre-rca-smoke
+          docker run -d \
+            --name ai-sre-rca-backend \
+            --network ai-sre-rca-smoke \
+            -e DEMO_MODE=true \
+            -e DATABASE_URL= \
+            -e LLM_ENABLED=false \
+            -p 18081:8080 \
+            ai-sre-rca-backend:ci
+
+          docker run -d \
+            --name ai-sre-rca-frontend \
+            --network ai-sre-rca-smoke \
+            -e API_URL=http://ai-sre-rca-backend:8080 \
+            -p 13001:3000 \
+            ai-sre-rca-frontend:ci
+
+          cleanup() {
+            docker rm -f ai-sre-rca-frontend ai-sre-rca-backend >/dev/null 2>&1 || true
+            docker network rm ai-sre-rca-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_for() {
+            local url="$1"
+            for _ in $(seq 1 60); do
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 1
+            done
+            echo "Timed out waiting for $url" >&2
+            docker logs ai-sre-rca-backend || true
+            docker logs ai-sre-rca-frontend || true
+            return 1
+          }
+
+          wait_for http://127.0.0.1:18081/healthz
+          wait_for http://127.0.0.1:13001/
+
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/incidents/demo/stateful/postgresql)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/postgresql)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
+
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.5.1"'
+          echo "Production container smoke test passed"
+
+      - name: Print container logs on failure
+        if: failure()
+        run: |
+          docker logs ai-sre-rca-backend || true
+          docker logs ai-sre-rca-frontend || true

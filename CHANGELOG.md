@@ -9,6 +9,27 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 - Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
 
+## [0.5.1] - 2026-09-27
+
+### Fixed
+- Unsupported stateful UI routes now return Next.js 404 instead of silently rendering the PostgreSQL demo.
+- Existing trace dependency entities merge later OpenTelemetry metadata instead of discarding database, messaging and server identity attributes.
+- PostgreSQL lock RCA now matches the lowercase `accessexclusivelock` label emitted by the current postgres_exporter locks collector.
+- PostgreSQL long-transaction RCA now uses database- and instance-scoped `pg_stat_activity_max_tx_duration`, which directly represents transaction age in seconds.
+- PostgreSQL dependency telemetry requires a scoped instance identity before querying Prometheus, preventing cross-instance aggregation for similarly named databases.
+- Redis dependency telemetry requires a scoped instance identity and continues escaping traced addresses before building PromQL regex matchers.
+- PostgreSQL stateful analysis now exposes the instance hint used to scope telemetry.
+- Trace dependency identity now includes the observed `server.address`, preventing same-named databases, topics or caches on different instances from collapsing into one graph node.
+- Cross-trace causal confirmation now includes dependency instance identity, so identical operations on different backends do not count as repeated confirmation of one cause.
+- Kafka Prometheus queries now require and apply instance scope, preventing same-topic/group aggregation across Kafka clusters.
+- PostgreSQL connection utilization now compares instance-wide sessions with instance-wide `max_connections`, while retaining database-specific session counts as context.
+- Kafka offline-partition detection now uses a boolean comparison so a healthy topic reports zero instead of becoming `unknown` when no partition is leaderless.
+- Prometheus regex literals now escape RE2 metacharacters without over-escaping ordinary hostname characters such as hyphens.
+
+### Safety
+- Missing PostgreSQL or Redis instance identity yields `unknown` signals rather than global Prometheus queries.
+- Review-regression tests cover exporter metric names, lock-mode casing, regex escaping, non-finite values and dependency metadata merging.
+
 ## [0.5.0] - 2026-09-27
 
 ### Added
@@ -125,10 +146,12 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...HEAD
 [0.5.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.1.0
+
+[0.5.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.0...v0.5.1

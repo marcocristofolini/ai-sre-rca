@@ -144,6 +144,7 @@ class StatefulTools(DemoTools):
             "instance_hint": instance_hint,
             "signals": _signals({
                 "connections": 97,
+                "database_connections": 88,
                 "active_connections": 82,
                 "idle_in_transaction": 8,
                 "max_connections": 100,
@@ -155,13 +156,14 @@ class StatefulTools(DemoTools):
             }),
         }
 
-    async def kafka_dependency_metrics(self, topic, consumer_group, at, window_minutes=15):
+    async def kafka_dependency_metrics(self, topic, consumer_group, at, window_minutes=15, instance_hint=None):
         if self.dependency != "kafka":
-            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes)
+            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes, instance_hint)
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "signals": _signals({
                 "consumer_lag": 25000,
                 "under_replicated_partitions": 0,
@@ -214,6 +216,8 @@ async def test_postgres_connection_exhaustion_promotes_trace_origin_to_specific_
     utilization = next(item for item in pg.signals if item.name == "connection_utilization")
     assert utilization.status == "critical"
     assert utilization.value == pytest.approx(0.97)
+    database_connections = next(item for item in pg.signals if item.name == "database_connections")
+    assert database_connections.value == 88
 
 
 @pytest.mark.asyncio
@@ -225,6 +229,7 @@ async def test_kafka_consumer_lag_promotes_trace_origin():
     kafka = next(item for item in result.stateful_dependencies if item.kind == "kafka")
     assert kafka.target == "orders-events"
     assert kafka.metadata["consumer_group"] == "checkout-workers"
+    assert kafka.metadata["instance_hint"] == "kafka-prod"
     assert kafka.health == "critical"
     lag = next(item for item in kafka.signals if item.name == "consumer_lag")
     assert lag.value == 25000

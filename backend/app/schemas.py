@@ -143,6 +143,7 @@ class TraceAnalysis(BaseModel):
     causal_chain: list[TraceCausalHop] = Field(default_factory=list)
     candidate_service: str | None = None
     candidate_operation: str | None = None
+    candidate_instance: str | None = None
     candidate_reason: str | None = None
     candidate_strength: Literal["weak", "medium", "strong"] = "weak"
     source_query: str | None = None

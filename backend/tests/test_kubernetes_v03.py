@@ -49,6 +49,29 @@ class OOMTools(HealthyBaseTools):
         return await super().prometheus_query(query, at)
 
 
+class OOMOptionalOutageTools(OOMTools):
+    async def get_node(self, node: str):
+        raise RuntimeError("node enrichment unavailable")
+
+    async def get_replicaset(self, namespace: str, name: str):
+        raise RuntimeError("replicaset enrichment unavailable")
+
+    async def loki_query_range(self, query, start, end, limit=100):
+        raise RuntimeError("loki unavailable")
+
+    async def argocd_application(self, app_name: str):
+        raise RuntimeError("argocd unavailable")
+
+    async def get_cluster_events(self, object_name: str):
+        raise RuntimeError("cluster events unavailable")
+
+    async def karpenter_nodeclaim_for_node(self, node: str):
+        raise RuntimeError("karpenter unavailable")
+
+    async def prometheus_query(self, query: str, at=None):
+        raise RuntimeError("prometheus unavailable")
+
+
 class CrashLoopTools(HealthyBaseTools):
     async def get_pod(self, namespace: str, pod: str):
         data = await super().get_pod(namespace, pod)
@@ -180,6 +203,17 @@ class NodeNotReadyTools(HealthyBaseTools):
         return {}
 
 
+class NodeNotReadyOptionalOutageTools(NodeNotReadyTools):
+    async def get_cluster_events(self, object_name: str):
+        raise RuntimeError("events unavailable")
+
+    async def list_pods_on_node(self, node: str):
+        raise RuntimeError("pod listing unavailable")
+
+    async def karpenter_nodeclaim_for_node(self, node: str):
+        raise RuntimeError("karpenter unavailable")
+
+
 def pod_incident(alert_name: str) -> IncidentInput:
     return IncidentInput(
         title=alert_name,
@@ -198,6 +232,13 @@ async def test_oomkilled_prefers_memory_limit_evidence():
     assert result.status == "resolved"
     assert result.root_cause.hypothesis_id == "container-memory-limit"
     assert result.root_cause.evidence_strength == "strong"
+
+
+@pytest.mark.asyncio
+async def test_oomkilled_survives_optional_integration_outages():
+    result = await InvestigationEngine(OOMOptionalOutageTools()).investigate(pod_incident("KubePodOOMKilled"))
+    assert result.status == "resolved"
+    assert result.root_cause.hypothesis_id == "container-oom"
 
 
 @pytest.mark.asyncio
@@ -252,3 +293,19 @@ async def test_node_not_ready_identifies_unreachable_node():
     assert result.status == "resolved"
     assert result.root_cause.hypothesis_id == "node-unreachable"
     assert any(item.category == "blast-radius" for item in result.evidence)
+
+
+@pytest.mark.asyncio
+async def test_node_not_ready_survives_optional_integration_outages():
+    incident = IncidentInput(
+        title="Node not ready",
+        cluster="prod",
+        node="ip-10-0-1-42",
+        alert_name="KubeNodeNotReady",
+        starts_at=START,
+    )
+    result = await InvestigationEngine(NodeNotReadyOptionalOutageTools()).investigate(incident)
+    assert result.status == "resolved"
+    assert result.root_cause.hypothesis_id == "node-unreachable"
+    blast_radius = next(item for item in result.evidence if item.category == "blast-radius")
+    assert blast_radius.facts["pod_count"] == 0
