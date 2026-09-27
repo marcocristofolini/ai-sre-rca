@@ -19,6 +19,10 @@ spec:
           env:
             - name: API_URL
               value: "http://{{ .Release.Name }}-backend:{{ .Values.backend.service.port }}"
+            {{- range $key, $value := .Values.frontend.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
           resources:
 {{ toYaml .Values.resources.frontend | indent 12 }}
 ---
