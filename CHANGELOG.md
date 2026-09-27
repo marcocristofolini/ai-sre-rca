@@ -5,10 +5,39 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Planned
-- ImagePullBackOff / ErrImagePull.
-- PDB blocking and topology-spread analysis.
-- Karpenter consolidation-specific RCA.
-- PostgreSQL, Kafka and Redis RCA playbooks.
+- Trace-to-log derived-field correlation and explicit exemplars.
+- PostgreSQL, Kafka and Redis deterministic dependency adapters.
+- Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
+
+## [0.4.0] - 2026-09-27
+
+### Added
+- Read-only Tempo integration for TraceQL search, Tempo v2 trace retrieval and TraceQL metrics.
+- Standard OTLP JSON trace parser.
+- Deterministic deepest-failing-span selection.
+- Parent/child causal ancestry reconstruction.
+- Cross-trace confirmation requiring repeated downstream origin before trace-only RCA can be confirmed.
+- TraceQL RED evidence for request rate, error rate and p95 duration.
+- Service-graph edge RED metadata: requests, failures, error ratio and p95 latency.
+- Virtual database, messaging and external dependency nodes in the Awareness Graph.
+- Trace-to-Deployment correlation using OpenTelemetry resource attributes including Kubernetes workload identity and service version.
+- New `trace_analyses` API payload with causal chains.
+- New trace-aware UI at `/trace`.
+- New trace-aware demo endpoint at `/api/v1/incidents/demo/trace`.
+- Tempo and trace-analysis configuration in `.env.example` and Helm values.
+- Regression coverage for repeated-trace confirmation, single-trace non-confirmation and Kubernetes-RCA precedence.
+
+### Changed
+- API, backend package, frontend and Helm chart versions are now 0.4.0.
+- Alertmanager service identity can be resolved from common service labels.
+- Awareness Graph service edges can carry RED metadata.
+- Investigation results are enriched with trace causality after deterministic infrastructure playbooks.
+
+### Safety
+- Tempo access is read-only and bounded by configurable search/fetch limits.
+- A single trace remains testing evidence and cannot confirm a trace-only RCA.
+- Trace evidence cannot override an already-confirmed Kubernetes root cause.
+- The LLM still cannot query Tempo directly, attach evidence, set scores or confirm hypotheses.
 
 ## [0.3.0] - 2026-09-25
 
@@ -64,7 +93,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.1.0...v0.2.0
