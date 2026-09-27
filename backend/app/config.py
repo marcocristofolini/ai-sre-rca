@@ -1,4 +1,6 @@
+import json
 from functools import lru_cache
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,6 +12,40 @@ class Settings(BaseSettings):
     demo_mode: bool = True
     log_level: str = "INFO"
     database_url: str | None = None
+
+    # Operational productization
+    auth_enabled: bool = False
+    oidc_issuer: str | None = None
+    oidc_audience: str | None = None
+    oidc_jwks_url: str | None = None
+    oidc_algorithms: str = "RS256,ES256"
+    oidc_roles_claim: str = "roles"
+    oidc_tenant_claim: str = "tenant"
+    oidc_clusters_claim: str = "clusters"
+    default_tenant_id: str = "default"
+    viewer_role: str = "viewer"
+    investigator_role: str = "investigator"
+    admin_role: str = "admin"
+    alertmanager_webhook_token: str | None = None
+    alertmanager_tenant_id: str = "default"
+
+    slack_webhook_url: str | None = None
+    pagerduty_routing_key: str | None = None
+    pagerduty_events_url: str = "https://events.pagerduty.com/v2/enqueue"
+    notifications_enabled: bool = False
+    notification_min_severity: str = "warning"
+
+    incident_retention_days: int = 30
+    audit_retention_days: int = 90
+
+    query_budget_enabled: bool = True
+    query_budget_max_calls: int = 80
+    query_budget_max_calls_per_source: int = 30
+    query_budget_max_wall_seconds: float = 45.0
+
+    # Optional JSON map keyed by logical cluster name. Each entry can override
+    # kubernetes_api_url/token_file/ca_file and Prometheus/Loki/Tempo/Argo CD URLs.
+    cluster_config_json: str = "{}"
 
     kubernetes_api_url: str = "https://kubernetes.default.svc"
     kubernetes_token_file: str = "/var/run/secrets/kubernetes.io/serviceaccount/token"
@@ -68,6 +104,24 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [v.strip() for v in self.cors_origins.split(",") if v.strip()]
+
+    @property
+    def oidc_algorithm_list(self) -> list[str]:
+        return [v.strip() for v in self.oidc_algorithms.split(",") if v.strip()]
+
+    @property
+    def cluster_config(self) -> dict[str, dict[str, Any]]:
+        try:
+            value = json.loads(self.cluster_config_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(value, dict):
+            return {}
+        return {
+            str(name): dict(config)
+            for name, config in value.items()
+            if isinstance(config, dict)
+        }
 
 
 @lru_cache
