@@ -663,7 +663,7 @@ async def enrich_with_trace_causality(
                 instances = traced_dependency_instances(server)
                 if len(instances) == 1:
                     instance = next(iter(instances))
-                    server_metadata["server.address"] = instance
+                    server_metadata["dependency.instance"] = instance
                 server_entity_id = dependency_entity_id(server, server_metadata)
             else:
                 server_entity_id = server_id
