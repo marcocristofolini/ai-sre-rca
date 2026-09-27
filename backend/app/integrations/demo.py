@@ -230,7 +230,13 @@ def _demo_trace_payload(seed: int) -> dict[str, Any]:
                     }]}],
                 },
                 {
-                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "checkout"}}]},
+                    "resource": {"attributes": [
+                        {"key": "service.name", "value": {"stringValue": "checkout"}},
+                        {"key": "service.version", "value": {"stringValue": "7d37e39"}},
+                        {"key": "k8s.namespace.name", "value": {"stringValue": "checkout"}},
+                        {"key": "k8s.deployment.name", "value": {"stringValue": "checkout"}},
+                        {"key": "k8s.pod.name", "value": {"stringValue": "checkout-7d37e39-x2k9m"}}
+                    ]},
                     "scopeSpans": [{"spans": [
                         {
                             "traceId": trace_id,
