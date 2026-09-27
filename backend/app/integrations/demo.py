@@ -138,6 +138,15 @@ class DemoTools:
             {"client": service, "server": "redis", "requests": 9.0, "connection_type": "database"},
         ]
 
+    async def tempo_search_traces(self, service: str, start: datetime, end: datetime, limit: int = 8) -> list[dict[str, Any]]:
+        return []
+
+    async def tempo_get_trace(self, trace_id: str, start: datetime | None = None, end: datetime | None = None) -> dict[str, Any]:
+        return {}
+
+    async def tempo_metrics_query(self, query: str, start: datetime, end: datetime, step: str = "30s") -> dict[str, Any]:
+        return {}
+
     async def loki_query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> dict[str, Any]:
         return {
             "status": "success",
