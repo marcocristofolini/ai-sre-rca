@@ -13,6 +13,7 @@ export type Investigation = {
   status: string;
   incident: {
     title: string;
+    tenant_id: string;
     cluster: string;
     namespace?: string;
     pod?: string;
@@ -115,6 +116,14 @@ export type Investigation = {
     }>;
     metadata: Record<string, unknown>;
   }>;
+  query_budget: {
+    enabled?: boolean;
+    total_calls?: number;
+    per_source?: Record<string, number>;
+    denied?: Array<Record<string, unknown>>;
+    elapsed_seconds?: number;
+    limits?: Record<string, number>;
+  };
 };
 
 async function forwardedAuthHeaders(): Promise<Record<string, string>> {
