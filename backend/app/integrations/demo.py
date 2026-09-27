@@ -148,7 +148,7 @@ class DemoTools:
     async def tempo_metrics_query(self, query: str, start: datetime, end: datetime, step: str = "30s") -> dict[str, Any]:
         return {}
 
-    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15, instance_hint: str | None = None) -> dict[str, Any]:
         return {
             "kind": "postgresql",
             "database": database,
@@ -363,9 +363,9 @@ class StatefulDemoTools(TraceDemoTools):
         seed = int(trace_id.rsplit("-", 1)[1])
         return _demo_trace_payload(seed, self.dependency)
 
-    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15) -> dict[str, Any]:
+    async def postgres_dependency_metrics(self, database: str, at: datetime, window_minutes: int = 15, instance_hint: str | None = None) -> dict[str, Any]:
         if self.dependency != "postgresql":
-            return await super().postgres_dependency_metrics(database, at, window_minutes)
+            return await super().postgres_dependency_metrics(database, at, window_minutes, instance_hint)
         return {
             "kind": "postgresql",
             "database": database,
