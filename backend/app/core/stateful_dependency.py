@@ -577,7 +577,7 @@ async def _postgres(
         hypothesis_id=primary.id if primary else None,
         evidence_ids=list(primary.supporting_evidence) if primary else [],
         signals=signals,
-        metadata={"database": database},
+        metadata={"database": database, "instance_hint": target.instance_hint},
     )
 
 
