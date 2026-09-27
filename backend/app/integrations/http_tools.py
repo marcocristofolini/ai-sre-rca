@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -115,29 +116,175 @@ class ReadOnlyHTTPTools:
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         window = self.settings.service_graph_window_minutes
         escaped = service.replace('"', '\\"')
-        query = (
-            f'sum(increase(traces_service_graph_request_total{{server="{escaped}"}}[{window}m])) by (client, server, connection_type) > 0 '
-            f'or sum(increase(traces_service_graph_request_total{{client="{escaped}"}}[{window}m])) by (client, server, connection_type) > 0'
+        selector_server = f'{{server="{escaped}"}}'
+        selector_client = f'{{client="{escaped}"}}'
+        grouping = "by (client, server, connection_type)"
+
+        request_query = (
+            f'sum(increase(traces_service_graph_request_total{selector_server}[{window}m])) {grouping} > 0 '
+            f'or sum(increase(traces_service_graph_request_total{selector_client}[{window}m])) {grouping} > 0'
         )
-        payload = await self.prometheus_query(query, at)
+        failed_query = (
+            f'sum(increase(traces_service_graph_request_failed_total{selector_server}[{window}m])) {grouping} '
+            f'or sum(increase(traces_service_graph_request_failed_total{selector_client}[{window}m])) {grouping}'
+        )
+        latency_query = (
+            f'histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_server}[5m])) '
+            f'by (client, server, connection_type, le)) '
+            f'or histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_client}[5m])) '
+            f'by (client, server, connection_type, le))'
+        )
+        request_payload, failed_payload, latency_payload = await asyncio.gather(
+            self.prometheus_query(request_query, at),
+            self.prometheus_query(failed_query, at),
+            self.prometheus_query(latency_query, at),
+        )
+
+        merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+        def merge_payload(payload: dict[str, Any], field: str) -> None:
+            for row in payload.get("data", {}).get("result", []):
+                metric = row.get("metric", {})
+                client = metric.get("client")
+                server = metric.get("server")
+                if not client or not server:
+                    continue
+                connection_type = metric.get("connection_type", "unset")
+                key = (str(client), str(server), str(connection_type))
+                try:
+                    value = float(row.get("value", [0, "0"])[1])
+                except (TypeError, ValueError, IndexError):
+                    value = 0.0
+                merged.setdefault(
+                    key,
+                    {
+                        "client": str(client),
+                        "server": str(server),
+                        "connection_type": str(connection_type),
+                        "requests": 0.0,
+                        "failures": 0.0,
+                        "p95_seconds": None,
+                    },
+                )[field] = value
+
+        merge_payload(request_payload, "requests")
+        merge_payload(failed_payload, "failures")
+        merge_payload(latency_payload, "p95_seconds")
+
         edges: list[dict[str, Any]] = []
-        for row in payload.get("data", {}).get("result", []):
-            metric = row.get("metric", {})
-            try:
-                value = float(row.get("value", [0, "0"])[1])
-            except (TypeError, ValueError, IndexError):
-                value = 0.0
-            client = metric.get("client")
-            server = metric.get("server")
-            if client and server:
-                edges.append({
-                    "client": client,
-                    "server": server,
-                    "requests": value,
-                    "connection_type": metric.get("connection_type", "unset"),
-                    "query": query,
-                })
+        for item in merged.values():
+            requests = float(item.get("requests") or 0.0)
+            failures = float(item.get("failures") or 0.0)
+            item["error_ratio"] = failures / requests if requests > 0 else 0.0
+            item["query"] = request_query
+            item["red_queries"] = {
+                "requests": request_query,
+                "failures": failed_query,
+                "p95": latency_query,
+            }
+            edges.append(item)
         return edges
+
+    def _tempo_headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self.settings.tempo_tenant_id:
+            headers["X-Scope-OrgID"] = self.settings.tempo_tenant_id
+        return headers
+
+    async def tempo_search_traces(
+        self,
+        service: str,
+        start: datetime,
+        end: datetime,
+        limit: int = 8,
+    ) -> list[dict[str, Any]]:
+        escaped = service.replace("\\", "\\\\").replace('"', '\\"')
+        queries = [
+            f'{{ resource.service.name = "{escaped}" && status = error }}',
+            f'{{ resource.service.name = "{escaped}" }}',
+        ]
+        traces: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            for query in queries:
+                if len(traces) >= limit:
+                    break
+                response = await client.get(
+                    "/api/search",
+                    params={
+                        "q": query,
+                        "start": int(start.timestamp()),
+                        "end": int(end.timestamp()),
+                        "limit": max(1, limit - len(traces)),
+                        "spss": 5,
+                    },
+                )
+                if response.status_code in {404, 501}:
+                    return traces
+                response.raise_for_status()
+                for item in response.json().get("traces", []):
+                    trace_id = str(item.get("traceID") or "")
+                    if not trace_id or trace_id in seen:
+                        continue
+                    seen.add(trace_id)
+                    copy = dict(item)
+                    copy["_source_query"] = query
+                    traces.append(copy)
+                    if len(traces) >= limit:
+                        break
+        return traces
+
+    async def tempo_get_trace(
+        self,
+        trace_id: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if start:
+            params["start"] = int(start.timestamp())
+        if end:
+            params["end"] = int(end.timestamp())
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            response = await client.get(f"/api/v2/traces/{quote(trace_id)}", params=params)
+            if response.status_code == 404:
+                return {}
+            response.raise_for_status()
+            return response.json()
+
+    async def tempo_metrics_query(
+        self,
+        query: str,
+        start: datetime,
+        end: datetime,
+        step: str = "30s",
+    ) -> dict[str, Any]:
+        async with httpx.AsyncClient(
+            base_url=self.settings.tempo_url,
+            headers=self._tempo_headers(),
+            timeout=20,
+        ) as client:
+            response = await client.get(
+                "/api/metrics/query_range",
+                params={
+                    "q": query,
+                    "start": int(start.timestamp()),
+                    "end": int(end.timestamp()),
+                    "step": step,
+                },
+            )
+            if response.status_code in {404, 501}:
+                return {}
+            response.raise_for_status()
+            return response.json()
 
     async def loki_query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> dict[str, Any]:
         async with httpx.AsyncClient(base_url=self.settings.loki_url, timeout=15) as client:

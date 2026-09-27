@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.core.engine import InvestigationEngine
+from app.integrations.demo import TraceDemoTools
 from app.schemas import IncidentInput, InvestigationResult
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
@@ -28,6 +30,28 @@ async def demo(request: Request):
         starts_at=datetime(2026, 9, 24, 20, 47, tzinfo=timezone.utc),
     )
     result = await request.app.state.engine.investigate(incident)
+    await request.app.state.repo.save(result)
+    return result
+
+
+@router.get("/demo/trace", response_model=InvestigationResult)
+async def demo_trace(request: Request):
+    incident = IncidentInput(
+        title="Checkout 5xx propagated from downstream database dependency",
+        cluster="prod-us-east-1",
+        service="frontend",
+        alert_name="HighErrorRate",
+        severity="critical",
+        starts_at=datetime(2026, 9, 27, 4, 30, tzinfo=timezone.utc),
+        labels={"service": "frontend", "environment": "production"},
+    )
+    engine = InvestigationEngine(
+        tools=TraceDemoTools(),
+        memory=request.app.state.repo,
+        hypothesis_generator=request.app.state.engine.hypothesis_generator,
+        settings=request.app.state.engine.settings,
+    )
+    result = await engine.investigate(incident)
     await request.app.state.repo.save(result)
     return result
 

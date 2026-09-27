@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.2.0"
+    tag: "0.4.0"
   replicas: 2
   service:
     port: 8080
@@ -9,6 +9,11 @@ backend:
     DEMO_MODE: "false"
     PROMETHEUS_URL: "http://prometheus-operated.monitoring.svc:9090"
     LOKI_URL: "http://loki-gateway.logging.svc:3100"
+    TEMPO_URL: "http://tempo-query-frontend.tracing.svc:3200"
+    TRACE_ANALYSIS_ENABLED: "true"
+    TRACE_WINDOW_MINUTES: "15"
+    TRACE_SEARCH_LIMIT: "8"
+    TRACE_FETCH_LIMIT: "4"
     ARGOCD_URL: "http://argocd-server.argocd.svc"
     GITHUB_API_URL: "https://api.github.com"
     CHANGE_CORRELATION_WINDOW_MINUTES: "180"
@@ -21,7 +26,7 @@ backend:
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.2.0"
+    tag: "0.4.0"
   replicas: 2
   service:
     port: 3000

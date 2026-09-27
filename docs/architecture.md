@@ -1,4 +1,4 @@
-# Architecture — v0.2
+# Architecture — v0.4
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
@@ -13,6 +13,7 @@ flowchart TD
     I --> P[Prometheus Adapter]
     I --> L[Loki Adapter]
     I --> O[OpenTelemetry Service Graph]
+    I --> T[Tempo / TraceQL<br/>Trace Causality]
     I --> AR[Argo CD Adapter]
     I --> GH[GitHub Adapter]
     I --> KA[Karpenter Adapter]
@@ -21,6 +22,7 @@ flowchart TD
     P --> G
     L --> G
     O --> G
+    T --> G
     AR --> G
     GH --> G
     KA --> G
@@ -46,7 +48,8 @@ flowchart TD
     N --> M[Retrieve similar historical incidents]
     M --> KO[Resolve Kubernetes ownership]
     KO --> SG[Resolve service identity and dependencies]
-    SG --> CH[Resolve Argo CD revision and Git metadata]
+    SG --> TR[Search representative traces and reconstruct causality]
+    TR --> CH[Resolve Argo CD revision and Git metadata]
     CH --> KP[Resolve Karpenter NodeClaim / NodePool]
     KP --> HP[Load deterministic hypotheses]
     HP --> CE[Collect typed read-only evidence]
@@ -71,6 +74,7 @@ sequenceDiagram
     participant ENG as Investigation Engine
     participant K8S as Kubernetes
     participant OBS as Prometheus/Loki/OTel
+    participant TEMPO as Tempo/TraceQL
     participant CHG as Argo CD/GitHub
     participant KAR as Karpenter
     participant MEM as pgvector Memory
@@ -84,6 +88,8 @@ sequenceDiagram
     K8S-->>ENG: Runtime and ownership evidence
     ENG->>OBS: Query metrics/logs/service graph
     OBS-->>ENG: Telemetry evidence
+    ENG->>TEMPO: Search error traces + fetch OTLP + RED metrics
+    TEMPO-->>ENG: Parent/child chains + origin candidates + RED
     ENG->>CHG: Resolve deployed revision and commit
     CHG-->>ENG: Change evidence
     ENG->>KAR: Resolve NodeClaim/NodePool lifecycle
@@ -168,7 +174,29 @@ flowchart LR
     RCA --> GRAPH[Awareness Graph]
 ```
 
-This keeps the topology MVP on typed PromQL queries rather than arbitrary trace-system access.
+This keeps aggregate topology on typed PromQL queries. Starting in v0.4, the investigator also has **bounded, read-only** Tempo access for per-trace causality.
+
+## Trace-aware causal propagation — v0.4
+
+```mermaid
+flowchart LR
+    ALERT[Alert + Service] --> SEARCH[TraceQL Search]
+    SEARCH --> IDS[Representative Trace IDs]
+    IDS --> OTLP[Tempo v2 OTLP JSON]
+    OTLP --> TREE[parentSpanId Tree]
+    TREE --> ORIGIN[Deepest Failing Span]
+    ORIGIN --> MULTI{Same origin across traces?}
+    MULTI -->|Yes| CONF[Confirmed Hypothesis]
+    MULTI -->|No| TEST[Testing]
+    OTLP --> DEP[Virtual DB / Messaging / External Nodes]
+    OTLP --> K8S[Service → Deployment Correlation]
+    CONF --> GRAPH[Awareness Graph]
+    TEST --> GRAPH
+```
+
+A trace-only root cause requires the same downstream origin to repeat across independent representative traces. One trace cannot confirm root cause. A previously confirmed Kubernetes RCA also keeps precedence over trace evidence.
+
+Details: [docs/trace-causality.md](trace-causality.md).
 
 ## Incident memory
 
