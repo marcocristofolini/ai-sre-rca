@@ -91,16 +91,28 @@ def _duration_ms(span: dict[str, Any]) -> float:
     return max(0.0, (end - start) / 1_000_000)
 
 
+def _dependency_metadata(attrs: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "db.system",
+        "db.namespace",
+        "db.name",
+        "server.address",
+        "server.port",
+        "peer.service",
+        "messaging.system",
+        "messaging.destination.name",
+        "messaging.destination",
+        "messaging.consumer.group.name",
+        "messaging.kafka.consumer.group",
+    )
+    return {
+        key: attrs.get(key)
+        for key in keys
+        if attrs.get(key) not in {None, ""}
+    }
+
+
 def _peer_target(attrs: dict[str, Any]) -> tuple[str | None, str | None]:
-    peer = attrs.get("peer.service")
-    if peer:
-        return str(peer), "external-service"
-
-    address = attrs.get("server.address")
-    if address:
-        port = attrs.get("server.port")
-        return f"{address}:{port}" if port else str(address), "external-service"
-
     database = attrs.get("db.namespace") or attrs.get("db.name")
     db_system = attrs.get("db.system")
     if database or db_system:
@@ -112,6 +124,15 @@ def _peer_target(attrs: dict[str, Any]) -> tuple[str | None, str | None]:
     if destination or messaging:
         name = "/".join(str(v) for v in (messaging, destination) if v)
         return name or "messaging", "messaging"
+
+    peer = attrs.get("peer.service")
+    if peer:
+        return str(peer), "external-service"
+
+    address = attrs.get("server.address")
+    if address:
+        port = attrs.get("server.port")
+        return f"{address}:{port}" if port else str(address), "external-service"
 
     return None, None
 
@@ -142,6 +163,7 @@ def _normalize_spans(payload: dict[str, Any]) -> list[dict[str, Any]]:
                         "attributes": {**resource_attrs, **span_attrs},
                         "target": target,
                         "target_kind": target_kind,
+                        "dependency_metadata": _dependency_metadata(span_attrs),
                     }
                 )
     return [span for span in normalized if span["span_id"]]
@@ -264,6 +286,7 @@ def analyze_trace(
                         if item["span_id"] == candidate["span_id"]
                         else "upstream span on the same trace path"
                     ),
+                    metadata=item.get("dependency_metadata", {}),
                 )
             )
 
@@ -282,6 +305,7 @@ def analyze_trace(
                     duration_ms=round(candidate["duration_ms"], 3),
                     role="origin",
                     reason=candidate_reason or "downstream dependency failure",
+                    metadata=candidate.get("dependency_metadata", {}),
                 )
             )
             candidate_service = str(target)
@@ -730,7 +754,12 @@ async def enrich_with_trace_causality(
                 entity_id,
                 hop.service,
                 kind,
-                {"trace_role": hop.role, "operation": hop.operation},
+                {
+                    "trace_role": hop.role,
+                    "operation": hop.operation,
+                    "dependency_kind": hop.kind if kind == "TraceDependency" else None,
+                    **hop.metadata,
+                },
             )
         for source_hop, target_hop in zip(analysis.causal_chain, analysis.causal_chain[1:]):
             if source_hop.service == target_hop.service:
