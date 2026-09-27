@@ -19,6 +19,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - PostgreSQL dependency telemetry requires a scoped instance identity before querying Prometheus, preventing cross-instance aggregation for similarly named databases.
 - Redis dependency telemetry requires a scoped instance identity and continues escaping traced addresses before building PromQL regex matchers.
 - PostgreSQL stateful analysis now exposes the instance hint used to scope telemetry.
+- Trace dependency identity now includes the observed `server.address`, preventing same-named databases, topics or caches on different instances from collapsing into one graph node.
+- Cross-trace causal confirmation now includes dependency instance identity, so identical operations on different backends do not count as repeated confirmation of one cause.
+- Kafka Prometheus queries now require and apply instance scope, preventing same-topic/group aggregation across Kafka clusters.
 
 ### Safety
 - Missing PostgreSQL or Redis instance identity yields `unknown` signals rather than global Prometheus queries.
