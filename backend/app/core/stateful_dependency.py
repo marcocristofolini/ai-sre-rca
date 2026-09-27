@@ -1019,7 +1019,7 @@ async def enrich_with_stateful_dependencies(
         return result
 
     analyses: list[StatefulDependencyAnalysis] = []
-    for target in targets[:4]:
+    for target in targets[: settings.stateful_dependency_max_targets]:
         try:
             if target.kind == "postgresql":
                 analysis = await _postgres(result, target, tools, settings)
