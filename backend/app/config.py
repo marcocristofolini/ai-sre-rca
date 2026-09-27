@@ -26,6 +26,27 @@ class Settings(BaseSettings):
     trace_slow_span_min_ms: float = 500.0
     trace_slow_span_root_fraction: float = 0.5
 
+    stateful_dependency_analysis_enabled: bool = True
+    dependency_window_minutes: int = 15
+
+    postgres_connection_utilization_critical: float = 0.90
+    postgres_locks_critical: float = 50.0
+    postgres_access_exclusive_locks_critical: float = 1.0
+    postgres_deadlocks_delta_critical: float = 1.0
+    postgres_replication_lag_bytes_critical: float = 16 * 1024 * 1024
+    postgres_long_tx_seconds_critical: float = 60.0
+
+    kafka_consumer_lag_critical: float = 10000.0
+    kafka_under_replicated_partitions_critical: float = 1.0
+    kafka_offline_partitions_critical: float = 1.0
+    kafka_consumer_group_members_min: float = 1.0
+
+    redis_memory_utilization_critical: float = 0.90
+    redis_evictions_delta_critical: float = 1.0
+    redis_blocked_clients_critical: float = 1.0
+    redis_client_utilization_critical: float = 0.90
+    redis_command_latency_seconds_critical: float = 0.05
+
     argocd_url: str = "http://argocd-server.argocd.svc"
     argocd_token: str | None = None
 
