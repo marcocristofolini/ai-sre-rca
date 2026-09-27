@@ -7,6 +7,7 @@ import pytest
 
 from app.config import Settings
 from app.core.engine import InvestigationEngine
+from app.core.query_safety import path_segment, prom_regex_literal, quoted_string
 from app.integrations.http_tools import ReadOnlyHTTPTools
 from app.schemas import IncidentInput
 from tests.test_stateful_dependency_v05 import StatefulTools, dependency_trace_payload
@@ -65,11 +66,15 @@ class ExistingDependencyGraphTools(StatefulTools):
 async def test_postgres_queries_are_instance_scoped_and_use_exporter_labels():
     tools = CapturingHTTPTools()
 
-    await tools.postgres_dependency_metrics("orders", START, 15, "orders-db")
+    result = await tools.postgres_dependency_metrics("orders", START, 15, "orders-db")
 
     assert tools.queries
     assert all("instance=~" in query for query in tools.queries)
     assert any('mode="accessexclusivelock"' in query for query in tools.queries)
+    assert "datname=" not in result["signals"]["connections"]["query"]
+    assert 'datname="orders"' in result["signals"]["database_connections"]["query"]
+    assert "orders\\-db" not in " ".join(tools.queries)
+    assert "orders-db" in " ".join(tools.queries)
     long_tx_queries = [query for query in tools.queries if "pg_stat_activity_max_tx_duration" in query]
     assert len(long_tx_queries) == 1
     assert 'datname="orders"' in long_tx_queries[0]
@@ -109,7 +114,7 @@ async def test_kafka_instance_regex_is_escaped():
     tools = CapturingHTTPTools()
     hint = "kafka.*(prod)"
 
-    await tools.kafka_dependency_metrics(
+    result = await tools.kafka_dependency_metrics(
         "orders-events",
         "checkout-workers",
         START,
@@ -120,6 +125,7 @@ async def test_kafka_instance_regex_is_escaped():
     assert tools.queries
     assert all("kafka.*(prod)" not in query for query in tools.queries)
     assert all(r"kafka\\.\\*\\(prod\\)" in query for query in tools.queries)
+    assert "< bool 0" in result["signals"]["offline_partitions"]["query"]
 
 
 @pytest.mark.asyncio
@@ -189,6 +195,14 @@ async def test_trace_confirmation_does_not_merge_same_dependency_across_instance
     }
     assert "dependency:kafka/orders-events@kafka-prod" in dependency_ids
     assert "dependency:kafka/orders-events@kafka-canary" in dependency_ids
+
+
+def test_query_safety_escapes_regex_control_and_path_segments():
+    assert prom_regex_literal("node.prod-1") == r"node\\.prod-1"
+    assert quoted_string('svc"\nnext') == 'svc\\"\\nnext'
+    assert path_segment("namespace/pod") == "namespace%2Fpod"
+    matcher = ReadOnlyHTTPTools._prom_instance_matcher("orders-db")
+    assert matcher == 'instance=~"^orders-db(:[0-9]+)?$"'
 
 
 def test_non_finite_prometheus_values_are_unknown():
