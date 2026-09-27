@@ -40,6 +40,59 @@ export default function InvestigationView({ data }: { data: Investigation }) {
         </div>
       </section>
 
+      {!!data.trace_analyses.length && (
+        <section className="panel wideSection traceSection">
+          <div className="traceSectionHeader">
+            <div>
+              <div className="sectionLabel">TRACE-AWARE CAUSAL PROPAGATION</div>
+              <h2>Representative traces and failure ancestry</h2>
+            </div>
+            <div className="traceCount">{data.trace_analyses.length} traces analyzed</div>
+          </div>
+          <div className="traceGrid">
+            {data.trace_analyses.map((trace) => (
+              <article className="traceCard" key={trace.trace_id}>
+                <div className="traceMeta">
+                  <span>{trace.trace_id.slice(0, 16)}</span>
+                  <span>{trace.duration_ms.toFixed(0)} ms</span>
+                  <span>{trace.error_count} errors</span>
+                </div>
+                <div className="traceRoot">
+                  <strong>{trace.root_service}</strong>
+                  <span>{trace.root_operation}</span>
+                </div>
+                <div className="causalChain">
+                  {trace.causal_chain.map((hop, index) => (
+                    <div className={`causalHop ${hop.role} ${hop.status}`} key={`${trace.trace_id}-${hop.span_id}`}>
+                      <div className="hopIndex">{index + 1}</div>
+                      <div className="hopBody">
+                        <div className="hopTop">
+                          <strong>{hop.service}</strong>
+                          <span>{hop.role}</span>
+                        </div>
+                        <div className="hopOperation">{hop.operation}</div>
+                        <div className="hopSignals">
+                          <span>{hop.kind}</span>
+                          <span>{hop.status}</span>
+                          <span>{hop.duration_ms.toFixed(1)} ms</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {trace.candidate_service && (
+                  <div className="traceCandidate">
+                    <span>candidate origin</span>
+                    <strong>{trace.candidate_service}</strong>
+                    <small>{trace.candidate_operation} · {trace.candidate_reason}</small>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="columns">
         <section className="panel">
           <div className="sectionLabel">AWARENESS GRAPH</div>
