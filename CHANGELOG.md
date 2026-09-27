@@ -22,6 +22,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Trace dependency identity now includes the observed `server.address`, preventing same-named databases, topics or caches on different instances from collapsing into one graph node.
 - Cross-trace causal confirmation now includes dependency instance identity, so identical operations on different backends do not count as repeated confirmation of one cause.
 - Kafka Prometheus queries now require and apply instance scope, preventing same-topic/group aggregation across Kafka clusters.
+- PostgreSQL connection utilization now compares instance-wide sessions with instance-wide `max_connections`, while retaining database-specific session counts as context.
+- Kafka offline-partition detection now uses a boolean comparison so a healthy topic reports zero instead of becoming `unknown` when no partition is leaderless.
+- Prometheus regex literals now escape RE2 metacharacters without over-escaping ordinary hostname characters such as hyphens.
 
 ### Safety
 - Missing PostgreSQL or Redis instance identity yields `unknown` signals rather than global Prometheus queries.
