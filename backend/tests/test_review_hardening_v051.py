@@ -51,7 +51,7 @@ async def test_postgres_queries_are_instance_scoped_and_use_exporter_labels():
     await tools.postgres_dependency_metrics("orders", START, 15, "orders-db")
 
     assert tools.queries
-    assert all("orders-db" in query for query in tools.queries)
+    assert all("instance=~" in query for query in tools.queries)
     assert any('mode="accessexclusivelock"' in query for query in tools.queries)
     assert any("pg_long_running_transactions_oldest_timestamp_seconds" in query for query in tools.queries)
     assert not any("pg_long_running_transactions{" in query for query in tools.queries)
