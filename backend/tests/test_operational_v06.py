@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from app.auth import Principal
+from app.auth import AuthManager, Principal
 from app.config import Settings
 from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
@@ -101,6 +103,65 @@ def test_cluster_registry_overrides_endpoints_without_cross_request_state():
         tools.reset_cluster(token)
 
     assert tools._cluster_value("prometheus_url", "fallback") == "fallback"
+
+
+@pytest.mark.asyncio
+async def test_oidc_authentication_extracts_roles_tenant_and_cluster_scope():
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    settings = Settings(
+        auth_enabled=True,
+        oidc_issuer="https://issuer.example",
+        oidc_audience="ai-sre-rca",
+        oidc_jwks_url="https://issuer.example/jwks",
+    )
+    manager = AuthManager(settings)
+
+    class FakeJWKClient:
+        def get_signing_key_from_jwt(self, token):
+            return SimpleNamespace(key=private_key.public_key())
+
+    manager._jwk_client = FakeJWKClient()
+    now = datetime.now(timezone.utc)
+    token = jwt.encode(
+        {
+            "sub": "user-42",
+            "iss": settings.oidc_issuer,
+            "aud": settings.oidc_audience,
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(minutes=5)).timestamp()),
+            "roles": ["investigator"],
+            "tenant": "tenant-a",
+            "clusters": ["prod-a", "prod-b"],
+        },
+        private_key,
+        algorithm="RS256",
+    )
+
+    principal = await manager.authenticate(token)
+
+    assert principal.subject == "user-42"
+    assert principal.tenant_id == "tenant-a"
+    assert principal.roles == frozenset({"investigator"})
+    assert principal.clusters == frozenset({"prod-a", "prod-b"})
+
+
+@pytest.mark.asyncio
+async def test_budget_denied_prometheus_query_does_not_touch_network():
+    settings = Settings(
+        query_budget_enabled=True,
+        query_budget_max_calls=0,
+    )
+    tools = ReadOnlyHTTPTools(settings)
+    budget_token = begin_query_budget(settings)
+    try:
+        payload = await tools.prometheus_query("up")
+    finally:
+        snapshot = end_query_budget(budget_token)
+
+    assert payload["_budget_denied"] is True
+    assert payload["data"]["result"] == []
+    assert snapshot["total_calls"] == 0
+    assert snapshot["denied"][0]["reason"] == "total_calls"
 
 
 def test_notification_payloads_do_not_expose_credentials():
