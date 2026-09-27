@@ -144,6 +144,7 @@ class TraceAnalysis(BaseModel):
     candidate_reason: str | None = None
     candidate_strength: Literal["weak", "medium", "strong"] = "weak"
     source_query: str | None = None
+    deployment_context: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class AlertmanagerAlert(BaseModel):
