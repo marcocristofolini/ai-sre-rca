@@ -24,13 +24,14 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Stateful demo endpoints for PostgreSQL, Kafka and Redis.
 - New stateful UI routes and dependency signal cards.
 - Bilingual stateful-dependency architecture documentation with Mermaid diagrams.
-- Four v0.5 regression scenarios, bringing the backend suite to 17 deterministic/safety tests.
+- Four v0.5 stateful regression scenarios plus a clean-runtime application import regression, bringing the backend suite to 18 deterministic/safety/runtime tests.
 
 ### Changed
 - Trace dependency metadata now preserves a narrow allow-list of database, server and messaging semantic attributes.
 - The investigation pipeline now runs infrastructure playbooks, trace causal enrichment and then stateful dependency enrichment.
 - A confirmed stateful dependency cause can refine a trace-only root cause into a more specific diagnosis.
 - API, backend package, frontend and Helm chart versions are now 0.5.0.
+- SQLAlchemy is installed with its `asyncio` extra so clean runtime installations include the required greenlet dependency.
 - Helm and environment examples expose stateful RCA budgets and thresholds.
 
 ### Safety
