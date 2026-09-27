@@ -135,12 +135,13 @@ class StatefulTools(DemoTools):
         value = 1.0 if "status = error" in query else 8.0
         return {"series": [{"values": [[start.timestamp(), value], [end.timestamp(), value]]}]}
 
-    async def postgres_dependency_metrics(self, database, at, window_minutes=15):
+    async def postgres_dependency_metrics(self, database, at, window_minutes=15, instance_hint=None):
         if self.dependency != "postgresql":
-            return await super().postgres_dependency_metrics(database, at, window_minutes)
+            return await super().postgres_dependency_metrics(database, at, window_minutes, instance_hint)
         return {
             "kind": "postgresql",
             "database": database,
+            "instance_hint": instance_hint,
             "signals": _signals({
                 "connections": 97,
                 "active_connections": 82,
