@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.incidents import router as incidents_router
@@ -12,7 +13,7 @@ from app.config import get_settings
 from app.core.engine import InvestigationEngine
 from app.db.repository import MemoryRepository, SQLRepository
 from app.integrations.demo import DemoTools
-from app.integrations.http_tools import ReadOnlyHTTPTools
+from app.integrations.http_tools import ReadOnlyHTTPTools, UnknownClusterError
 from app.llm.hypotheses import NullHypothesisGenerator, OpenAICompatibleHypothesisGenerator
 from app.notifications import NotificationManager
 
@@ -44,6 +45,14 @@ app = FastAPI(
     description="Evidence-first, read-only SRE incident investigator with deterministic Kubernetes playbooks, trace-aware causal propagation, stateful dependency RCA, operational tenancy/audit controls, topology, change correlation and incident memory",
     lifespan=lifespan,
 )
+@app.exception_handler(UnknownClusterError)
+async def unknown_cluster_handler(request: Request, exc: UnknownClusterError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc)},
+    )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
