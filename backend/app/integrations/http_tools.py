@@ -215,39 +215,70 @@ class ReadOnlyHTTPTools:
         consumer_group: str | None,
         at: datetime,
         window_minutes: int = 15,
+        instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        queries: dict[str, str] = {}
-        if topic:
-            topic_label = self._prom_label(topic)
-            topic_selector = f'{{topic="{topic_label}"}}'
-            queries["under_replicated_partitions"] = (
+        signal_names = (
+            "consumer_lag",
+            "under_replicated_partitions",
+            "offline_partitions",
+            "consumer_group_members",
+        )
+        if not topic or not instance_hint:
+            missing = (
+                "topic identity required to scope Kafka telemetry"
+                if not topic
+                else "instance identity required to scope Kafka telemetry"
+            )
+            return {
+                "kind": "kafka",
+                "topic": topic,
+                "consumer_group": consumer_group,
+                "instance_hint": instance_hint,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {"value": None, "query": None, "error": missing}
+                    for name in signal_names
+                },
+            }
+
+        topic_label = self._prom_label(topic)
+        safe_instance = self._prom_label(re.escape(instance_hint))
+        instance_matcher = f',instance=~".*{safe_instance}.*"'
+        topic_selector = f'{{topic="{topic_label}"{instance_matcher}}}'
+        queries: dict[str, str] = {
+            "under_replicated_partitions": (
                 f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})"
-            )
-            queries["offline_partitions"] = (
+            ),
+            "offline_partitions": (
                 f"count(kafka_topic_partition_leader{topic_selector} < 0)"
+            ),
+        }
+
+        if consumer_group:
+            group = self._prom_label(consumer_group)
+            group_selector = (
+                f'{{topic="{topic_label}",consumergroup="{group}"{instance_matcher}}}'
             )
-            if consumer_group:
-                group = self._prom_label(consumer_group)
-                group_selector = f'{{topic="{topic_label}",consumergroup="{group}"}}'
-                queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
-                queries["consumer_group_members"] = (
-                    f'min(kafka_consumergroup_members{{consumergroup="{group}"}})'
-                )
+            member_selector = f'{{consumergroup="{group}"{instance_matcher}}}'
+            queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
+            queries["consumer_group_members"] = (
+                f"min(kafka_consumergroup_members{member_selector})"
+            )
 
         result = await self._named_prometheus_scalars(queries, at)
-        missing_reason = (
-            "topic identity required to scope Kafka telemetry"
-            if not topic
-            else "consumer group identity required for consumer-specific telemetry"
-        )
-        for name in ("consumer_lag", "under_replicated_partitions", "offline_partitions", "consumer_group_members"):
-            if name not in result:
-                result[name] = {"value": None, "query": None, "error": missing_reason}
+        if not consumer_group:
+            for name in ("consumer_lag", "consumer_group_members"):
+                result[name] = {
+                    "value": None,
+                    "query": None,
+                    "error": "consumer group identity required for consumer-specific telemetry",
+                }
 
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "window_minutes": window_minutes,
             "signals": result,
         }
