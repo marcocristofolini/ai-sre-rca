@@ -630,3 +630,95 @@ class ReadOnlyHTTPTools:
             if item.get("status", {}).get("nodeName") == node:
                 return item
         return {}
+
+    async def capability_report(self, cluster: str) -> list[dict[str, Any]]:
+        token = self.set_cluster(cluster)
+        try:
+            async def probe(
+                source: str,
+                base_url: str,
+                path: str,
+                *,
+                headers: dict[str, str] | None = None,
+                verify: str | bool = True,
+            ) -> dict[str, Any]:
+                started = time.monotonic()
+                try:
+                    async with httpx.AsyncClient(
+                        base_url=base_url,
+                        headers=headers,
+                        verify=verify,
+                        timeout=5,
+                    ) as client:
+                        response = await client.get(path)
+                    latency = round((time.monotonic() - started) * 1000, 2)
+                    if response.status_code < 400:
+                        return {
+                            "source": source,
+                            "status": "healthy",
+                            "detail": f"HTTP {response.status_code}",
+                            "cluster": cluster,
+                            "latency_ms": latency,
+                        }
+                    return {
+                        "source": source,
+                        "status": "degraded",
+                        "detail": f"HTTP {response.status_code}",
+                        "cluster": cluster,
+                        "latency_ms": latency,
+                    }
+                except Exception as exc:
+                    return {
+                        "source": source,
+                        "status": "unavailable",
+                        "detail": exc.__class__.__name__,
+                        "cluster": cluster,
+                        "latency_ms": round((time.monotonic() - started) * 1000, 2),
+                    }
+
+            argocd_headers: dict[str, str] = {}
+            if self.settings.argocd_token:
+                argocd_headers["Authorization"] = f"Bearer {self.settings.argocd_token}"
+
+            probes = [
+                probe(
+                    "kubernetes",
+                    self._cluster_value("kubernetes_api_url", self.settings.kubernetes_api_url),
+                    "/version",
+                    headers=self._k8s_headers(),
+                    verify=self._k8s_verify(),
+                ),
+                probe(
+                    "prometheus",
+                    self._cluster_value("prometheus_url", self.settings.prometheus_url),
+                    "/-/ready",
+                ),
+                probe(
+                    "loki",
+                    self._cluster_value("loki_url", self.settings.loki_url),
+                    "/ready",
+                ),
+                probe(
+                    "tempo",
+                    self._cluster_value("tempo_url", self.settings.tempo_url),
+                    "/ready",
+                    headers=self._tempo_headers(),
+                ),
+                probe(
+                    "argocd",
+                    self._cluster_value("argocd_url", self.settings.argocd_url),
+                    "/api/v1/version",
+                    headers=argocd_headers,
+                ),
+            ]
+            output = list(await asyncio.gather(*probes))
+            output.append({
+                "source": "github",
+                "status": "healthy" if self.settings.github_api_url else "disabled",
+                "detail": "configured" if self.settings.github_api_url else "not configured",
+                "cluster": cluster,
+                "latency_ms": None,
+            })
+            return output
+        finally:
+            self.reset_cluster(token)
