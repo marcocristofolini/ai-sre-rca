@@ -16,6 +16,10 @@ from app.core.query_budget import consume_query
 from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
 
 
+class UnknownClusterError(ValueError):
+    pass
+
+
 class ReadOnlyHTTPTools:
     """Narrow read-only clients used by the investigator.
 
@@ -33,7 +37,7 @@ class ReadOnlyHTTPTools:
     def set_cluster(self, cluster: str):
         registry = self.settings.cluster_config
         if registry and cluster not in registry:
-            raise ValueError(f"cluster is not configured: {cluster}")
+            raise UnknownClusterError(f"cluster is not configured: {cluster}")
         return self._cluster_ctx.set(cluster)
 
     def reset_cluster(self, token) -> None:
