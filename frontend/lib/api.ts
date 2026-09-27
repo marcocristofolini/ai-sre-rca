@@ -1,3 +1,5 @@
+import { headers } from 'next/headers';
+
 export type GraphEdge = {
   source: string;
   target: string;
@@ -115,9 +117,18 @@ export type Investigation = {
   }>;
 };
 
+async function forwardedAuthHeaders(): Promise<Record<string, string>> {
+  const incoming = await headers();
+  const authorization = incoming.get('authorization');
+  return authorization ? { Authorization: authorization } : {};
+}
+
 export async function fetchDemo(): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
@@ -125,7 +136,10 @@ export async function fetchDemo(): Promise<Investigation> {
 
 export async function fetchTraceDemo(): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo/trace`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo/trace`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
@@ -135,7 +149,10 @@ export type StatefulDependencyKind = 'postgresql' | 'kafka' | 'redis';
 
 export async function fetchStatefulDemo(dependency: StatefulDependencyKind = 'postgresql'): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo/stateful/${dependency}`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo/stateful/${dependency}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
