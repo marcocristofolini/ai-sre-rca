@@ -126,3 +126,41 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .demoLink { color:#8fbfff; border:1px solid rgba(92,167,255,.25); background:rgba(92,167,255,.04); border-radius:999px; padding:5px 9px; font-size:9px; font-weight:800; letter-spacing:.1em; text-decoration:none; }
 .demoLink:hover { border-color:rgba(116,224,180,.45); color:var(--accent); }
 @media (max-width:700px) { .topbar { height:auto; align-items:flex-start; gap:12px; } .topActions { max-width:65%; } }
+
+
+.statefulSection { border-color:rgba(116,224,180,.24); }
+.statefulHeader { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; }
+.statefulHeader h2 { margin-bottom:6px; }
+.statefulDemoNav { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.statefulDemoNav a { color:#91d8bd; border:1px solid rgba(116,224,180,.24); background:rgba(116,224,180,.04); border-radius:6px; padding:6px 8px; font-size:8px; font-weight:800; letter-spacing:.1em; text-decoration:none; }
+.statefulDemoNav a:hover { color:#e8fff5; border-color:rgba(116,224,180,.48); }
+.dependencyGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:16px; }
+.dependencyCard { background:#0a0f15; border:1px solid #23303c; border-top:3px solid #526173; border-radius:10px; padding:14px; min-width:0; }
+.dependencyCard.critical { border-top-color:var(--danger); }
+.dependencyCard.degraded { border-top-color:var(--warn); }
+.dependencyCard.healthy { border-top-color:var(--accent); }
+.dependencyTop { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.dependencyTop h3 { margin:5px 0 0; text-transform:none; word-break:break-word; font-size:14px; }
+.dependencyKind { color:var(--accent); text-transform:uppercase; font-size:9px; font-weight:850; letter-spacing:.13em; }
+.dependencyHealth { border:1px solid #334154; border-radius:999px; padding:4px 7px; font-size:8px; text-transform:uppercase; letter-spacing:.1em; }
+.dependencyHealth.critical { color:var(--danger); border-color:rgba(255,115,115,.35); background:rgba(255,115,115,.05); }
+.dependencyHealth.degraded { color:var(--warn); border-color:rgba(245,199,108,.35); background:rgba(245,199,108,.05); }
+.dependencyHealth.healthy { color:var(--accent); border-color:rgba(116,224,180,.35); background:rgba(116,224,180,.05); }
+.dependencyHealth.unknown { color:#8290a3; }
+.dependencyMeta { display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; color:#708197; font-size:9px; }
+.dependencyMeta span { border:1px solid #202b37; background:#0d131a; border-radius:4px; padding:4px 6px; }
+.dependencyCause { margin-top:12px; border:1px solid rgba(116,224,180,.18); border-left:3px solid var(--accent); background:rgba(116,224,180,.035); border-radius:7px; padding:10px; display:grid; gap:5px; }
+.dependencyCause span { color:#73a894; text-transform:uppercase; font-size:8px; letter-spacing:.11em; }
+.dependencyCause strong { font-size:11px; line-height:1.45; }
+.dependencySignals { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; margin-top:12px; }
+.dependencySignal { border:1px solid #202b37; background:#0b1118; border-radius:7px; padding:8px; min-width:0; }
+.dependencySignal.critical { border-color:rgba(255,115,115,.3); }
+.dependencySignal.warning { border-color:rgba(245,199,108,.28); }
+.dependencySignal>div { display:flex; justify-content:space-between; align-items:flex-start; gap:7px; }
+.dependencySignal span { color:#7b8da3; text-transform:uppercase; font-size:7px; line-height:1.35; letter-spacing:.07em; }
+.dependencySignal strong { color:#e8edf3; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; white-space:nowrap; }
+.dependencySignal.critical strong { color:var(--danger); }
+.dependencySignal.warning strong { color:var(--warn); }
+.dependencySignal small { display:block; margin-top:5px; color:#526173; font-size:7px; line-height:1.35; }
+@media (max-width:1100px) { .dependencyGrid { grid-template-columns:1fr 1fr; } }
+@media (max-width:760px) { .dependencyGrid { grid-template-columns:1fr; } .statefulHeader { flex-direction:column; } .dependencySignals { grid-template-columns:1fr; } }

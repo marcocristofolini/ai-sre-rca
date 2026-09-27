@@ -1,4 +1,4 @@
-# Roadmap after v0.4
+# Roadmap after v0.5
 
 ## Completed in v0.2
 
@@ -43,21 +43,32 @@
 - [x] trace-aware UI and demo route
 - [x] v0.4 regression coverage
 
-## v0.4.x — remaining tracing depth
+## Completed in v0.5 — stateful dependency RCA
 
-- [ ] trace-to-log derived-field correlation
-- [ ] explicit exemplar ingestion from Prometheus/Mimir
-- [ ] operation-level anomaly baselines
-- [ ] sampling-ratio-aware evidence weighting
-- [ ] trace correlation across multi-cluster service identities
+- [x] typed dependency metadata preserved from distributed traces
+- [x] PostgreSQL adapter for connection exhaustion, locks, deadlocks, replication lag and long-running transactions
+- [x] Kafka adapter for consumer lag, under-replicated partitions, leaderless/offline partitions and consumer-group membership
+- [x] Redis adapter for memory pressure, evictions, blocked clients, client saturation and command latency
+- [x] dependency-specific deterministic hypotheses and remediations
+- [x] causal promotion from trace dependency origin to dependency-specific RCA
+- [x] infrastructure/Kubernetes RCA precedence over stateful dependency anomalies
+- [x] bounded stateful target budget and configurable thresholds
+- [x] missing dependency metrics remain unknown rather than being inferred healthy
+- [x] stateful API payload and UI
+- [x] PostgreSQL, Kafka and Redis demo routes
+- [x] v0.5 regression coverage
 
-## v0.5 — stateful dependencies
+## v0.5.x — dependency depth
 
-- [ ] PostgreSQL adapter: saturation, locks, replication lag, connection exhaustion
-- [ ] Kafka adapter: consumer lag, ISR, partition leadership
-- [ ] Redis adapter: memory pressure, evictions, latency
-- [ ] dependency-specific deterministic hypotheses
-- [ ] causal promotion from trace dependency node to stateful adapter evidence
+- [ ] PostgreSQL blocker/blockee graph
+- [ ] PostgreSQL pg_stat_statements / query fingerprint correlation
+- [ ] PostgreSQL exporter-version capability discovery
+- [ ] Kafka broker/JMX throughput and request-queue context
+- [ ] Kafka rebalance and partition leader/ISR timelines
+- [ ] Redis slowlog correlation
+- [ ] Redis hot-key and keyspace/TTL analysis with cardinality budgets
+- [ ] direct dependency-alert promotion without a trace when equivalent causal evidence exists
+- [ ] dependency-specific dynamic baselines instead of threshold-only evaluation
 
 ## v0.6 — operational productization
 
@@ -68,6 +79,8 @@
 - [ ] multi-cluster tenancy
 - [ ] query budget/cost controls
 - [ ] retention policies
+- [ ] per-source health/capability reporting
+- [ ] incident export / sharing format
 
 ## v0.7 — guarded remediation plane
 

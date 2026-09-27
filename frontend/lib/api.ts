@@ -87,7 +87,30 @@ export type Investigation = {
       duration_ms: number;
       role: 'origin' | 'propagated' | 'context';
       reason: string;
+      metadata?: Record<string, unknown>;
     }>;
+  }>;
+  stateful_dependencies: Array<{
+    dependency_id: string;
+    kind: 'postgresql' | 'kafka' | 'redis';
+    name: string;
+    target?: string;
+    health: 'healthy' | 'degraded' | 'critical' | 'unknown';
+    causal_role: 'origin' | 'supporting' | 'context';
+    cause?: string;
+    cause_strength: 'weak' | 'medium' | 'strong';
+    hypothesis_id?: string;
+    evidence_ids: string[];
+    signals: Array<{
+      name: string;
+      value?: number;
+      unit?: string;
+      status: 'normal' | 'warning' | 'critical' | 'unknown';
+      threshold?: number;
+      query?: string;
+      description: string;
+    }>;
+    metadata: Record<string, unknown>;
   }>;
 };
 
@@ -102,6 +125,16 @@ export async function fetchDemo(): Promise<Investigation> {
 export async function fetchTraceDemo(): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
   const res = await fetch(`${base}/api/v1/incidents/demo/trace`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
+
+
+export type StatefulDependencyKind = 'postgresql' | 'kafka' | 'redis';
+
+export async function fetchStatefulDemo(dependency: StatefulDependencyKind = 'postgresql'): Promise<Investigation> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const res = await fetch(`${base}/api/v1/incidents/demo/stateful/${dependency}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }

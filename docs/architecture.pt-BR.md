@@ -1,4 +1,4 @@
-# Arquitetura — v0.4
+# Arquitetura — v0.5
 
 **Português do Brasil** · [English](architecture.md)
 
@@ -27,7 +27,8 @@ flowchart TD
     GH --> G
     KA --> G
 
-    G --> EV[Store / Avaliador de Evidências]
+    G --> SD[Investigadores Stateful<br/>PostgreSQL / Kafka / Redis]
+    SD --> EV[Store / Avaliador de Evidências]
     EV --> H[Hipóteses Determinísticas]
     EV --> MEM[Memória de Incidentes<br/>PostgreSQL + pgvector]
     EV --> LLM[LLM Opcional<br/>Propositor de Hipóteses]
@@ -49,7 +50,8 @@ flowchart TD
     M --> KO[Resolver ownership no Kubernetes]
     KO --> SG[Resolver identidade do serviço e dependências]
     SG --> TR[Buscar traces representativos e reconstruir causalidade]
-    TR --> CH[Resolver revisão no Argo CD e metadados Git]
+    TR --> SD[Classificar origem stateful e coletar métricas específicas]
+    SD --> CH[Resolver revisão no Argo CD e metadados Git]
     CH --> KP[Resolver NodeClaim / NodePool no Karpenter]
     KP --> HP[Carregar hipóteses determinísticas]
     HP --> CE[Coletar evidências tipadas read-only]
@@ -75,6 +77,7 @@ sequenceDiagram
     participant K8S as Kubernetes
     participant OBS as Prometheus/Loki/OTel
     participant TEMPO as Tempo/TraceQL
+    participant DEP as PostgreSQL/Kafka/Redis
     participant CHG as Argo CD/GitHub
     participant KAR as Karpenter
     participant MEM as Memória pgvector
@@ -90,6 +93,8 @@ sequenceDiagram
     OBS-->>ENG: Evidências de telemetria
     ENG->>TEMPO: Buscar traces de erro + consultar OTLP e RED metrics
     TEMPO-->>ENG: Cadeias pai/filho + candidatos de origem + RED
+    ENG->>DEP: Consultar métricas tipadas da dependência via Prometheus
+    DEP-->>ENG: Sinais stateful atuais + thresholds
     ENG->>CHG: Resolver revisão implantada e commit
     CHG-->>ENG: Evidências de mudança
     ENG->>KAR: Resolver ciclo de vida de NodeClaim/NodePool
@@ -197,6 +202,31 @@ flowchart LR
 A confirmação puramente trace-aware exige repetição da mesma origem downstream em traces independentes. Um único trace não confirma causa raiz. Um RCA Kubernetes já confirmado também mantém precedência sobre evidência de trace.
 
 Detalhes: [docs/trace-causality.pt-BR.md](trace-causality.pt-BR.md).
+
+## RCA de dependências stateful — v0.5
+
+```mermaid
+flowchart LR
+    TRACE[Origem Causal no Trace] --> META[Metadados Tipados]
+    META --> CLASS{Classificar}
+    CLASS -->|PostgreSQL| PG[Conexões / Locks / Deadlocks / Lag]
+    CLASS -->|Kafka| KF[Lag / ISR / Líder / Group Members]
+    CLASS -->|Redis| RD[Memória / Evictions / Clientes / Latência]
+
+    PG --> SCORE[Scoring de Evidências]
+    KF --> SCORE
+    RD --> SCORE
+
+    SCORE --> GATE{Origem do trace +<br/>anomalia específica confirmada?}
+    GATE -->|Não| CTX[Contexto de Suporte]
+    GATE -->|Sim| PRE{Já existe RCA de infraestrutura mais forte?}
+    PRE -->|Sim| KEEP[Manter RCA Existente]
+    PRE -->|Não| PROMOTE[Promover RCA Stateful Específico]
+```
+
+A v0.5 não acessa PostgreSQL, Kafka ou Redis diretamente com credenciais administrativas. Os investigadores stateful usam consultas Prometheus allow-listed e mantêm a mesma fronteira read-only da engine.
+
+Detalhes: [docs/stateful-dependencies.pt-BR.md](stateful-dependencies.pt-BR.md).
 
 ## Memória de incidentes
 

@@ -116,6 +116,7 @@ class InvestigationResult(BaseModel):
     root_cause: RootCause
     remediation: list[Remediation]
     trace_analyses: list[TraceAnalysis] = Field(default_factory=list)
+    stateful_dependencies: list[StatefulDependencyAnalysis] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -129,6 +130,7 @@ class TraceCausalHop(BaseModel):
     duration_ms: float = 0.0
     role: Literal["origin", "propagated", "context"] = "context"
     reason: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TraceAnalysis(BaseModel):
@@ -145,6 +147,31 @@ class TraceAnalysis(BaseModel):
     candidate_strength: Literal["weak", "medium", "strong"] = "weak"
     source_query: str | None = None
     deployment_context: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class StatefulDependencySignal(BaseModel):
+    name: str
+    value: float | None = None
+    unit: str | None = None
+    status: Literal["normal", "warning", "critical", "unknown"] = "unknown"
+    threshold: float | None = None
+    query: str | None = None
+    description: str = ""
+
+
+class StatefulDependencyAnalysis(BaseModel):
+    dependency_id: str
+    kind: Literal["postgresql", "kafka", "redis"]
+    name: str
+    target: str | None = None
+    health: Literal["healthy", "degraded", "critical", "unknown"] = "unknown"
+    causal_role: Literal["origin", "supporting", "context"] = "context"
+    cause: str | None = None
+    cause_strength: Literal["weak", "medium", "strong"] = "weak"
+    hypothesis_id: str | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    signals: list[StatefulDependencySignal] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class AlertmanagerAlert(BaseModel):

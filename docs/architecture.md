@@ -1,4 +1,4 @@
-# Architecture — v0.4
+# Architecture — v0.5
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
@@ -27,7 +27,8 @@ flowchart TD
     GH --> G
     KA --> G
 
-    G --> EV[Evidence Store / Evaluator]
+    G --> SD[Stateful Investigators<br/>PostgreSQL / Kafka / Redis]
+    SD --> EV[Evidence Store / Evaluator]
     EV --> H[Deterministic Hypotheses]
     EV --> MEM[Incident Memory<br/>PostgreSQL + pgvector]
     EV --> LLM[Optional LLM<br/>Hypothesis Proposer]
@@ -49,7 +50,8 @@ flowchart TD
     M --> KO[Resolve Kubernetes ownership]
     KO --> SG[Resolve service identity and dependencies]
     SG --> TR[Search representative traces and reconstruct causality]
-    TR --> CH[Resolve Argo CD revision and Git metadata]
+    TR --> SD[Classify stateful origin and collect dependency-specific metrics]
+    SD --> CH[Resolve Argo CD revision and Git metadata]
     CH --> KP[Resolve Karpenter NodeClaim / NodePool]
     KP --> HP[Load deterministic hypotheses]
     HP --> CE[Collect typed read-only evidence]
@@ -75,6 +77,7 @@ sequenceDiagram
     participant K8S as Kubernetes
     participant OBS as Prometheus/Loki/OTel
     participant TEMPO as Tempo/TraceQL
+    participant DEP as PostgreSQL/Kafka/Redis
     participant CHG as Argo CD/GitHub
     participant KAR as Karpenter
     participant MEM as pgvector Memory
@@ -90,6 +93,8 @@ sequenceDiagram
     OBS-->>ENG: Telemetry evidence
     ENG->>TEMPO: Search error traces + fetch OTLP + RED metrics
     TEMPO-->>ENG: Parent/child chains + origin candidates + RED
+    ENG->>DEP: Query typed dependency metrics through Prometheus
+    DEP-->>ENG: Current stateful signals + thresholds
     ENG->>CHG: Resolve deployed revision and commit
     CHG-->>ENG: Change evidence
     ENG->>KAR: Resolve NodeClaim/NodePool lifecycle
@@ -197,6 +202,31 @@ flowchart LR
 A trace-only root cause requires the same downstream origin to repeat across independent representative traces. One trace cannot confirm root cause. A previously confirmed Kubernetes RCA also keeps precedence over trace evidence.
 
 Details: [docs/trace-causality.md](trace-causality.md).
+
+## Stateful dependency RCA — v0.5
+
+```mermaid
+flowchart LR
+    TRACE[Trace Causal Origin] --> META[Typed Dependency Metadata]
+    META --> CLASS{Classify}
+    CLASS -->|PostgreSQL| PG[Connections / Locks / Deadlocks / Lag]
+    CLASS -->|Kafka| KF[Lag / ISR / Leader / Group Members]
+    CLASS -->|Redis| RD[Memory / Evictions / Clients / Latency]
+
+    PG --> SCORE[Evidence Scoring]
+    KF --> SCORE
+    RD --> SCORE
+
+    SCORE --> GATE{Trace origin +<br/>specific anomaly confirmed?}
+    GATE -->|No| CTX[Supporting Context]
+    GATE -->|Yes| PRE{Stronger infrastructure RCA exists?}
+    PRE -->|Yes| KEEP[Keep Existing RCA]
+    PRE -->|No| PROMOTE[Promote Specific Stateful RCA]
+```
+
+v0.5 does not connect directly to PostgreSQL, Kafka or Redis with administrative credentials. Stateful investigators use allow-listed Prometheus queries and preserve the engine's read-only boundary.
+
+Details: [docs/stateful-dependencies.md](stateful-dependencies.md).
 
 ## Incident memory
 
