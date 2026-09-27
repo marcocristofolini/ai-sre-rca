@@ -166,3 +166,73 @@ jobs:
           cat /tmp/ai-sre-backend.log || true
           echo "=== frontend ==="
           cat /tmp/ai-sre-frontend.log || true
+
+
+  container-smoke:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build production images
+        run: |
+          docker build -t ai-sre-rca-backend:ci ./backend
+          docker build -t ai-sre-rca-frontend:ci ./frontend
+
+      - name: Run production images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker network create ai-sre-rca-smoke
+          docker run -d \
+            --name ai-sre-rca-backend \
+            --network ai-sre-rca-smoke \
+            -e DEMO_MODE=true \
+            -e DATABASE_URL= \
+            -e LLM_ENABLED=false \
+            -p 18081:8080 \
+            ai-sre-rca-backend:ci
+
+          docker run -d \
+            --name ai-sre-rca-frontend \
+            --network ai-sre-rca-smoke \
+            -e API_URL=http://ai-sre-rca-backend:8080 \
+            -p 13001:3000 \
+            ai-sre-rca-frontend:ci
+
+          cleanup() {
+            docker rm -f ai-sre-rca-frontend ai-sre-rca-backend >/dev/null 2>&1 || true
+            docker network rm ai-sre-rca-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          wait_for() {
+            local url="$1"
+            for _ in $(seq 1 60); do
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 1
+            done
+            echo "Timed out waiting for $url" >&2
+            docker logs ai-sre-rca-backend || true
+            docker logs ai-sre-rca-frontend || true
+            return 1
+          }
+
+          wait_for http://127.0.0.1:18081/healthz
+          wait_for http://127.0.0.1:13001/
+
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/incidents/demo/stateful/postgresql)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/postgresql)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
+
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.5.1"'
+          echo "Production container smoke test passed"
+
+      - name: Print container logs on failure
+        if: failure()
+        run: |
+          docker logs ai-sre-rca-backend || true
+          docker logs ai-sre-rca-frontend || true
