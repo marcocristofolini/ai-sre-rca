@@ -120,7 +120,19 @@ export type Investigation = {
 async function forwardedAuthHeaders(): Promise<Record<string, string>> {
   const incoming = await headers();
   const authorization = incoming.get('authorization');
-  return authorization ? { Authorization: authorization } : {};
+  if (authorization) return { Authorization: authorization };
+
+  const proxyHeader = process.env.AUTH_FORWARD_HEADER ?? 'x-auth-request-access-token';
+  const proxiedToken =
+    incoming.get(proxyHeader) ??
+    incoming.get('x-forwarded-access-token');
+
+  if (!proxiedToken) return {};
+  return {
+    Authorization: proxiedToken.toLowerCase().startsWith('bearer ')
+      ? proxiedToken
+      : `Bearer ${proxiedToken}`,
+  };
 }
 
 export async function fetchDemo(): Promise<Investigation> {
