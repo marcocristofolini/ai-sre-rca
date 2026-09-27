@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.engine import InvestigationEngine
-from app.integrations.demo import TraceDemoTools
+from app.integrations.demo import StatefulDemoTools, TraceDemoTools
 from app.schemas import IncidentInput, InvestigationResult
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
@@ -47,6 +48,36 @@ async def demo_trace(request: Request):
     )
     engine = InvestigationEngine(
         tools=TraceDemoTools(),
+        memory=request.app.state.repo,
+        hypothesis_generator=request.app.state.engine.hypothesis_generator,
+        settings=request.app.state.engine.settings,
+    )
+    result = await engine.investigate(incident)
+    await request.app.state.repo.save(result)
+    return result
+
+
+@router.get("/demo/stateful/{dependency}", response_model=InvestigationResult)
+async def demo_stateful(
+    dependency: Literal["postgresql", "kafka", "redis"],
+    request: Request,
+):
+    titles = {
+        "postgresql": "Checkout failures caused by PostgreSQL connection exhaustion",
+        "kafka": "Checkout event processing delayed by Kafka consumer lag",
+        "redis": "Checkout cache failures caused by Redis memory pressure",
+    }
+    incident = IncidentInput(
+        title=titles[dependency],
+        cluster="prod-us-east-1",
+        service="frontend",
+        alert_name="HighErrorRate",
+        severity="critical",
+        starts_at=datetime(2026, 9, 27, 6, 0, tzinfo=timezone.utc),
+        labels={"service": "frontend", "environment": "production"},
+    )
+    engine = InvestigationEngine(
+        tools=StatefulDemoTools(dependency),
         memory=request.app.state.repo,
         hypothesis_generator=request.app.state.engine.hypothesis_generator,
         settings=request.app.state.engine.settings,
