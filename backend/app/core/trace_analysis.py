@@ -237,6 +237,8 @@ def analyze_trace(
             leaf_errors,
             key=lambda item: (-_depth(item["span_id"], by_id), item["start_ns"], -item["duration_ms"]),
         )[0]
+        dependency_metadata = candidate.get("dependency_metadata", {})
+        candidate_instance = str(dependency_metadata.get("server.address") or "") or None
         target = candidate.get("target")
         if target and candidate.get("kind") in {"client", "producer"}:
             candidate_reason = f"downstream {candidate.get('target_kind', 'dependency')} call failed"
@@ -262,6 +264,7 @@ def analyze_trace(
     chain: list[TraceCausalHop] = []
     candidate_service: str | None = None
     candidate_operation: str | None = None
+    candidate_instance: str | None = None
 
     if candidate:
         path = _path_to_root(candidate, by_id)
@@ -356,6 +359,7 @@ def analyze_trace(
         causal_chain=chain,
         candidate_service=candidate_service,
         candidate_operation=candidate_operation,
+        candidate_instance=candidate_instance,
         candidate_reason=candidate_reason,
         candidate_strength=strength,
         source_query=source_query,
@@ -530,6 +534,7 @@ async def enrich_with_trace_causality(
                 "error_count": analysis.error_count,
                 "candidate_service": analysis.candidate_service,
                 "candidate_operation": analysis.candidate_operation,
+                "candidate_instance": analysis.candidate_instance,
                 "candidate_reason": analysis.candidate_reason,
                 "causal_chain": [hop.model_dump() for hop in analysis.causal_chain],
             },
@@ -593,6 +598,10 @@ async def enrich_with_trace_causality(
         (edge.source, edge.target, edge.relationship, tuple(edge.evidence_ids))
         for edge in result.graph_edges
     }
+
+    def dependency_entity_id(service_name: str, metadata: dict[str, Any] | None = None) -> str:
+        instance = str((metadata or {}).get("server.address") or "")
+        return f"dependency:{service_name}@{instance}" if instance else f"dependency:{service_name}"
 
     def ensure_entity(entity_id: str, name: str, kind: str, metadata: dict[str, Any] | None = None) -> None:
         clean_metadata = {
@@ -754,7 +763,7 @@ async def enrich_with_trace_causality(
         for hop in analysis.causal_chain:
             kind = "TraceDependency" if hop.kind in {"database", "messaging", "external-service"} else "Service"
             entity_id = (
-                f"dependency:{hop.service}"
+                dependency_entity_id(hop.service, hop.metadata)
                 if kind == "TraceDependency"
                 else f"service:{hop.service}"
             )
@@ -773,12 +782,12 @@ async def enrich_with_trace_causality(
             if source_hop.service == target_hop.service:
                 continue
             source_id = (
-                f"dependency:{source_hop.service}"
+                dependency_entity_id(source_hop.service, source_hop.metadata)
                 if source_hop.kind in {"database", "messaging", "external-service"}
                 else f"service:{source_hop.service}"
             )
             target_id = (
-                f"dependency:{target_hop.service}"
+                dependency_entity_id(target_hop.service, target_hop.metadata)
                 if target_hop.kind in {"database", "messaging", "external-service"}
                 else f"service:{target_hop.service}"
             )
@@ -804,7 +813,7 @@ async def enrich_with_trace_causality(
             existing_edges.add(key)
 
     signatures = [
-        (analysis.candidate_service, analysis.candidate_operation)
+        (analysis.candidate_service, analysis.candidate_operation, analysis.candidate_instance)
         for analysis in analyses
         if analysis.candidate_service and analysis.candidate_operation
     ]
@@ -812,20 +821,26 @@ async def enrich_with_trace_causality(
     if not counts:
         return result
 
-    (candidate_service, candidate_operation), repeated = counts.most_common(1)[0]
+    (candidate_service, candidate_operation, candidate_instance), repeated = counts.most_common(1)[0]
     matching_evidence = [
         ev
         for analysis, ev in zip(analyses, trace_evidence)
         if (
             analysis.candidate_service == candidate_service
             and analysis.candidate_operation == candidate_operation
+            and analysis.candidate_instance == candidate_instance
         )
     ]
 
+    candidate_display = (
+        f"{candidate_service}@{candidate_instance}"
+        if candidate_instance
+        else candidate_service
+    )
     hypothesis = Hypothesis(
         id="trace-causal-propagation",
         statement=(
-            f"Failures originating at {candidate_service}:{candidate_operation} "
+            f"Failures originating at {candidate_display}:{candidate_operation} "
             f"propagated through distributed traces to {service}."
         ),
         required_checks=[
@@ -858,7 +873,7 @@ async def enrich_with_trace_causality(
         supporting = len(hypothesis.supporting_evidence)
         result.status = "resolved"
         result.root_cause = RootCause(
-            title=f"Downstream trace failure propagated from {candidate_service}",
+            title=f"Downstream trace failure propagated from {candidate_display}",
             summary=(
                 f"{repeated} representative traces independently identify "
                 f"{candidate_service}:{candidate_operation} as the deepest failing dependency/operation "
