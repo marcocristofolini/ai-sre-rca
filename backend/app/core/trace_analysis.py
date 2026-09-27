@@ -595,10 +595,18 @@ async def enrich_with_trace_causality(
     }
 
     def ensure_entity(entity_id: str, name: str, kind: str, metadata: dict[str, Any] | None = None) -> None:
+        clean_metadata = {
+            key: value
+            for key, value in (metadata or {}).items()
+            if value is not None
+        }
         if entity_id in entity_ids:
+            existing = next((entity for entity in result.entities if entity.id == entity_id), None)
+            if existing:
+                existing.metadata.update(clean_metadata)
             return
         result.entities.append(
-            Entity(id=entity_id, kind=kind, name=name, metadata=metadata or {})
+            Entity(id=entity_id, kind=kind, name=name, metadata=clean_metadata)
         )
         entity_ids.add(entity_id)
 
