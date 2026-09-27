@@ -183,7 +183,20 @@ REDIS_COMMAND_LATENCY_SECONDS_CRITICAL=0.05
 ARGOCD_URL=http://argocd-server.argocd.svc
 ARGOCD_TOKEN=...
 GITHUB_TOKEN=...
+
+# Controles operacionais
+AUTH_ENABLED=false
+NOTIFICATIONS_ENABLED=false
+INCIDENT_RETENTION_DAYS=30
+AUDIT_RETENTION_DAYS=90
+QUERY_BUDGET_ENABLED=true
+QUERY_BUDGET_MAX_CALLS=80
+QUERY_BUDGET_MAX_CALLS_PER_SOURCE=30
+QUERY_BUDGET_MAX_WALL_SECONDS=45
+CLUSTER_CONFIG_JSON={}
 ```
+
+Consulte [docs/operations.pt-BR.md](docs/operations.pt-BR.md) para claims OIDC, isolamento por tenant/cluster, Slack/PagerDuty, retenção, export, NetworkPolicy e configuração de Secret externo.
 
 ### Service Graph do OpenTelemetry
 
