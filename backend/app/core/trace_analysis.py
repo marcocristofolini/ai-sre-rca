@@ -289,6 +289,17 @@ def analyze_trace(
             candidate_service = candidate["service"]
         candidate_operation = candidate["operation"]
 
+        path_services = {hop.service for hop in chain}
+        if incident_service not in path_services and strength == "strong":
+            strength = "medium"
+            candidate_reason = (
+                (candidate_reason + "; " if candidate_reason else "")
+                + f"incident service {incident_service} is not on the reconstructed causal path"
+            )
+            for hop in chain:
+                if hop.role == "origin":
+                    hop.reason = candidate_reason
+
     services = sorted({str(span["service"]) for span in spans})
     deployment_context: dict[str, dict[str, Any]] = {}
     context_keys = (
