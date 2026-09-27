@@ -390,6 +390,7 @@ async def _postgres(
     )
 
     connections = _metric(metrics, "connections")
+    database_connections = _metric(metrics, "database_connections")
     active = _metric(metrics, "active_connections")
     idle_tx = _metric(metrics, "idle_in_transaction")
     max_connections = _metric(metrics, "max_connections")
@@ -413,7 +414,16 @@ async def _postgres(
             threshold=settings.postgres_connection_utilization_critical,
             critical=utilization is not None and utilization >= settings.postgres_connection_utilization_critical,
             query=_query(metrics, "connections"),
-            description="PostgreSQL sessions divided by max_connections.",
+            description="Instance-wide PostgreSQL sessions divided by max_connections.",
+        ),
+        _signal(
+            name="database_connections",
+            value=database_connections,
+            unit="connections",
+            threshold=None,
+            critical=False if database_connections is not None else None,
+            query=_query(metrics, "database_connections"),
+            description=f"PostgreSQL sessions connected to database {database}.",
         ),
         _signal(
             name="active_connections",
@@ -490,12 +500,14 @@ async def _postgres(
             source="postgresql",
             category="connection-utilization",
             summary=(
-                f"PostgreSQL {database} is using {utilization:.1%} of max_connections "
-                f"({connections:.0f}/{max_connections:.0f})."
+                f"The PostgreSQL instance serving {database} is using {utilization:.1%} of max_connections "
+                f"({connections:.0f}/{max_connections:.0f}); "
+                f"{database} accounts for {database_connections if database_connections is not None else 'n/a'} sessions."
             ),
             facts={
                 "database": database,
-                "connections": connections,
+                "instance_connections": connections,
+                "database_connections": database_connections,
                 "max_connections": max_connections,
                 "utilization": utilization,
                 "active_connections": active,
@@ -509,7 +521,7 @@ async def _postgres(
         result,
         Hypothesis(
             id=f"postgres-connection-exhaustion:{target.entity.id}",
-            statement=f"PostgreSQL {database} connection capacity is exhausted or near exhaustion.",
+            statement=f"PostgreSQL connection capacity on the instance serving {database} is exhausted or near exhaustion.",
         ),
         conn_support,
         conn_contradict,
