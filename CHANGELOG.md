@@ -15,7 +15,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Unsupported stateful UI routes now return Next.js 404 instead of silently rendering the PostgreSQL demo.
 - Existing trace dependency entities merge later OpenTelemetry metadata instead of discarding database, messaging and server identity attributes.
 - PostgreSQL lock RCA now matches the lowercase `accessexclusivelock` label emitted by the current postgres_exporter locks collector.
-- PostgreSQL long-transaction RCA now queries `pg_long_running_transactions_oldest_timestamp_seconds` instead of treating the transaction-count metric as an age.
+- PostgreSQL long-transaction RCA now uses database- and instance-scoped `pg_stat_activity_max_tx_duration`, which directly represents transaction age in seconds.
 - PostgreSQL dependency telemetry requires a scoped instance identity before querying Prometheus, preventing cross-instance aggregation for similarly named databases.
 - Redis dependency telemetry requires a scoped instance identity and continues escaping traced addresses before building PromQL regex matchers.
 - PostgreSQL stateful analysis now exposes the instance hint used to scope telemetry.
