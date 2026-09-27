@@ -86,10 +86,12 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
             metadata.get("messaging.consumer.group.name")
             or metadata.get("messaging.kafka.consumer.group")
         )
+        instance_hint = metadata.get("server.address")
         return "kafka", {
             "target": str(topic) if topic else None,
             "topic": str(topic) if topic else None,
             "consumer_group": str(group) if group else None,
+            "instance_hint": str(instance_hint) if instance_hint else None,
         }
 
     if system in {"redis", "valkey"}:
@@ -111,19 +113,32 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
     return None, {}
 
 
-def _trace_origin_evidence(result: InvestigationResult, dependency_name: str) -> list[str]:
+def _trace_origin_evidence(
+    result: InvestigationResult,
+    dependency_name: str,
+    instance_hint: str | None = None,
+) -> list[str]:
     output: list[str] = []
     for evidence in result.evidence:
         if evidence.category != "trace-causal-chain":
             continue
-        if str(evidence.facts.get("candidate_service") or "") == dependency_name:
-            output.append(evidence.id)
+        if str(evidence.facts.get("candidate_service") or "") != dependency_name:
+            continue
+        candidate_instance = str(evidence.facts.get("candidate_instance") or "") or None
+        if candidate_instance != instance_hint:
+            continue
+        output.append(evidence.id)
     return output
 
 
-def _trace_chain_contains(result: InvestigationResult, dependency_name: str) -> bool:
+def _trace_chain_contains(
+    result: InvestigationResult,
+    dependency_name: str,
+    instance_hint: str | None = None,
+) -> bool:
     return any(
         hop.service == dependency_name
+        and (str(hop.metadata.get("server.address") or "") or None) == instance_hint
         for analysis in result.trace_analyses
         for hop in analysis.causal_chain
     )
@@ -150,8 +165,13 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
             continue
         seen.add(key)
 
-        trace_ids = _trace_origin_evidence(result, entity.name)
-        causal_role = "origin" if trace_ids else ("supporting" if _trace_chain_contains(result, entity.name) else "context")
+        instance_hint = values.get("instance_hint")
+        trace_ids = _trace_origin_evidence(result, entity.name, instance_hint)
+        causal_role = "origin" if trace_ids else (
+            "supporting"
+            if _trace_chain_contains(result, entity.name, instance_hint)
+            else "context"
+        )
         targets.append(
             DependencyTarget(
                 entity=entity,
@@ -176,25 +196,53 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
             explicit = explicit.lower()
             if explicit in {"postgres", "postgresql"}:
                 database = labels.get("database") or labels.get("db.namespace") or "postgres"
+                instance_hint = (
+                    labels.get("postgres_instance")
+                    or labels.get("server.address")
+                )
+                entity_id = (
+                    f"dependency:postgresql/{database}@{instance_hint}"
+                    if instance_hint
+                    else f"dependency:postgresql/{database}"
+                )
                 entity = Entity(
-                    id=f"dependency:postgresql/{database}",
+                    id=entity_id,
                     kind="TraceDependency",
                     name=f"postgresql/{database}",
-                    metadata={"db.system": "postgresql", "db.namespace": database},
+                    metadata={
+                        "db.system": "postgresql",
+                        "db.namespace": database,
+                        **({"server.address": instance_hint} if instance_hint else {}),
+                    },
                 )
                 result.entities.append(entity)
-                targets.append(DependencyTarget(entity, "postgresql", database, causal_role="context"))
+                targets.append(
+                    DependencyTarget(
+                        entity,
+                        "postgresql",
+                        database,
+                        instance_hint=instance_hint,
+                        causal_role="context",
+                    )
+                )
             elif explicit == "kafka":
                 topic = labels.get("topic") or labels.get("messaging.destination.name")
                 group = labels.get("consumer_group") or labels.get("messaging.consumer.group.name")
+                instance_hint = labels.get("kafka_instance") or labels.get("server.address")
+                entity_id = (
+                    f"dependency:kafka/{topic or 'cluster'}@{instance_hint}"
+                    if instance_hint
+                    else f"dependency:kafka/{topic or 'cluster'}"
+                )
                 entity = Entity(
-                    id=f"dependency:kafka/{topic or 'cluster'}",
+                    id=entity_id,
                     kind="TraceDependency",
                     name=f"kafka/{topic or 'cluster'}",
                     metadata={
                         "messaging.system": "kafka",
                         "messaging.destination.name": topic,
                         "messaging.consumer.group.name": group,
+                        **({"server.address": instance_hint} if instance_hint else {}),
                     },
                 )
                 result.entities.append(entity)
@@ -205,20 +253,37 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
                         topic,
                         topic=topic,
                         consumer_group=group,
+                        instance_hint=instance_hint,
                         causal_role="context",
                     )
                 )
             elif explicit in {"redis", "valkey"}:
-                name = labels.get("redis_instance") or labels.get("db.namespace") or "redis"
+                name = labels.get("db.namespace") or "redis"
+                instance_hint = labels.get("redis_instance") or labels.get("server.address")
+                entity_id = (
+                    f"dependency:redis/{name}@{instance_hint}"
+                    if instance_hint
+                    else f"dependency:redis/{name}"
+                )
                 entity = Entity(
-                    id=f"dependency:redis/{name}",
+                    id=entity_id,
                     kind="TraceDependency",
                     name=f"redis/{name}",
-                    metadata={"db.system": "redis", "db.namespace": name},
+                    metadata={
+                        "db.system": "redis",
+                        "db.namespace": name,
+                        **({"server.address": instance_hint} if instance_hint else {}),
+                    },
                 )
                 result.entities.append(entity)
                 targets.append(
-                    DependencyTarget(entity, "redis", name, instance_hint=labels.get("instance"), causal_role="context")
+                    DependencyTarget(
+                        entity,
+                        "redis",
+                        name,
+                        instance_hint=instance_hint,
+                        causal_role="context",
+                    )
                 )
 
     targets.sort(key=lambda item: {"origin": 0, "supporting": 1, "context": 2}[item.causal_role])
@@ -592,6 +657,7 @@ async def _kafka(
         target.consumer_group,
         result.incident.starts_at,
         settings.dependency_window_minutes,
+        target.instance_hint,
     )
 
     lag = _metric(metrics, "consumer_lag")
@@ -724,7 +790,11 @@ async def _kafka(
         hypothesis_id=primary.id if primary else None,
         evidence_ids=list(primary.supporting_evidence) if primary else [],
         signals=signals,
-        metadata={"topic": target.topic, "consumer_group": target.consumer_group},
+        metadata={
+            "topic": target.topic,
+            "consumer_group": target.consumer_group,
+            "instance_hint": target.instance_hint,
+        },
     )
 
 
@@ -1038,7 +1108,8 @@ def _remediation(analysis: StatefulDependencyAnalysis) -> list[Remediation]:
 def _can_promote(result: InvestigationResult, analysis: StatefulDependencyAnalysis) -> bool:
     if analysis.causal_role != "origin" or not analysis.hypothesis_id:
         return False
-    if not _trace_origin_evidence(result, analysis.name):
+    instance_hint = str(analysis.metadata.get("instance_hint") or "") or None
+    if not _trace_origin_evidence(result, analysis.name, instance_hint):
         return False
     return (
         result.status == "inconclusive"
