@@ -1,4 +1,4 @@
-# Roadmap after v0.5
+# Roadmap after v0.6
 
 ## Completed in v0.2
 
@@ -70,17 +70,31 @@
 - [ ] direct dependency-alert promotion without a trace when equivalent causal evidence exists
 - [ ] dependency-specific dynamic baselines instead of threshold-only evaluation
 
-## v0.6 — operational productization
+## Completed in v0.6 — operational productization
 
-- [ ] Slack/PagerDuty delivery
-- [ ] evidence hash/audit log
-- [ ] NetworkPolicy templates
-- [ ] OIDC/RBAC for UI/API
-- [ ] multi-cluster tenancy
-- [ ] query budget/cost controls
-- [ ] retention policies
-- [ ] per-source health/capability reporting
-- [ ] incident export / sharing format
+- [x] Slack/PagerDuty delivery
+- [x] evidence SHA-256 integrity and audit log
+- [x] opt-in NetworkPolicy templates
+- [x] OIDC/RBAC for UI/API
+- [x] tenant-scoped incident memory, audit and export
+- [x] multi-cluster integration routing with cluster claim authorization
+- [x] per-incident query budget/cost controls
+- [x] incident and audit retention policies
+- [x] per-source health/capability reporting
+- [x] incident export / sharing format
+- [x] Alertmanager machine-token authentication
+- [x] operational /ops UI
+- [x] external Kubernetes Secret injection for sensitive environment variables
+
+## v0.6.x — operational depth
+
+- [ ] OIDC discovery URL support in addition to explicit JWKS URL
+- [ ] external immutable audit sink / SIEM delivery
+- [ ] signed export bundles using KMS/workload identity
+- [ ] per-tenant notification routing
+- [ ] per-cluster Prometheus label mapping for exporter identity aliases
+- [ ] scheduled retention job independent from process restarts
+- [ ] capability history and alerting
 
 ## v0.7 — guarded remediation plane
 
