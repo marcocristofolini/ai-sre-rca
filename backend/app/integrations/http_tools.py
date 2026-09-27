@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import math
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
 from app.config import Settings
+from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
 
 
 class ReadOnlyHTTPTools:
@@ -47,14 +47,14 @@ class ReadOnlyHTTPTools:
             return response.json()
 
     async def get_pod(self, namespace: str, pod: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/api/v1/namespaces/{quote(namespace)}/pods/{quote(pod)}")
+        return await self._k8s_get(f"/api/v1/namespaces/{path_segment(namespace)}/pods/{path_segment(pod)}")
 
     async def get_node(self, node: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/api/v1/nodes/{quote(node)}")
+        return await self._k8s_get(f"/api/v1/nodes/{path_segment(node)}")
 
     async def get_events(self, namespace: str, object_name: str) -> list[dict[str, Any]]:
         data = await self._k8s_get(
-            f"/api/v1/namespaces/{quote(namespace)}/events",
+            f"/api/v1/namespaces/{path_segment(namespace)}/events",
             {"fieldSelector": f"involvedObject.name={object_name}"},
         )
         return data.get("items", [])
@@ -67,10 +67,10 @@ class ReadOnlyHTTPTools:
         return data.get("items", [])
 
     async def get_replicaset(self, namespace: str, name: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/apis/apps/v1/namespaces/{quote(namespace)}/replicasets/{quote(name)}")
+        return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/replicasets/{path_segment(name)}")
 
     async def get_deployment(self, namespace: str, name: str) -> dict[str, Any]:
-        return await self._k8s_get(f"/apis/apps/v1/namespaces/{quote(namespace)}/deployments/{quote(name)}")
+        return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/deployments/{path_segment(name)}")
 
     async def list_pods_on_node(self, node: str) -> list[dict[str, Any]]:
         data = await self._k8s_get("/api/v1/pods", {"fieldSelector": f"spec.nodeName={node}"})
@@ -78,7 +78,7 @@ class ReadOnlyHTTPTools:
 
     async def get_hpa_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
         data = await self._k8s_get(
-            f"/apis/autoscaling/v2/namespaces/{quote(namespace)}/horizontalpodautoscalers"
+            f"/apis/autoscaling/v2/namespaces/{path_segment(namespace)}/horizontalpodautoscalers"
         )
         for item in data.get("items", []):
             target = item.get("spec", {}).get("scaleTargetRef", {})
@@ -88,7 +88,7 @@ class ReadOnlyHTTPTools:
 
     async def get_scaledobject_for_target(self, namespace: str, kind: str, name: str) -> dict[str, Any]:
         data = await self._k8s_get(
-            f"/apis/keda.sh/v1alpha1/namespaces/{quote(namespace)}/scaledobjects"
+            f"/apis/keda.sh/v1alpha1/namespaces/{path_segment(namespace)}/scaledobjects"
         )
         for item in data.get("items", []):
             target = item.get("spec", {}).get("scaleTargetRef", {})
@@ -125,11 +125,19 @@ class ReadOnlyHTTPTools:
 
     @staticmethod
     def _prom_label(value: str) -> str:
-        return value.replace("\\", "\\\\").replace('"', '\\"')
+        return quoted_string(value)
 
     @staticmethod
     def _prom_regex_literal(value: str) -> str:
-        return re.sub(r'([\\.^$|?*+(){}\[\]])', r'\\\1', value)
+        return escape_prom_regex_literal(value)
+
+    @classmethod
+    def _prom_instance_matcher(cls, value: str) -> str:
+        raw = str(value).strip()
+        explicit_port = raw.count(":") == 1 and raw.rsplit(":", 1)[1].isdigit()
+        safe = cls._prom_regex_literal(raw)
+        suffix = "" if explicit_port else "(:[0-9]+)?"
+        return f'instance=~"^{safe}{suffix}$"'
 
     async def _named_prometheus_scalars(
         self,
@@ -189,9 +197,9 @@ class ReadOnlyHTTPTools:
             }
 
         db = self._prom_label(database)
-        safe_instance = self._prom_label(self._prom_regex_literal(instance_hint))
-        instance_matcher = f',instance=~".*{safe_instance}.*"'
-        instance_selector = f'{{instance=~".*{safe_instance}.*"}}'
+        instance_label_matcher = self._prom_instance_matcher(instance_hint)
+        instance_matcher = f",{instance_label_matcher}"
+        instance_selector = f"{{{instance_label_matcher}}}"
         db_selector = f'{{datname="{db}"{instance_matcher}}}'
 
         queries = {
@@ -248,8 +256,8 @@ class ReadOnlyHTTPTools:
             }
 
         topic_label = self._prom_label(topic)
-        safe_instance = self._prom_label(self._prom_regex_literal(instance_hint))
-        instance_matcher = f',instance=~".*{safe_instance}.*"'
+        instance_label_matcher = self._prom_instance_matcher(instance_hint)
+        instance_matcher = f",{instance_label_matcher}"
         topic_selector = f'{{topic="{topic_label}"{instance_matcher}}}'
         queries: dict[str, str] = {
             "under_replicated_partitions": (
@@ -320,8 +328,7 @@ class ReadOnlyHTTPTools:
                 },
             }
 
-        safe_hint = self._prom_label(self._prom_regex_literal(instance_hint))
-        selector = f'{{instance=~".*{safe_hint}.*"}}'
+        selector = f"{{{self._prom_instance_matcher(instance_hint)}}}"
         queries = {
             "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
             "memory_max_bytes": f"max(redis_memory_max_bytes{selector})",
@@ -345,7 +352,7 @@ class ReadOnlyHTTPTools:
 
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         window = self.settings.service_graph_window_minutes
-        escaped = service.replace('"', '\\"')
+        escaped = self._prom_label(service)
         selector_server = f'{{server="{escaped}"}}'
         selector_client = f'{{client="{escaped}"}}'
         grouping = "by (client, server, connection_type)"
@@ -428,7 +435,7 @@ class ReadOnlyHTTPTools:
         end: datetime,
         limit: int = 8,
     ) -> list[dict[str, Any]]:
-        escaped = service.replace("\\", "\\\\").replace('"', '\\"')
+        escaped = quoted_string(service)
         queries = [
             f'{{ resource.service.name = "{escaped}" && status = error }}',
             f'{{ resource.service.name = "{escaped}" }}',
@@ -484,7 +491,7 @@ class ReadOnlyHTTPTools:
             headers=self._tempo_headers(),
             timeout=20,
         ) as client:
-            response = await client.get(f"/api/v2/traces/{quote(trace_id)}", params=params)
+            response = await client.get(f"/api/v2/traces/{path_segment(trace_id)}", params=params)
             if response.status_code == 404:
                 return {}
             response.raise_for_status()
@@ -536,7 +543,7 @@ class ReadOnlyHTTPTools:
         if self.settings.argocd_token:
             headers["Authorization"] = f"Bearer {self.settings.argocd_token}"
         async with httpx.AsyncClient(base_url=self.settings.argocd_url, headers=headers, timeout=10) as client:
-            response = await client.get(f"/api/v1/applications/{quote(app_name)}")
+            response = await client.get(f"/api/v1/applications/{path_segment(app_name)}")
             if response.status_code == 404:
                 return {}
             response.raise_for_status()
@@ -554,7 +561,7 @@ class ReadOnlyHTTPTools:
         if self.settings.github_token:
             headers["Authorization"] = f"Bearer {self.settings.github_token}"
         async with httpx.AsyncClient(base_url=self.settings.github_api_url, headers=headers, timeout=10) as client:
-            response = await client.get(f"/repos/{quote(owner)}/{quote(repo)}/commits/{quote(revision)}")
+            response = await client.get(f"/repos/{path_segment(owner)}/{path_segment(repo)}/commits/{path_segment(revision)}")
             if response.status_code in {401, 403, 404}:
                 return {}
             response.raise_for_status()
