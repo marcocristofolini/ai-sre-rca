@@ -10,6 +10,7 @@ from app.core.k8s_signals import classify_pod_scenario
 from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
 from app.core.scoring import score_hypothesis
+from app.core.stateful_dependency import enrich_with_stateful_dependencies
 from app.core.trace_analysis import enrich_with_trace_causality
 from app.memory.base import IncidentMemory
 from app.integrations.base import InvestigationTools
@@ -113,7 +114,12 @@ class InvestigationEngine:
         else:
             result = self._generic_result(incident_id, incident, similar)
 
-        return await enrich_with_trace_causality(
+        result = await enrich_with_trace_causality(
+            result,
+            tools=self.tools,
+            settings=self.settings,
+        )
+        return await enrich_with_stateful_dependencies(
             result,
             tools=self.tools,
             settings=self.settings,
