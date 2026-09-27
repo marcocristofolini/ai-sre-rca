@@ -97,3 +97,11 @@ export async function fetchDemo(): Promise<Investigation> {
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
+
+
+export async function fetchTraceDemo(): Promise<Investigation> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const res = await fetch(`${base}/api/v1/incidents/demo/trace`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
