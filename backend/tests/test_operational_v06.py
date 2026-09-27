@@ -264,3 +264,31 @@ def test_demo_api_exposes_audit_export_budget_and_capabilities():
         )
         assert capabilities.status_code == 200
         assert all(item["status"] == "healthy" for item in capabilities.json()["sources"])
+
+
+
+def test_alertmanager_machine_token_is_constant_time_gate():
+    original = app.state.settings.alertmanager_webhook_token
+    app.state.settings.alertmanager_webhook_token = "machine-secret"
+    payload = {
+        "status": "resolved",
+        "alerts": [{
+            "status": "resolved",
+            "labels": {"alertname": "ResolvedAlert"},
+            "annotations": {},
+        }],
+    }
+    try:
+        with TestClient(app) as client:
+            denied = client.post("/api/v1/webhooks/alertmanager", json=payload)
+            assert denied.status_code == 401
+
+            accepted = client.post(
+                "/api/v1/webhooks/alertmanager",
+                json=payload,
+                headers={"X-Webhook-Token": "machine-secret"},
+            )
+            assert accepted.status_code == 200
+            assert accepted.json()["accepted"] == 0
+    finally:
+        app.state.settings.alertmanager_webhook_token = original
