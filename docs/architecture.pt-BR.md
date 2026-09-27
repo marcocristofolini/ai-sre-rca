@@ -301,3 +301,23 @@ flowchart LR
 - Isolamento por tenant e cluster.
 - Admission policy rejeitando verbos de escrita para o ServiceAccount do investigador.
 - Identidade separada e aprovação humana explícita para qualquer futuro executor de remediação.
+
+
+## Plano operacional — v0.6
+
+```mermaid
+flowchart LR
+    U[Usuário / Proxy OIDC] --> UI[Next.js]
+    UI --> API[FastAPI]
+    API --> AUTH[OIDC + RBAC]
+    AUTH --> TENANT[Tenant + Cluster Scope]
+    TENANT --> ENG[Investigation Engine]
+    ENG --> QB[Query Budget]
+    ENG --> HASH[Evidence SHA-256]
+    ENG --> AUDIT[Audit Log]
+    ENG --> NOTIFY[Slack / PagerDuty]
+    ENG --> EXPORT[Export com Integridade]
+    QB --> SRC[Fontes Read-only]
+```
+
+A v0.6 adiciona autenticação, isolamento de tenant/cluster, budgets, retenção, auditoria e entrega operacional sem alterar o boundary read-only do investigador. Detalhes completos: [operations.pt-BR.md](operations.pt-BR.md).
