@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any
 
 from app.config import Settings
+from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
 from app.schemas import (
@@ -409,7 +410,7 @@ async def _trace_red_evidence(
     service: str,
     incident: IncidentInput,
 ) -> Evidence | None:
-    escaped = service.replace("\\", "\\\\").replace('"', '\\"')
+    escaped = quoted_string(service)
     start = incident.starts_at - timedelta(minutes=10)
     end = incident.starts_at + timedelta(minutes=5)
     queries = {
@@ -564,7 +565,7 @@ async def enrich_with_trace_causality(
             "analyzed": len(analyses),
             "trace_ids": [analysis.trace_id for analysis in analyses],
         },
-        query=f'{{ resource.service.name = "{service}" }}',
+        query=f'{{ resource.service.name = "{quoted_string(service)}" }}',
         raw_reference="tempo:/api/search",
         strength="medium",
     )
