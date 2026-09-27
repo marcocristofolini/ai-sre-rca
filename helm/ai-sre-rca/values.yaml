@@ -89,23 +89,9 @@ networkPolicy:
   # and observability namespaces before enabling in production.
   frontendIngress:
     - {}
-  backendIngress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: ai-sre-rca-frontend
-  frontendEgress:
-    - to:
-        - podSelector:
-            matchLabels:
-              app: ai-sre-rca-backend
-      ports:
-        - protocol: TCP
-          port: 8080
-    - ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
+  additionalBackendIngress: []
+  additionalFrontendEgress: []
+  # Empty object means unrestricted backend egress once the policy is enabled.
+  # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
   backendEgress:
     - {}
