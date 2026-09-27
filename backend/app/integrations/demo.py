@@ -134,9 +134,9 @@ class DemoTools:
 
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         return [
-            {"client": "web-gateway", "server": service, "requests": 22.0, "connection_type": "unset"},
-            {"client": service, "server": "catalog-api", "requests": 16.0, "connection_type": "unset"},
-            {"client": service, "server": "redis", "requests": 9.0, "connection_type": "database"},
+            {"client": "web-gateway", "server": service, "requests": 22.0, "failures": 1.0, "error_ratio": 1 / 22, "p95_seconds": 0.18, "connection_type": "unset"},
+            {"client": service, "server": "catalog-api", "requests": 16.0, "failures": 2.0, "error_ratio": 0.125, "p95_seconds": 0.42, "connection_type": "unset"},
+            {"client": service, "server": "redis", "requests": 9.0, "failures": 0.0, "error_ratio": 0.0, "p95_seconds": 0.03, "connection_type": "database"},
         ]
 
     async def tempo_search_traces(self, service: str, start: datetime, end: datetime, limit: int = 8) -> list[dict[str, Any]]:
