@@ -156,3 +156,49 @@ export async function fetchStatefulDemo(dependency: StatefulDependencyKind = 'po
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
+
+
+export type SystemIdentity = {
+  subject: string;
+  tenant_id: string;
+  roles: string[];
+  clusters: string[];
+  auth_enabled: boolean;
+};
+
+export type CapabilityReport = {
+  cluster: string;
+  tenant_id: string;
+  auth_enabled: boolean;
+  notifications_enabled: boolean;
+  persistence: string;
+  generated_at: string;
+  sources: Array<{
+    source: string;
+    status: 'healthy' | 'degraded' | 'unavailable' | 'disabled';
+    detail: string;
+    cluster?: string;
+    latency_ms?: number;
+  }>;
+};
+
+export async function fetchIdentity(): Promise<SystemIdentity> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const res = await fetch(`${base}/api/v1/system/me`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
+
+export async function fetchCapabilities(cluster: string): Promise<CapabilityReport> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const query = new URLSearchParams({ cluster });
+  const res = await fetch(`${base}/api/v1/system/capabilities?${query.toString()}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
