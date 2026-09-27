@@ -127,6 +127,10 @@ class ReadOnlyHTTPTools:
     def _prom_label(value: str) -> str:
         return value.replace("\\", "\\\\").replace('"', '\\"')
 
+    @staticmethod
+    def _prom_regex_literal(value: str) -> str:
+        return re.sub(r'([\\.^$|?*+(){}\[\]])', r'\\\1', value)
+
     async def _named_prometheus_scalars(
         self,
         queries: dict[str, str],
@@ -158,6 +162,7 @@ class ReadOnlyHTTPTools:
     ) -> dict[str, Any]:
         signal_names = (
             "connections",
+            "database_connections",
             "active_connections",
             "idle_in_transaction",
             "max_connections",
@@ -184,13 +189,14 @@ class ReadOnlyHTTPTools:
             }
 
         db = self._prom_label(database)
-        safe_instance = self._prom_label(re.escape(instance_hint))
+        safe_instance = self._prom_label(self._prom_regex_literal(instance_hint))
         instance_matcher = f',instance=~".*{safe_instance}.*"'
         instance_selector = f'{{instance=~".*{safe_instance}.*"}}'
         db_selector = f'{{datname="{db}"{instance_matcher}}}'
 
         queries = {
-            "connections": f"sum(pg_stat_activity_count{db_selector})",
+            "connections": f"sum(pg_stat_activity_count{instance_selector})",
+            "database_connections": f"sum(pg_stat_activity_count{db_selector})",
             "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"{instance_matcher}}})',
             "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"{instance_matcher}}})',
             "max_connections": f"max(pg_settings_max_connections{instance_selector})",
@@ -242,7 +248,7 @@ class ReadOnlyHTTPTools:
             }
 
         topic_label = self._prom_label(topic)
-        safe_instance = self._prom_label(re.escape(instance_hint))
+        safe_instance = self._prom_label(self._prom_regex_literal(instance_hint))
         instance_matcher = f',instance=~".*{safe_instance}.*"'
         topic_selector = f'{{topic="{topic_label}"{instance_matcher}}}'
         queries: dict[str, str] = {
@@ -250,7 +256,7 @@ class ReadOnlyHTTPTools:
                 f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})"
             ),
             "offline_partitions": (
-                f"count(kafka_topic_partition_leader{topic_selector} < 0)"
+                f"sum(kafka_topic_partition_leader{topic_selector} < bool 0)"
             ),
         }
 
@@ -314,7 +320,7 @@ class ReadOnlyHTTPTools:
                 },
             }
 
-        safe_hint = self._prom_label(re.escape(instance_hint))
+        safe_hint = self._prom_label(self._prom_regex_literal(instance_hint))
         selector = f'{{instance=~".*{safe_hint}.*"}}'
         queries = {
             "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
