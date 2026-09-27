@@ -6,6 +6,10 @@ from typing import Any
 def dependency_instance(metadata: dict[str, Any] | None) -> str | None:
     """Build a stable endpoint identity from OpenTelemetry server attributes."""
     values = metadata or {}
+    explicit = str(values.get("dependency.instance") or "").strip()
+    if explicit:
+        return explicit
+
     address = str(values.get("server.address") or "").strip()
     if not address:
         return None
