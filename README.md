@@ -8,6 +8,10 @@ Evidence-first, read-only SRE incident investigator for Kubernetes, distributed 
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
+## v0.5.1 hardening patch
+
+v0.5.1 tightens stateful RCA correctness after the v0.5 review: invalid stateful UI routes return 404, trace metadata is merged instead of dropped, PostgreSQL exporter metric names/lock labels are aligned with the current collector, and PostgreSQL/Redis telemetry refuses unscoped instance-wide aggregation when instance identity is missing.
+
 ## What changed in v0.5
 
 - **Stateful dependency promotion.** Trace-derived database/messaging dependency nodes can now become deterministic PostgreSQL, Kafka or Redis investigation targets.
