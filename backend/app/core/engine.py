@@ -142,8 +142,21 @@ class InvestigationEngine:
         similar: list[SimilarIncident],
     ) -> InvestigationResult:
         assert incident.namespace and incident.pod
+        integration_errors: list[tuple[str, str]] = []
+
+        async def optional(source: str, operation, default):
+            try:
+                return await operation
+            except Exception as exc:
+                integration_errors.append((source, type(exc).__name__))
+                return default
+
         pod = await self.tools.get_pod(incident.namespace, incident.pod)
-        preloaded_events = await self.tools.get_events(incident.namespace, incident.pod)
+        preloaded_events = await optional(
+            "kubernetes-events",
+            self.tools.get_events(incident.namespace, incident.pod),
+            [],
+        )
         scenario = classify_pod_scenario(incident, pod, preloaded_events)
         if scenario != "eviction":
             if scenario == "generic-pod":
@@ -166,28 +179,76 @@ class InvestigationEngine:
         argo_app_name = labels.get("app.kubernetes.io/instance") or service_name
 
         rs_ref = _owner(pod, "ReplicaSet")
-        rs = await self.tools.get_replicaset(incident.namespace, rs_ref["name"]) if rs_ref else {}
+        rs = (
+            await optional(
+                "kubernetes-replicaset",
+                self.tools.get_replicaset(incident.namespace, rs_ref["name"]),
+                {},
+            )
+            if rs_ref
+            else {}
+        )
         deploy_ref = _owner(rs, "Deployment")
-        deployment = await self.tools.get_deployment(incident.namespace, deploy_ref["name"]) if deploy_ref else {}
+        deployment = (
+            await optional(
+                "kubernetes-deployment",
+                self.tools.get_deployment(incident.namespace, deploy_ref["name"]),
+                {},
+            )
+            if deploy_ref
+            else {}
+        )
         if deployment:
             argo_app_name = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/instance", argo_app_name)
 
         start = incident.starts_at
         event_task = asyncio.sleep(0, result=preloaded_events)
-        node_task = self.tools.get_node(node_name) if node_name else asyncio.sleep(0, result={})
+        node_task = (
+            optional("kubernetes-node", self.tools.get_node(node_name), {})
+            if node_name
+            else asyncio.sleep(0, result={})
+        )
         namespace_label = quoted_string(incident.namespace)
         pod_label = quoted_string(incident.pod)
         logs_query = f'{{namespace="{namespace_label}", pod="{pod_label}"}}'
-        logs_task = self.tools.loki_query_range(
-            logs_query,
-            start - timedelta(minutes=20),
-            start + timedelta(minutes=5),
-            100,
+        logs_task = optional(
+            "loki",
+            self.tools.loki_query_range(
+                logs_query,
+                start - timedelta(minutes=20),
+                start + timedelta(minutes=5),
+                100,
+            ),
+            {"data": {"result": []}},
         )
-        graph_task = self.tools.service_graph(service_name, start)
-        argo_task = self.tools.argocd_application(argo_app_name)
-        nodeclaim_task = self.tools.karpenter_nodeclaim_for_node(node_name) if node_name else asyncio.sleep(0, result={})
-        node_pods_task = self.tools.list_pods_on_node(node_name) if node_name else asyncio.sleep(0, result=[])
+        graph_task = optional(
+            "service-graph",
+            self.tools.service_graph(service_name, start),
+            [],
+        )
+        argo_task = optional(
+            "argocd",
+            self.tools.argocd_application(argo_app_name),
+            {},
+        )
+        nodeclaim_task = (
+            optional(
+                "karpenter",
+                self.tools.karpenter_nodeclaim_for_node(node_name),
+                {},
+            )
+            if node_name
+            else asyncio.sleep(0, result={})
+        )
+        node_pods_task = (
+            optional(
+                "kubernetes-node-pods",
+                self.tools.list_pods_on_node(node_name),
+                [],
+            )
+            if node_name
+            else asyncio.sleep(0, result=[])
+        )
         events, node, logs, service_edges, argo_app, nodeclaim, node_pods = await asyncio.gather(
             event_task, node_task, logs_task, graph_task, argo_task, nodeclaim_task, node_pods_task
         )
@@ -200,12 +261,20 @@ class InvestigationEngine:
                 f'node_filesystem_avail_bytes{{instance=~"^{node_pattern}(:[0-9]+)?$",mountpoint="/"}}'
             )
             fs_current, fs_trend = await asyncio.gather(
-                self.tools.prometheus_query(fs_query, start),
-                self.tools.prometheus_query_range(
-                    fs_query,
-                    start - timedelta(minutes=30),
-                    start + timedelta(minutes=2),
-                    "60s",
+                optional(
+                    "prometheus-current",
+                    self.tools.prometheus_query(fs_query, start),
+                    {},
+                ),
+                optional(
+                    "prometheus-range",
+                    self.tools.prometheus_query_range(
+                        fs_query,
+                        start - timedelta(minutes=30),
+                        start + timedelta(minutes=2),
+                        "60s",
+                    ),
+                    {},
                 ),
             )
         else:
@@ -215,14 +284,32 @@ class InvestigationEngine:
         revision = argo_app.get("status", {}).get("sync", {}).get("revision", "") if argo_app else ""
         github_commit: dict[str, Any] = {}
         if repo_url and revision:
-            github_commit = await self.tools.github_commit(repo_url, revision)
+            github_commit = await optional(
+                "github",
+                self.tools.github_commit(repo_url, revision),
+                {},
+            )
 
         karpenter_events: list[dict[str, Any]] = []
         claim_name = nodeclaim.get("metadata", {}).get("name")
         if claim_name:
-            karpenter_events = await self.tools.get_cluster_events(claim_name)
+            karpenter_events = await optional(
+                "karpenter-events",
+                self.tools.get_cluster_events(claim_name),
+                [],
+            )
 
         evidence: list[Evidence] = []
+        for source, error_type in integration_errors:
+            evidence.append(
+                Evidence(
+                    source=source,
+                    category="integration-error",
+                    summary=f"{source} enrichment was unavailable; investigation continued with remaining evidence.",
+                    facts={"error_type": error_type},
+                    strength="weak",
+                )
+            )
         entities: list[Entity] = []
         graph_edges: list[GraphEdge] = []
         entity_ids: set[str] = set()
