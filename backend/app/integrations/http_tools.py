@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import math
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -116,9 +118,10 @@ class ReadOnlyHTTPTools:
     @staticmethod
     def _prometheus_scalar(payload: dict[str, Any]) -> float | None:
         try:
-            return float(payload["data"]["result"][0]["value"][1])
+            value = float(payload["data"]["result"][0]["value"][1])
         except (KeyError, IndexError, TypeError, ValueError):
             return None
+        return value if math.isfinite(value) else None
 
     @staticmethod
     def _prom_label(value: str) -> str:
@@ -151,23 +154,45 @@ class ReadOnlyHTTPTools:
         database: str,
         at: datetime,
         window_minutes: int = 15,
+        instance_hint: str | None = None,
     ) -> dict[str, Any]:
         db = self._prom_label(database)
+        instance_matcher = ""
+        if instance_hint:
+            safe_instance = self._prom_label(re.escape(instance_hint))
+            instance_matcher = f',instance=~".*{safe_instance}.*"'
+
+        db_selector = f'{{datname="{db}"{instance_matcher}}}'
         queries = {
-            "connections": f'sum(pg_stat_activity_count{{datname="{db}"}})',
-            "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"}})',
-            "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"}})',
-            "max_connections": "max(pg_settings_max_connections)",
-            "locks": f'sum(pg_locks_count{{datname="{db}"}})',
-            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"}})',
-            "deadlocks_delta": f'sum(increase(pg_stat_database_deadlocks{{datname="{db}"}}[{window_minutes}m]))',
-            "replication_lag_bytes": "max(pg_stat_replication_pg_wal_lsn_diff)",
-            "long_tx_seconds": "max(pg_long_running_transactions)",
+            "connections": f"sum(pg_stat_activity_count{db_selector})",
+            "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"{instance_matcher}}})',
+            "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"{instance_matcher}}})',
+            "locks": f"sum(pg_locks_count{db_selector})",
+            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="AccessExclusiveLock"{instance_matcher}}})',
+            "deadlocks_delta": f"sum(increase(pg_stat_database_deadlocks{db_selector}[{window_minutes}m]))",
+            "long_tx_seconds": f"max(pg_long_running_transactions{db_selector})",
         }
+        if instance_hint:
+            instance_selector = f'{{instance=~".*{self._prom_label(re.escape(instance_hint))}.*"}}'
+            queries["max_connections"] = f"max(pg_settings_max_connections{instance_selector})"
+            queries["replication_lag_bytes"] = f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})"
+
         result = await self._named_prometheus_scalars(queries, at)
+        if not instance_hint:
+            result["max_connections"] = {
+                "value": None,
+                "query": None,
+                "error": "instance identity required to scope max_connections",
+            }
+            result["replication_lag_bytes"] = {
+                "value": None,
+                "query": None,
+                "error": "instance identity required to scope replication lag",
+            }
         return {
             "kind": "postgresql",
             "database": database,
+            "instance_hint": instance_hint,
             "window_minutes": window_minutes,
             "signals": result,
         }
@@ -179,29 +204,34 @@ class ReadOnlyHTTPTools:
         at: datetime,
         window_minutes: int = 15,
     ) -> dict[str, Any]:
-        matchers: list[str] = []
+        queries: dict[str, str] = {}
         if topic:
-            matchers.append(f'topic="{self._prom_label(topic)}"')
-        topic_selector = "{" + ",".join(matchers) + "}" if matchers else ""
+            topic_label = self._prom_label(topic)
+            topic_selector = f'{{topic="{topic_label}"}}'
+            queries["under_replicated_partitions"] = (
+                f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})"
+            )
+            queries["offline_partitions"] = (
+                f"count(kafka_topic_partition_leader{topic_selector} < 0)"
+            )
+            if consumer_group:
+                group = self._prom_label(consumer_group)
+                group_selector = f'{{topic="{topic_label}",consumergroup="{group}"}}'
+                queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
+                queries["consumer_group_members"] = (
+                    f'min(kafka_consumergroup_members{{consumergroup="{group}"}})'
+                )
 
-        group_matchers = list(matchers)
-        if consumer_group:
-            group_matchers.append(f'consumergroup="{self._prom_label(consumer_group)}"')
-        group_selector = "{" + ",".join(group_matchers) + "}" if group_matchers else ""
-
-        member_selector = (
-            "{" + f'consumergroup="{self._prom_label(consumer_group)}"' + "}"
-            if consumer_group
-            else ""
-        )
-
-        queries = {
-            "consumer_lag": f"sum(kafka_consumergroup_lag{group_selector})",
-            "under_replicated_partitions": f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})",
-            "offline_partitions": f"count(kafka_topic_partition_leader{topic_selector} < 0)",
-            "consumer_group_members": f"min(kafka_consumergroup_members{member_selector})",
-        }
         result = await self._named_prometheus_scalars(queries, at)
+        missing_reason = (
+            "topic identity required to scope Kafka telemetry"
+            if not topic
+            else "consumer group identity required for consumer-specific telemetry"
+        )
+        for name in ("consumer_lag", "under_replicated_partitions", "offline_partitions", "consumer_group_members"):
+            if name not in result:
+                result[name] = {"value": None, "query": None, "error": missing_reason}
+
         return {
             "kind": "kafka",
             "topic": topic,
@@ -218,7 +248,7 @@ class ReadOnlyHTTPTools:
     ) -> dict[str, Any]:
         selector = ""
         if instance_hint:
-            safe_hint = self._prom_label(instance_hint)
+            safe_hint = self._prom_label(re.escape(instance_hint))
             selector = f'{{instance=~".*{safe_hint}.*"}}'
 
         queries = {
