@@ -532,6 +532,27 @@ async def enrich_with_trace_causality(
     if red_ev:
         result.evidence.append(red_ev)
 
+    graph_red_edges: list[dict[str, Any]] = []
+    if not any(ev.category == "service-graph" for ev in result.evidence):
+        try:
+            graph_red_edges = await tools.service_graph(service, result.incident.starts_at)
+        except Exception:
+            graph_red_edges = []
+        if graph_red_edges:
+            graph_red_ev = Evidence(
+                source="opentelemetry",
+                category="service-graph",
+                summary=(
+                    f"Trace-derived service graph exposed {len(graph_red_edges)} dependency edges "
+                    f"with request, failure and p95 latency signals around {service}."
+                ),
+                facts={"service": service, "edges": graph_red_edges},
+                query=graph_red_edges[0].get("query"),
+                raw_reference="prometheus:traces_service_graph_*",
+                strength="medium",
+            )
+            result.evidence.append(graph_red_ev)
+
     entity_ids = {entity.id for entity in result.entities}
     existing_edges = {
         (edge.source, edge.target, edge.relationship, tuple(edge.evidence_ids))
@@ -551,6 +572,139 @@ async def enrich_with_trace_causality(
         for ev in trace_evidence
         if ev.facts.get("trace_id")
     }
+
+    if graph_red_edges:
+        graph_ev = next(
+            (
+                ev for ev in result.evidence
+                if ev.category == "service-graph" and ev.source == "opentelemetry"
+            ),
+            None,
+        )
+        for edge in graph_red_edges:
+            client = str(edge.get("client") or "")
+            server = str(edge.get("server") or "")
+            if not client or not server:
+                continue
+            client_id = f"service:{client}"
+            server_id = f"service:{server}"
+            ensure_entity(client_id, client, "Service")
+            connection_type = str(edge.get("connection_type") or "unset")
+            server_kind = "TraceDependency" if connection_type in {"database", "messaging_system", "virtual_node"} else "Service"
+            server_entity_id = (
+                f"dependency:{server}"
+                if server_kind == "TraceDependency"
+                else server_id
+            )
+            ensure_entity(server_entity_id, server, server_kind, {"connection_type": connection_type})
+            evidence_ids = [graph_ev.id] if graph_ev else []
+            key = (client_id, server_entity_id, "calls", tuple(evidence_ids))
+            if key in existing_edges:
+                continue
+            result.graph_edges.append(
+                GraphEdge(
+                    source=client_id,
+                    target=server_entity_id,
+                    relationship="calls",
+                    metadata={
+                        "requests": edge.get("requests"),
+                        "failures": edge.get("failures"),
+                        "error_ratio": edge.get("error_ratio"),
+                        "p95_seconds": edge.get("p95_seconds"),
+                        "connection_type": connection_type,
+                    },
+                    evidence_ids=evidence_ids,
+                )
+            )
+            existing_edges.add(key)
+
+    existing_deployments = {
+        entity.name: entity.id
+        for entity in result.entities
+        if entity.kind == "Deployment"
+    }
+    argo_revision = next(
+        (
+            str(ev.facts.get("revision") or "")
+            for ev in result.evidence
+            if ev.source == "argocd" and ev.category == "change-correlation"
+        ),
+        "",
+    )
+
+    for analysis in analyses:
+        for traced_service, context in analysis.deployment_context.items():
+            deployment_name = str(context.get("k8s.deployment.name") or "")
+            namespace = str(context.get("k8s.namespace.name") or "")
+            service_version = str(context.get("service.version") or "")
+            if not deployment_name and not service_version:
+                continue
+
+            matches_revision = bool(
+                service_version
+                and argo_revision
+                and (
+                    argo_revision.startswith(service_version)
+                    or service_version.startswith(argo_revision)
+                )
+            )
+            correlation_ev = Evidence(
+                source="tempo",
+                category="trace-deployment-correlation",
+                summary=(
+                    f"Trace resource attributes map service {traced_service} "
+                    + (
+                        f"to Deployment {namespace + '/' if namespace else ''}{deployment_name}"
+                        if deployment_name
+                        else "to a deployed service version"
+                    )
+                    + (f" at service.version={service_version}" if service_version else "")
+                    + (" matching the Argo CD revision." if matches_revision else ".")
+                ),
+                facts={
+                    "trace_id": analysis.trace_id,
+                    "service": traced_service,
+                    "deployment": deployment_name or None,
+                    "namespace": namespace or None,
+                    "service_version": service_version or None,
+                    "argo_revision": argo_revision or None,
+                    "matches_argo_revision": matches_revision,
+                    "resource_attributes": context,
+                },
+                raw_reference=f"tempo://trace/{analysis.trace_id}",
+                strength="strong" if deployment_name else "medium",
+            )
+            result.evidence.append(correlation_ev)
+
+            source_id = f"service:{traced_service}"
+            ensure_entity(source_id, traced_service, "Service")
+            if deployment_name:
+                deployment_id = existing_deployments.get(deployment_name)
+                if not deployment_id:
+                    deployment_id = f"deployment:{namespace or 'unknown'}:{deployment_name}"
+                    ensure_entity(
+                        deployment_id,
+                        deployment_name,
+                        "Deployment",
+                        {"namespace": namespace or None, "source": "trace-resource"},
+                    )
+                    existing_deployments[deployment_name] = deployment_id
+                key = (source_id, deployment_id, "runs_as", (correlation_ev.id,))
+                if key not in existing_edges:
+                    result.graph_edges.append(
+                        GraphEdge(
+                            source=source_id,
+                            target=deployment_id,
+                            relationship="runs_as",
+                            metadata={
+                                "namespace": namespace or None,
+                                "service_version": service_version or None,
+                                "matches_argo_revision": matches_revision,
+                            },
+                            evidence_ids=[correlation_ev.id],
+                        )
+                    )
+                    existing_edges.add(key)
 
     for analysis in analyses:
         ev = evidence_by_trace.get(analysis.trace_id)
