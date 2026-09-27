@@ -70,7 +70,11 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
 
     if system in {"postgres", "postgresql"}:
         target = metadata.get("db.namespace") or metadata.get("db.name") or suffix or "postgres"
-        return "postgresql", {"target": str(target)}
+        instance_hint = metadata.get("server.address") or metadata.get("peer.service")
+        return "postgresql", {
+            "target": str(target),
+            "instance_hint": str(instance_hint) if instance_hint else None,
+        }
 
     if system in {"kafka", "apache_kafka"}:
         topic = (
@@ -127,7 +131,7 @@ def _trace_chain_contains(result: InvestigationResult, dependency_name: str) -> 
 
 def _targets(result: InvestigationResult) -> list[DependencyTarget]:
     targets: list[DependencyTarget] = []
-    seen: set[tuple[str, str | None]] = set()
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
 
     for entity in result.entities:
         if entity.kind != "TraceDependency":
@@ -136,7 +140,12 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
         if not kind:
             continue
 
-        key = (kind, values.get("target"))
+        key = (
+            kind,
+            values.get("target"),
+            values.get("consumer_group"),
+            values.get("instance_hint"),
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -174,7 +183,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
                     metadata={"db.system": "postgresql", "db.namespace": database},
                 )
                 result.entities.append(entity)
-                targets.append(DependencyTarget(entity, "postgresql", database, causal_role="origin"))
+                targets.append(DependencyTarget(entity, "postgresql", database, causal_role="context"))
             elif explicit == "kafka":
                 topic = labels.get("topic") or labels.get("messaging.destination.name")
                 group = labels.get("consumer_group") or labels.get("messaging.consumer.group.name")
@@ -196,7 +205,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
                         topic,
                         topic=topic,
                         consumer_group=group,
-                        causal_role="origin",
+                        causal_role="context",
                     )
                 )
             elif explicit in {"redis", "valkey"}:
@@ -209,7 +218,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
                 )
                 result.entities.append(entity)
                 targets.append(
-                    DependencyTarget(entity, "redis", name, instance_hint=labels.get("instance"), causal_role="origin")
+                    DependencyTarget(entity, "redis", name, instance_hint=labels.get("instance"), causal_role="context")
                 )
 
     targets.sort(key=lambda item: {"origin": 0, "supporting": 1, "context": 2}[item.causal_role])
@@ -292,7 +301,11 @@ def _health(signals: list[StatefulDependencySignal]) -> str:
         return "critical"
     if "warning" in states:
         return "degraded"
-    if "normal" in states:
+
+    threshold_signals = [signal for signal in signals if signal.threshold is not None]
+    if threshold_signals and any(signal.status == "unknown" for signal in threshold_signals):
+        return "unknown"
+    if signals and all(signal.status == "normal" for signal in signals):
         return "healthy"
     return "unknown"
 
@@ -308,6 +321,7 @@ async def _postgres(
         database,
         result.incident.starts_at,
         settings.dependency_window_minutes,
+        target.instance_hint,
     )
 
     connections = _metric(metrics, "connections")
@@ -809,25 +823,45 @@ async def _redis(
             strong=True,
         )
         (memory_support if memory_anomaly else memory_contradict).append(ev)
-    if evictions is not None and evictions >= settings.redis_evictions_delta_critical:
-        memory_support.append(_evidence(
+    evictions_anomaly = evictions is not None and evictions >= settings.redis_evictions_delta_critical
+    eviction_evidence: Evidence | None = None
+    if evictions is not None:
+        eviction_evidence = _evidence(
             source="redis",
             category="evictions",
             summary=f"Redis evicted {evictions:.0f} keys during the incident window.",
             facts={"evictions_delta": evictions},
             query=_query(metrics, "evictions_delta"),
             strong=True,
-        ))
+        )
+        if memory_anomaly and evictions_anomaly:
+            memory_support.append(eviction_evidence)
     hypotheses.append(_attach_and_score(
         result,
         Hypothesis(
             id=f"redis-memory-pressure:{target.entity.id}",
-            statement=f"Redis memory pressure and eviction are degrading {target.target or target.entity.name}.",
+            statement=f"Redis memory pressure is degrading {target.target or target.entity.name}.",
         ),
         memory_support,
         memory_contradict,
         target.trace_evidence_ids,
         memory_anomaly,
+    ))
+
+    eviction_support: list[Evidence] = []
+    eviction_contradict: list[Evidence] = []
+    if eviction_evidence is not None:
+        (eviction_support if evictions_anomaly else eviction_contradict).append(eviction_evidence)
+    hypotheses.append(_attach_and_score(
+        result,
+        Hypothesis(
+            id=f"redis-evictions:{target.entity.id}",
+            statement=f"Redis key evictions are degrading cache effectiveness for {target.target or target.entity.name}.",
+        ),
+        eviction_support,
+        eviction_contradict,
+        target.trace_evidence_ids,
+        evictions_anomaly,
     ))
 
     blocked_anomaly = blocked is not None and blocked >= settings.redis_blocked_clients_critical
@@ -978,6 +1012,11 @@ def _remediation(analysis: StatefulDependencyAnalysis) -> list[Remediation]:
             Remediation(priority="P1", action="Validate TTL coverage and cache retention for high-volume keys.", reason="Unbounded key retention is a common driver of memory pressure."),
             Remediation(priority="P2", action="Review maxmemory and eviction policy against workload semantics.", reason="Capacity changes should preserve the intended cache/data-loss behavior."),
         ]
+    if "redis-evictions" in hypothesis:
+        return [
+            Remediation(priority="P1", action="Inspect eviction policy, TTL coverage and the key classes driving Redis churn.", reason="The incident window contains direct eviction evidence on the traced dependency."),
+            Remediation(priority="P2", action="Validate whether the observed eviction rate is expected for this cache workload before increasing memory.", reason="Evictions can be intentional under some policies and should not automatically be labeled memory exhaustion."),
+        ]
     if "redis-blocked-clients" in hypothesis:
         return [
             Remediation(priority="P1", action="Inspect blocking Redis commands and slow operations before restarting the instance.", reason="Blocked clients are directly visible in the incident window."),
@@ -998,6 +1037,8 @@ def _remediation(analysis: StatefulDependencyAnalysis) -> list[Remediation]:
 
 def _can_promote(result: InvestigationResult, analysis: StatefulDependencyAnalysis) -> bool:
     if analysis.causal_role != "origin" or not analysis.hypothesis_id:
+        return False
+    if not _trace_origin_evidence(result, analysis.name):
         return False
     return (
         result.status == "inconclusive"
