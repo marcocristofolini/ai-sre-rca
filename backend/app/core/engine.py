@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 from app.core.k8s_signals import classify_pod_scenario
 from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
+from app.core.query_budget import begin_query_budget, end_query_budget
 from app.core.query_safety import prom_regex_literal, quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.stateful_dependency import enrich_with_stateful_dependencies
@@ -99,32 +100,58 @@ class InvestigationEngine:
 
     async def investigate(self, incident: IncidentInput) -> InvestigationResult:
         incident_id = f"inc-{uuid4().hex[:12]}"
-        similar = await self._similar_incidents(incident)
-        alert = incident.alert_name.lower()
+        budget_token = begin_query_budget(self.settings)
+        cluster_token = None
+        result: InvestigationResult | None = None
 
-        if incident.node and ("nodenotready" in alert or "node-not-ready" in alert or not incident.pod):
-            result = await investigate_node_not_ready(
-                incident_id=incident_id,
-                incident=incident,
-                similar=similar,
+        try:
+            if hasattr(self.tools, "set_cluster"):
+                cluster_token = self.tools.set_cluster(incident.cluster)
+
+            similar = await self._similar_incidents(incident)
+            alert = incident.alert_name.lower()
+
+            if incident.node and ("nodenotready" in alert or "node-not-ready" in alert or not incident.pod):
+                result = await investigate_node_not_ready(
+                    incident_id=incident_id,
+                    incident=incident,
+                    similar=similar,
+                    tools=self.tools,
+                    hypothesis_generator=self.hypothesis_generator,
+                )
+            elif incident.pod and incident.namespace:
+                result = await self._investigate_pod(incident_id, incident, similar)
+            else:
+                result = self._generic_result(incident_id, incident, similar)
+
+            result = await enrich_with_trace_causality(
+                result,
                 tools=self.tools,
-                hypothesis_generator=self.hypothesis_generator,
+                settings=self.settings,
             )
-        elif incident.pod and incident.namespace:
-            result = await self._investigate_pod(incident_id, incident, similar)
-        else:
-            result = self._generic_result(incident_id, incident, similar)
-
-        result = await enrich_with_trace_causality(
-            result,
-            tools=self.tools,
-            settings=self.settings,
-        )
-        return await enrich_with_stateful_dependencies(
-            result,
-            tools=self.tools,
-            settings=self.settings,
-        )
+            result = await enrich_with_stateful_dependencies(
+                result,
+                tools=self.tools,
+                settings=self.settings,
+            )
+            return result
+        finally:
+            snapshot = end_query_budget(budget_token)
+            if result is not None and snapshot:
+                result.query_budget = snapshot
+                if snapshot.get("denied"):
+                    result.evidence.append(Evidence(
+                        source="investigator",
+                        category="query-budget",
+                        summary=(
+                            f"Query budget denied {len(snapshot['denied'])} operation(s); "
+                            "the investigation continued with bounded evidence."
+                        ),
+                        facts=snapshot,
+                        strength="medium",
+                    ))
+            if cluster_token is not None and hasattr(self.tools, "reset_cluster"):
+                self.tools.reset_cluster(cluster_token)
 
     async def _similar_incidents(self, incident: IncidentInput) -> list[SimilarIncident]:
         if not self.memory:

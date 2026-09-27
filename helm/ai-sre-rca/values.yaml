@@ -1,8 +1,9 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.5.1"
+    tag: "0.6.0"
   replicas: 2
+  existingSecret: ""
   service:
     port: 8080
   env:
@@ -40,14 +41,36 @@ backend:
     LLM_BASE_URL: "http://ollama.ai.svc:11434/v1"
     LLM_MODEL: "local-model"
     CORS_ORIGINS: "http://ai-sre-rca-frontend"
+    AUTH_ENABLED: "false"
+    OIDC_ALGORITHMS: "RS256,ES256"
+    OIDC_ROLES_CLAIM: "roles"
+    OIDC_TENANT_CLAIM: "tenant"
+    OIDC_CLUSTERS_CLAIM: "clusters"
+    DEFAULT_TENANT_ID: "default"
+    VIEWER_ROLE: "viewer"
+    INVESTIGATOR_ROLE: "investigator"
+    ADMIN_ROLE: "admin"
+    ALERTMANAGER_TENANT_ID: "default"
+    NOTIFICATIONS_ENABLED: "false"
+    NOTIFICATION_MIN_SEVERITY: "warning"
+    INCIDENT_RETENTION_DAYS: "30"
+    AUDIT_RETENTION_DAYS: "90"
+    QUERY_BUDGET_ENABLED: "true"
+    QUERY_BUDGET_MAX_CALLS: "80"
+    QUERY_BUDGET_MAX_CALLS_PER_SOURCE: "30"
+    QUERY_BUDGET_MAX_WALL_SECONDS: "45"
+    CLUSTER_CONFIG_JSON: "{}"
 
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.5.1"
+    tag: "0.6.0"
   replicas: 2
   service:
     port: 3000
+  env:
+    DEFAULT_CLUSTER: "prod-us-east-1"
+    AUTH_FORWARD_HEADER: "x-auth-request-access-token"
 
 serviceAccount:
   create: true
@@ -60,3 +83,18 @@ resources:
   frontend:
     requests: { cpu: 50m, memory: 96Mi }
     limits: { cpu: 500m, memory: 256Mi }
+
+
+networkPolicy:
+  enabled: false
+  # When enabled, frontend ingress is allowed from any namespace by default.
+  # Override these raw NetworkPolicy peer/rule lists for your ingress controller
+  # and observability namespaces before enabling in production.
+  frontendIngress:
+    - {}
+  additionalBackendIngress: []
+  additionalFrontendEgress: []
+  # Empty object means unrestricted backend egress once the policy is enabled.
+  # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
+  backendEgress:
+    - {}

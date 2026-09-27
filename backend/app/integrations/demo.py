@@ -6,6 +6,18 @@ from typing import Any
 
 
 class DemoTools:
+    async def capability_report(self, cluster: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "source": source,
+                "status": "healthy",
+                "detail": "demo fixture",
+                "cluster": cluster,
+                "latency_ms": 0.0,
+            }
+            for source in ("kubernetes", "prometheus", "loki", "tempo", "argocd", "github")
+        ]
+
     async def get_pod(self, namespace: str, pod: str) -> dict[str, Any]:
         return {
             "metadata": {

@@ -5,7 +5,9 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.core.integrity import compute_evidence_hash
 
 
 class HypothesisStatus(str, Enum):
@@ -18,6 +20,7 @@ class HypothesisStatus(str, Enum):
 
 class IncidentInput(BaseModel):
     title: str
+    tenant_id: str = "default"
     cluster: str = "unknown"
     namespace: str | None = None
     pod: str | None = None
@@ -57,6 +60,13 @@ class Evidence(BaseModel):
     query: str | None = None
     raw_reference: str | None = None
     strength: Literal["weak", "medium", "strong"] = "medium"
+    integrity_sha256: str | None = None
+
+    @model_validator(mode="after")
+    def ensure_integrity_hash(self):
+        if not self.integrity_sha256:
+            self.integrity_sha256 = compute_evidence_hash(self)
+        return self
 
 
 class Hypothesis(BaseModel):
@@ -117,6 +127,7 @@ class InvestigationResult(BaseModel):
     remediation: list[Remediation]
     trace_analyses: list[TraceAnalysis] = Field(default_factory=list)
     stateful_dependencies: list[StatefulDependencyAnalysis] = Field(default_factory=list)
+    query_budget: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -189,3 +200,42 @@ class AlertmanagerWebhook(BaseModel):
     alerts: list[AlertmanagerAlert]
     commonLabels: dict[str, str] = Field(default_factory=dict)
     commonAnnotations: dict[str, str] = Field(default_factory=dict)
+
+
+
+class AuditEvent(BaseModel):
+    id: str = Field(default_factory=lambda: f"audit-{uuid4().hex[:12]}")
+    incident_id: str | None = None
+    tenant_id: str
+    actor: str
+    action: str
+    detail: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class SourceCapability(BaseModel):
+    source: str
+    status: Literal["healthy", "degraded", "unavailable", "disabled"]
+    detail: str = ""
+    cluster: str | None = None
+    latency_ms: float | None = None
+
+
+class CapabilityReport(BaseModel):
+    cluster: str
+    tenant_id: str
+    auth_enabled: bool
+    notifications_enabled: bool
+    persistence: str
+    sources: list[SourceCapability]
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class IncidentExport(BaseModel):
+    schema_version: str = "ai-sre-rca.export.v1"
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    incident_id: str
+    tenant_id: str
+    evidence_integrity_ok: bool
+    evidence_hashes: dict[str, str]
+    investigation: InvestigationResult

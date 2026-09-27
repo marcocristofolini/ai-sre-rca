@@ -1,3 +1,5 @@
+import { headers } from 'next/headers';
+
 export type GraphEdge = {
   source: string;
   target: string;
@@ -11,6 +13,7 @@ export type Investigation = {
   status: string;
   incident: {
     title: string;
+    tenant_id: string;
     cluster: string;
     namespace?: string;
     pod?: string;
@@ -113,11 +116,40 @@ export type Investigation = {
     }>;
     metadata: Record<string, unknown>;
   }>;
+  query_budget: {
+    enabled?: boolean;
+    total_calls?: number;
+    per_source?: Record<string, number>;
+    denied?: Array<Record<string, unknown>>;
+    elapsed_seconds?: number;
+    limits?: Record<string, number>;
+  };
 };
+
+async function forwardedAuthHeaders(): Promise<Record<string, string>> {
+  const incoming = await headers();
+  const authorization = incoming.get('authorization');
+  if (authorization) return { Authorization: authorization };
+
+  const proxyHeader = process.env.AUTH_FORWARD_HEADER ?? 'x-auth-request-access-token';
+  const proxiedToken =
+    incoming.get(proxyHeader) ??
+    incoming.get('x-forwarded-access-token');
+
+  if (!proxiedToken) return {};
+  return {
+    Authorization: proxiedToken.toLowerCase().startsWith('bearer ')
+      ? proxiedToken
+      : `Bearer ${proxiedToken}`,
+  };
+}
 
 export async function fetchDemo(): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
@@ -125,7 +157,10 @@ export async function fetchDemo(): Promise<Investigation> {
 
 export async function fetchTraceDemo(): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo/trace`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo/trace`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
@@ -135,7 +170,56 @@ export type StatefulDependencyKind = 'postgresql' | 'kafka' | 'redis';
 
 export async function fetchStatefulDemo(dependency: StatefulDependencyKind = 'postgresql'): Promise<Investigation> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const res = await fetch(`${base}/api/v1/incidents/demo/stateful/${dependency}`, { cache: 'no-store' });
+  const res = await fetch(`${base}/api/v1/incidents/demo/stateful/${dependency}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
+
+
+export type SystemIdentity = {
+  subject: string;
+  tenant_id: string;
+  roles: string[];
+  clusters: string[];
+  auth_enabled: boolean;
+};
+
+export type CapabilityReport = {
+  cluster: string;
+  tenant_id: string;
+  auth_enabled: boolean;
+  notifications_enabled: boolean;
+  persistence: string;
+  generated_at: string;
+  sources: Array<{
+    source: string;
+    status: 'healthy' | 'degraded' | 'unavailable' | 'disabled';
+    detail: string;
+    cluster?: string;
+    latency_ms?: number;
+  }>;
+};
+
+export async function fetchIdentity(): Promise<SystemIdentity> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const res = await fetch(`${base}/api/v1/system/me`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  return res.json();
+}
+
+export async function fetchCapabilities(cluster: string): Promise<CapabilityReport> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const query = new URLSearchParams({ cluster });
+  const res = await fetch(`${base}/api/v1/system/capabilities?${query.toString()}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }

@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.5.1
+# AI SRE RCA — v0.6.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,22 @@
 Evidence-first, read-only SRE incident investigator for Kubernetes, distributed traces and stateful dependencies, designed so that telemetry and typed checks—not an LLM—decide the root cause.
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
+
+## What changed in v0.6
+
+- **OIDC + hierarchical RBAC** for API/UI with configurable viewer, investigator and admin roles.
+- **Tenant and cluster isolation** across incident reads, incident memory, audit and export.
+- **Multi-cluster routing** through a per-cluster integration registry without sharing request state between concurrent investigations.
+- **Per-incident query budgets** for total calls, per-source calls and wall-clock time; budget exhaustion becomes explicit evidence.
+- **SHA-256 evidence integrity** and tenant-scoped audit events.
+- **Incident export format** with integrity verification at `/api/v1/incidents/{id}/export`.
+- **Slack and PagerDuty delivery** after persistence, with delivery outcomes written to the audit log.
+- **Retention policies** for incidents and audit records.
+- **Per-source health/capability reporting** and a new `/ops` UI.
+- **Opt-in Helm NetworkPolicy templates** plus external Kubernetes Secret injection for operational credentials.
+- **Alertmanager machine token** independent from interactive OIDC.
+
+Full deployment and security details: [docs/operations.md](docs/operations.md).
 
 ## v0.5.1 hardening patch
 
@@ -82,6 +98,7 @@ Open:
 - Stateful PostgreSQL demo: `http://localhost:3000/stateful/postgresql`
 - Stateful Kafka demo: `http://localhost:3000/stateful/kafka`
 - Stateful Redis demo: `http://localhost:3000/stateful/redis`
+- Operational health/RBAC UI: `http://localhost:3000/ops`
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 
@@ -117,7 +134,7 @@ receivers:
         send_resolved: true
 ```
 
-The current Kubernetes playbook expects useful labels such as `cluster`, `namespace`, `pod` and optionally `node`.
+The current Kubernetes playbook expects useful labels such as `cluster`, `namespace`, `pod` and optionally `node`. In production, set `ALERTMANAGER_WEBHOOK_TOKEN` and send it in `X-Webhook-Token`.
 
 ## Real integrations
 
@@ -166,7 +183,20 @@ REDIS_COMMAND_LATENCY_SECONDS_CRITICAL=0.05
 ARGOCD_URL=http://argocd-server.argocd.svc
 ARGOCD_TOKEN=...
 GITHUB_TOKEN=...
+
+# Operational controls
+AUTH_ENABLED=false
+NOTIFICATIONS_ENABLED=false
+INCIDENT_RETENTION_DAYS=30
+AUDIT_RETENTION_DAYS=90
+QUERY_BUDGET_ENABLED=true
+QUERY_BUDGET_MAX_CALLS=80
+QUERY_BUDGET_MAX_CALLS_PER_SOURCE=30
+QUERY_BUDGET_MAX_WALL_SECONDS=45
+CLUSTER_CONFIG_JSON={}
 ```
+
+See [docs/operations.md](docs/operations.md) for OIDC claims, tenant/cluster isolation, Slack/PagerDuty, retention, exports, NetworkPolicy and external Secret configuration.
 
 ### OpenTelemetry service graph
 

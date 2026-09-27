@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.5.1
+# AI SRE RCA — v0.6.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,22 @@
 Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernetes, traces distribuídos e dependências stateful, desenhado para que telemetria e verificações tipadas — e não um LLM — determinem a causa raiz.
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
+
+## O que mudou na v0.6
+
+- **OIDC + RBAC hierárquico** para API/UI com papéis configuráveis viewer, investigator e admin.
+- **Isolamento por tenant e cluster** em leitura de incidentes, memória, auditoria e export.
+- **Roteamento multi-cluster** por registry de integrações sem compartilhar estado entre investigações concorrentes.
+- **Query budget por incidente** para chamadas totais, chamadas por fonte e tempo máximo; estouro do budget vira evidência explícita.
+- **Integridade SHA-256 das evidências** e audit log isolado por tenant.
+- **Formato de export de incidente** com verificação de integridade em `/api/v1/incidents/{id}/export`.
+- **Entrega em Slack e PagerDuty** após persistência, com resultado da entrega registrado no audit log.
+- **Políticas de retenção** para incidentes e auditoria.
+- **Health/capabilities por fonte** e nova UI em `/ops`.
+- **Templates Helm de NetworkPolicy opt-in** e injeção de Kubernetes Secret externo para credenciais operacionais.
+- **Token de máquina para Alertmanager** separado do OIDC interativo.
+
+Detalhes de implantação e segurança: [docs/operations.pt-BR.md](docs/operations.pt-BR.md).
 
 ## Patch de hardening v0.5.1
 
@@ -82,6 +98,7 @@ Acesse:
 - Demo stateful PostgreSQL: `http://localhost:3000/stateful/postgresql`
 - Demo stateful Kafka: `http://localhost:3000/stateful/kafka`
 - Demo stateful Redis: `http://localhost:3000/stateful/redis`
+- UI de health/RBAC operacional: `http://localhost:3000/ops`
 
 O stack do Docker Compose usa a imagem `pgvector/pgvector:pg17` e habilita automaticamente a extensão `vector`.
 
@@ -117,7 +134,7 @@ receivers:
         send_resolved: true
 ```
 
-O playbook Kubernetes atual espera labels úteis como `cluster`, `namespace`, `pod` e, opcionalmente, `node`.
+O playbook Kubernetes atual espera labels úteis como `cluster`, `namespace`, `pod` e, opcionalmente, `node`. Em produção, configure `ALERTMANAGER_WEBHOOK_TOKEN` e envie-o em `X-Webhook-Token`.
 
 ## Integrações reais
 
@@ -166,7 +183,20 @@ REDIS_COMMAND_LATENCY_SECONDS_CRITICAL=0.05
 ARGOCD_URL=http://argocd-server.argocd.svc
 ARGOCD_TOKEN=...
 GITHUB_TOKEN=...
+
+# Controles operacionais
+AUTH_ENABLED=false
+NOTIFICATIONS_ENABLED=false
+INCIDENT_RETENTION_DAYS=30
+AUDIT_RETENTION_DAYS=90
+QUERY_BUDGET_ENABLED=true
+QUERY_BUDGET_MAX_CALLS=80
+QUERY_BUDGET_MAX_CALLS_PER_SOURCE=30
+QUERY_BUDGET_MAX_WALL_SECONDS=45
+CLUSTER_CONFIG_JSON={}
 ```
+
+Consulte [docs/operations.pt-BR.md](docs/operations.pt-BR.md) para claims OIDC, isolamento por tenant/cluster, Slack/PagerDuty, retenção, export, NetworkPolicy e configuração de Secret externo.
 
 ### Service Graph do OpenTelemetry
 

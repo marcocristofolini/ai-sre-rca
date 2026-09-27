@@ -34,6 +34,37 @@ jobs:
       - run: cd frontend && npm run build
 
 
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Helm 4.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz
+          echo "86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb  helm-v4.3.0-linux-amd64.tar.gz" | sha256sum -c -
+          tar -xzf helm-v4.3.0-linux-amd64.tar.gz
+          sudo install -m 0755 linux-amd64/helm /usr/local/bin/helm
+          helm version
+
+      - name: Lint chart
+        run: helm lint --strict helm/ai-sre-rca
+
+      - name: Render default chart
+        run: helm template ai-sre-rca helm/ai-sre-rca > /tmp/ai-sre-rca-default.yaml
+
+      - name: Render hardened chart
+        run: |
+          helm template ai-sre-rca helm/ai-sre-rca \
+            --set networkPolicy.enabled=true \
+            --set backend.existingSecret=ai-sre-secrets \
+            > /tmp/ai-sre-rca-hardened.yaml
+          grep -q "kind: NetworkPolicy" /tmp/ai-sre-rca-hardened.yaml
+          grep -Eq 'name: "?ai-sre-secrets"?' /tmp/ai-sre-rca-hardened.yaml
+
+
   smoke:
     needs: [backend, frontend]
     runs-on: ubuntu-latest
@@ -118,13 +149,32 @@ jobs:
 
           health = json.loads(get(f"{BACKEND}/healthz"))
           assert health["status"] == "ok"
-          assert health["version"] == "0.5.1"
+          assert health["version"] == "0.6.0"
           assert health["demo_mode"] is True
           assert health["stateful_dependency_rca"] is True
 
           kube = json.loads(get(f"{BACKEND}/api/v1/incidents/demo"))
           assert kube["status"] == "resolved"
           assert kube["root_cause"]["hypothesis_id"] == "disk-pressure"
+          assert kube["incident"]["tenant_id"] == "default"
+          assert kube["query_budget"]["enabled"] is True
+          assert all(item["integrity_sha256"] for item in kube["evidence"])
+
+          incident_id = kube["incident_id"]
+          audit = json.loads(get(f"{BACKEND}/api/v1/incidents/{incident_id}/audit"))
+          assert any(item["action"] == "investigation.completed" for item in audit)
+
+          exported = json.loads(get(f"{BACKEND}/api/v1/incidents/{incident_id}/export"))
+          assert exported["schema_version"] == "ai-sre-rca.export.v1"
+          assert exported["evidence_integrity_ok"] is True
+
+          identity = json.loads(get(f"{BACKEND}/api/v1/system/me"))
+          assert identity["tenant_id"] == "default"
+
+          capabilities = json.loads(get(
+              f"{BACKEND}/api/v1/system/capabilities?cluster=prod-india-exchange"
+          ))
+          assert all(item["status"] == "healthy" for item in capabilities["sources"])
 
           trace = json.loads(get(f"{BACKEND}/api/v1/incidents/demo/trace"))
           assert trace["status"] == "resolved"
@@ -151,6 +201,7 @@ jobs:
               "/stateful/postgresql",
               "/stateful/kafka",
               "/stateful/redis",
+              "/ops",
           ):
               html = get(f"{FRONTEND}{path}")
               assert b"AI SRE RCA" in html or b"SRE" in html
@@ -226,9 +277,10 @@ jobs:
 
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/incidents/demo/stateful/postgresql)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/postgresql)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/ops)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
 
-          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.5.1"'
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.6.0"'
           echo "Production container smoke test passed"
 
       - name: Print container logs on failure
