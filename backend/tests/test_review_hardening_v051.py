@@ -53,8 +53,10 @@ async def test_postgres_queries_are_instance_scoped_and_use_exporter_labels():
     assert tools.queries
     assert all("instance=~" in query for query in tools.queries)
     assert any('mode="accessexclusivelock"' in query for query in tools.queries)
-    assert any("pg_long_running_transactions_oldest_timestamp_seconds" in query for query in tools.queries)
-    assert not any("pg_long_running_transactions{" in query for query in tools.queries)
+    long_tx_queries = [query for query in tools.queries if "pg_stat_activity_max_tx_duration" in query]
+    assert len(long_tx_queries) == 1
+    assert 'datname="orders"' in long_tx_queries[0]
+    assert "instance=~" in long_tx_queries[0]
 
 
 @pytest.mark.asyncio
