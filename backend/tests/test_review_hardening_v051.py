@@ -9,6 +9,7 @@ from app.config import Settings
 from app.core.dependency_identity import dependency_instance
 from app.core.engine import InvestigationEngine
 from app.core.query_safety import path_segment, prom_regex_literal, quoted_string
+from app.integrations.demo import DemoTools
 from app.integrations.http_tools import ReadOnlyHTTPTools
 from app.schemas import IncidentInput
 from tests.test_stateful_dependency_v05 import StatefulTools, dependency_trace_payload
@@ -25,6 +26,38 @@ class CapturingHTTPTools(ReadOnlyHTTPTools):
     async def prometheus_query(self, query: str, at: datetime) -> dict:
         self.queries.append(query)
         return {"data": {"result": [{"value": [at.timestamp(), "0"]}]}}
+
+
+class PartialObservabilityOutageTools(DemoTools):
+    async def get_events(self, namespace, object_name):
+        raise RuntimeError("events unavailable")
+
+    async def get_node(self, node):
+        raise RuntimeError("node lookup unavailable")
+
+    async def get_replicaset(self, namespace, name):
+        raise RuntimeError("replicaset lookup unavailable")
+
+    async def list_pods_on_node(self, node):
+        raise RuntimeError("pod listing unavailable")
+
+    async def loki_query_range(self, query, start, end, limit=100):
+        raise RuntimeError("loki unavailable")
+
+    async def service_graph(self, service, at):
+        raise RuntimeError("service graph unavailable")
+
+    async def argocd_application(self, app_name):
+        raise RuntimeError("argocd unavailable")
+
+    async def karpenter_nodeclaim_for_node(self, node):
+        raise RuntimeError("karpenter unavailable")
+
+    async def prometheus_query(self, query, at=None):
+        raise RuntimeError("prometheus unavailable")
+
+    async def prometheus_query_range(self, query, start, end, step="60s"):
+        raise RuntimeError("prometheus unavailable")
 
 
 class SplitInstanceKafkaTools(StatefulTools):
@@ -149,6 +182,28 @@ async def test_redis_instance_regex_is_escaped():
     assert tools.queries
     assert all("redis.*(prod)" not in query for query in tools.queries)
     assert all(r"redis\\.\\*\\(prod\\)" in query for query in tools.queries)
+
+
+@pytest.mark.asyncio
+async def test_eviction_rca_survives_optional_observability_outages():
+    incident = IncidentInput(
+        title="Pod evicted",
+        cluster="prod",
+        namespace="exchange",
+        pod="landing-page-7d8b6d9b-x9k2p",
+        node="ip-10-0-1-42",
+        alert_name="KubePodEvicted",
+        starts_at=datetime(2026, 9, 24, 20, 47, tzinfo=timezone.utc),
+    )
+
+    result = await InvestigationEngine(PartialObservabilityOutageTools()).investigate(incident)
+
+    assert result.status in {"resolved", "inconclusive"}
+    assert result.root_cause.hypothesis_id is not None
+    errors = [item for item in result.evidence if item.category == "integration-error"]
+    sources = {item.source for item in errors}
+    assert {"kubernetes-events", "kubernetes-node", "loki", "service-graph", "argocd", "karpenter"} <= sources
+    assert {"prometheus-current", "prometheus-range"} <= sources
 
 
 @pytest.mark.asyncio
