@@ -62,7 +62,7 @@ jobs:
             --set backend.existingSecret=ai-sre-secrets \
             > /tmp/ai-sre-rca-hardened.yaml
           grep -q "kind: NetworkPolicy" /tmp/ai-sre-rca-hardened.yaml
-          grep -q "name: ai-sre-secrets" /tmp/ai-sre-rca-hardened.yaml
+          grep -Eq 'name: "?ai-sre-secrets"?' /tmp/ai-sre-rca-hardened.yaml
 
 
   smoke:
