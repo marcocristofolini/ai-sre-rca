@@ -104,10 +104,10 @@ class InvestigationEngine:
         cluster_token = None
         result: InvestigationResult | None = None
 
-        if hasattr(self.tools, "set_cluster"):
-            cluster_token = self.tools.set_cluster(incident.cluster)
-
         try:
+            if hasattr(self.tools, "set_cluster"):
+                cluster_token = self.tools.set_cluster(incident.cluster)
+
             similar = await self._similar_incidents(incident)
             alert = incident.alert_name.lower()
 
