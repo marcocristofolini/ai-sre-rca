@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.config import Settings
+from app.core.dependency_identity import dependency_instance
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
 from app.schemas import (
@@ -70,7 +71,7 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
 
     if system in {"postgres", "postgresql"}:
         target = metadata.get("db.namespace") or metadata.get("db.name") or suffix or "postgres"
-        instance_hint = metadata.get("server.address") or metadata.get("peer.service")
+        instance_hint = dependency_instance(metadata)
         return "postgresql", {
             "target": str(target),
             "instance_hint": str(instance_hint) if instance_hint else None,
@@ -86,7 +87,7 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
             metadata.get("messaging.consumer.group.name")
             or metadata.get("messaging.kafka.consumer.group")
         )
-        instance_hint = metadata.get("server.address")
+        instance_hint = dependency_instance(metadata)
         return "kafka", {
             "target": str(topic) if topic else None,
             "topic": str(topic) if topic else None,
@@ -96,7 +97,7 @@ def _classify(entity: Entity) -> tuple[str | None, dict[str, Any]]:
 
     if system in {"redis", "valkey"}:
         target = metadata.get("db.namespace") or metadata.get("db.name") or suffix or entity.name
-        instance_hint = metadata.get("server.address") or metadata.get("peer.service")
+        instance_hint = dependency_instance(metadata)
         return "redis", {
             "target": str(target) if target else None,
             "instance_hint": str(instance_hint) if instance_hint else None,
@@ -138,10 +139,21 @@ def _trace_chain_contains(
 ) -> bool:
     return any(
         hop.service == dependency_name
-        and (str(hop.metadata.get("server.address") or "") or None) == instance_hint
+        and dependency_instance(hop.metadata) == instance_hint
         for analysis in result.trace_analyses
         for hop in analysis.causal_chain
     )
+
+
+def _label_instance(labels: dict[str, str], explicit_key: str) -> str | None:
+    explicit = str(labels.get(explicit_key) or "").strip()
+    if explicit:
+        return explicit
+    metadata: dict[str, Any] = {
+        "server.address": labels.get("server.address"),
+        "server.port": labels.get("server.port"),
+    }
+    return dependency_instance(metadata)
 
 
 def _targets(result: InvestigationResult) -> list[DependencyTarget]:
@@ -196,10 +208,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
             explicit = explicit.lower()
             if explicit in {"postgres", "postgresql"}:
                 database = labels.get("database") or labels.get("db.namespace") or "postgres"
-                instance_hint = (
-                    labels.get("postgres_instance")
-                    or labels.get("server.address")
-                )
+                instance_hint = _label_instance(labels, "postgres_instance")
                 entity_id = (
                     f"dependency:postgresql/{database}@{instance_hint}"
                     if instance_hint
@@ -228,7 +237,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
             elif explicit == "kafka":
                 topic = labels.get("topic") or labels.get("messaging.destination.name")
                 group = labels.get("consumer_group") or labels.get("messaging.consumer.group.name")
-                instance_hint = labels.get("kafka_instance") or labels.get("server.address")
+                instance_hint = _label_instance(labels, "kafka_instance")
                 entity_id = (
                     f"dependency:kafka/{topic or 'cluster'}@{instance_hint}"
                     if instance_hint
@@ -259,7 +268,7 @@ def _targets(result: InvestigationResult) -> list[DependencyTarget]:
                 )
             elif explicit in {"redis", "valkey"}:
                 name = labels.get("db.namespace") or "redis"
-                instance_hint = labels.get("redis_instance") or labels.get("server.address")
+                instance_hint = _label_instance(labels, "redis_instance")
                 entity_id = (
                     f"dependency:redis/{name}@{instance_hint}"
                     if instance_hint
