@@ -5,9 +5,40 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Planned
-- Trace-to-log derived-field correlation and explicit exemplars.
-- PostgreSQL, Kafka and Redis deterministic dependency adapters.
+- OIDC/RBAC, NetworkPolicy, audit/evidence hashing and multi-cluster operational hardening.
+- Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 - Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
+
+## [0.5.0] - 2026-09-27
+
+### Added
+- Stateful dependency RCA stage executed after trace-aware causal propagation.
+- Typed PostgreSQL, Kafka and Redis dependency discovery from OpenTelemetry span metadata.
+- Read-only Prometheus adapters for dependency-specific telemetry.
+- PostgreSQL hypotheses for connection exhaustion, lock contention, deadlocks, replication lag and long-running transactions.
+- Kafka hypotheses for consumer lag, under-replicated partitions, leaderless/offline partitions and empty consumer groups.
+- Redis hypotheses for memory pressure/evictions, blocked clients, client saturation and elevated command latency.
+- Structured `stateful_dependencies` response payload with health, causal role, evidence, thresholds and signals.
+- Configurable stateful target budget and per-signal thresholds.
+- Dependency-specific remediation recommendations.
+- Stateful demo endpoints for PostgreSQL, Kafka and Redis.
+- New stateful UI routes and dependency signal cards.
+- Bilingual stateful-dependency architecture documentation with Mermaid diagrams.
+- Four v0.5 regression scenarios, bringing the backend suite to 17 deterministic/safety tests.
+
+### Changed
+- Trace dependency metadata now preserves a narrow allow-list of database, server and messaging semantic attributes.
+- The investigation pipeline now runs infrastructure playbooks, trace causal enrichment and then stateful dependency enrichment.
+- A confirmed stateful dependency cause can refine a trace-only root cause into a more specific diagnosis.
+- API, backend package, frontend and Helm chart versions are now 0.5.0.
+- Helm and environment examples expose stateful RCA budgets and thresholds.
+
+### Safety
+- Stateful adapters use bounded Prometheus GET queries only; they do not open SQL sessions, use Kafka admin APIs or execute Redis commands.
+- A stateful root cause is promoted only when the dependency is the trace causal origin and dependency-specific current telemetry confirms an anomaly.
+- A confirmed Kubernetes/infrastructure root cause retains precedence over downstream stateful anomalies.
+- Missing exporter metrics remain unknown and are not treated as healthy or causal evidence.
+- The LLM still cannot create PromQL, invoke dependency adapters, attach evidence, change scores or confirm hypotheses.
 
 ## [0.4.0] - 2026-09-27
 
@@ -93,7 +124,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.2.0...v0.2.1
