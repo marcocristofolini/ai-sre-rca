@@ -144,6 +144,7 @@ class StatefulTools(DemoTools):
             "instance_hint": instance_hint,
             "signals": _signals({
                 "connections": 97,
+                "database_connections": 88,
                 "active_connections": 82,
                 "idle_in_transaction": 8,
                 "max_connections": 100,
@@ -215,6 +216,8 @@ async def test_postgres_connection_exhaustion_promotes_trace_origin_to_specific_
     utilization = next(item for item in pg.signals if item.name == "connection_utilization")
     assert utilization.status == "critical"
     assert utilization.value == pytest.approx(0.97)
+    database_connections = next(item for item in pg.signals if item.name == "database_connections")
+    assert database_connections.value == 88
 
 
 @pytest.mark.asyncio
