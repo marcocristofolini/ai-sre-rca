@@ -121,3 +121,8 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .traceCandidate strong { font-size:12px; }
 .traceCandidate small { color:#71849a; font-size:9px; line-height:1.45; }
 @media (max-width:900px) { .traceGrid { grid-template-columns:1fr; } .traceSectionHeader { flex-direction:column; } }
+
+.topActions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.demoLink { color:#8fbfff; border:1px solid rgba(92,167,255,.25); background:rgba(92,167,255,.04); border-radius:999px; padding:5px 9px; font-size:9px; font-weight:800; letter-spacing:.1em; text-decoration:none; }
+.demoLink:hover { border-color:rgba(116,224,180,.45); color:var(--accent); }
+@media (max-width:700px) { .topbar { height:auto; align-items:flex-start; gap:12px; } .topActions { max-width:65%; } }
