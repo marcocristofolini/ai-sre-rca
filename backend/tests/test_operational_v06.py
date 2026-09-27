@@ -97,6 +97,23 @@ def test_cluster_registry_fails_closed_for_unknown_cluster():
         tools.set_cluster("prod-b")
 
 
+@pytest.mark.asyncio
+async def test_unknown_cluster_failure_resets_query_budget_context():
+    settings = Settings(
+        cluster_config_json='{"prod-a":{"prometheus_url":"http://prom-a:9090"}}',
+        query_budget_enabled=True,
+    )
+    tools = ReadOnlyHTTPTools(settings)
+    engine = InvestigationEngine(tools, settings=settings)
+
+    with pytest.raises(ValueError, match="cluster is not configured"):
+        await engine.investigate(
+            IncidentInput(title="unknown cluster", cluster="prod-b")
+        )
+
+    assert query_budget_snapshot() is None
+
+
 def test_cluster_registry_overrides_endpoints_without_cross_request_state():
     settings = Settings(
         cluster_config_json=(
