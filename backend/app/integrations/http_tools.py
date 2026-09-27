@@ -198,7 +198,7 @@ class ReadOnlyHTTPTools:
             "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"{instance_matcher}}})',
             "deadlocks_delta": f"sum(increase(pg_stat_database_deadlocks{db_selector}[{window_minutes}m]))",
             "replication_lag_bytes": f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})",
-            "long_tx_seconds": f"max(pg_long_running_transactions_oldest_timestamp_seconds{instance_selector})",
+            "long_tx_seconds": f"max(pg_stat_activity_max_tx_duration{db_selector})",
         }
         result = await self._named_prometheus_scalars(queries, at)
         return {
