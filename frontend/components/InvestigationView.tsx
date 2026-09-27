@@ -16,7 +16,11 @@ export default function InvestigationView({ data }: { data: Investigation }) {
     <main>
       <header className="topbar">
         <div className="brand"><span className="brandMark">SRE</span><span>Investigator</span></div>
-        <div className="readonly">READ ONLY · EVIDENCE FIRST</div>
+        <div className="topActions">
+          <a className="demoLink" href="/">K8S DEMO</a>
+          <a className="demoLink" href="/trace">TRACE DEMO</a>
+          <div className="readonly">READ ONLY · EVIDENCE FIRST</div>
+        </div>
       </header>
 
       <section className="hero panel">
