@@ -113,6 +113,135 @@ class ReadOnlyHTTPTools:
             response.raise_for_status()
             return response.json()
 
+    @staticmethod
+    def _prometheus_scalar(payload: dict[str, Any]) -> float | None:
+        try:
+            return float(payload["data"]["result"][0]["value"][1])
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _prom_label(value: str) -> str:
+        return value.replace("\\", "\\\\").replace('"', '\\"')
+
+    async def _named_prometheus_scalars(
+        self,
+        queries: dict[str, str],
+        at: datetime,
+    ) -> dict[str, Any]:
+        names = list(queries)
+        payloads = await asyncio.gather(
+            *[self.prometheus_query(queries[name], at) for name in names],
+            return_exceptions=True,
+        )
+        output: dict[str, Any] = {}
+        for name, payload in zip(names, payloads):
+            query = queries[name]
+            if isinstance(payload, Exception):
+                output[name] = {"value": None, "query": query, "error": str(payload)}
+                continue
+            output[name] = {
+                "value": self._prometheus_scalar(payload),
+                "query": query,
+            }
+        return output
+
+    async def postgres_dependency_metrics(
+        self,
+        database: str,
+        at: datetime,
+        window_minutes: int = 15,
+    ) -> dict[str, Any]:
+        db = self._prom_label(database)
+        queries = {
+            "connections": f'sum(pg_stat_activity_count{{datname="{db}"}})',
+            "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"}})',
+            "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"}})',
+            "max_connections": "max(pg_settings_max_connections)",
+            "locks": f'sum(pg_locks_count{{datname="{db}"}})',
+            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"}})',
+            "deadlocks_delta": f'sum(increase(pg_stat_database_deadlocks{{datname="{db}"}}[{window_minutes}m]))',
+            "replication_lag_bytes": "max(pg_stat_replication_pg_wal_lsn_diff)",
+            "long_tx_seconds": "max(pg_long_running_transactions)",
+        }
+        result = await self._named_prometheus_scalars(queries, at)
+        return {
+            "kind": "postgresql",
+            "database": database,
+            "window_minutes": window_minutes,
+            "signals": result,
+        }
+
+    async def kafka_dependency_metrics(
+        self,
+        topic: str | None,
+        consumer_group: str | None,
+        at: datetime,
+        window_minutes: int = 15,
+    ) -> dict[str, Any]:
+        matchers: list[str] = []
+        if topic:
+            matchers.append(f'topic="{self._prom_label(topic)}"')
+        topic_selector = "{" + ",".join(matchers) + "}" if matchers else ""
+
+        group_matchers = list(matchers)
+        if consumer_group:
+            group_matchers.append(f'consumergroup="{self._prom_label(consumer_group)}"')
+        group_selector = "{" + ",".join(group_matchers) + "}" if group_matchers else ""
+
+        member_selector = (
+            "{" + f'consumergroup="{self._prom_label(consumer_group)}"' + "}"
+            if consumer_group
+            else ""
+        )
+
+        queries = {
+            "consumer_lag": f"sum(kafka_consumergroup_lag{group_selector})",
+            "under_replicated_partitions": f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})",
+            "offline_partitions": f"count(kafka_topic_partition_leader{topic_selector} < 0)",
+            "consumer_group_members": f"min(kafka_consumergroup_members{member_selector})",
+        }
+        result = await self._named_prometheus_scalars(queries, at)
+        return {
+            "kind": "kafka",
+            "topic": topic,
+            "consumer_group": consumer_group,
+            "window_minutes": window_minutes,
+            "signals": result,
+        }
+
+    async def redis_dependency_metrics(
+        self,
+        instance_hint: str | None,
+        at: datetime,
+        window_minutes: int = 15,
+    ) -> dict[str, Any]:
+        selector = ""
+        if instance_hint:
+            safe_hint = self._prom_label(instance_hint)
+            selector = f'{{instance=~".*{safe_hint}.*"}}'
+
+        queries = {
+            "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
+            "memory_max_bytes": f"max(redis_memory_max_bytes{selector})",
+            "config_maxmemory_bytes": f"max(redis_config_maxmemory{selector})",
+            "evictions_delta": f"sum(increase(redis_evicted_keys_total{selector}[{window_minutes}m]))",
+            "blocked_clients": f"max(redis_blocked_clients{selector})",
+            "connected_clients": f"max(redis_connected_clients{selector})",
+            "max_clients": f"max(redis_config_maxclients{selector})",
+            "command_latency_seconds": (
+                f"max(rate(redis_commands_duration_seconds_total{selector}[5m]) "
+                f"/ clamp_min(rate(redis_commands_total{selector}[5m]), 0.001))"
+            ),
+        }
+        result = await self._named_prometheus_scalars(queries, at)
+        return {
+            "kind": "redis",
+            "instance_hint": instance_hint,
+            "window_minutes": window_minutes,
+            "signals": result,
+        }
+
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         window = self.settings.service_graph_window_minutes
         escaped = service.replace('"', '\\"')
