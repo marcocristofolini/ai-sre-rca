@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.config import Settings
+from app.core.dependency_identity import dependency_instance
 from app.core.engine import InvestigationEngine
 from app.core.query_safety import path_segment, prom_regex_literal, quoted_string
 from app.integrations.http_tools import ReadOnlyHTTPTools
@@ -162,7 +163,13 @@ async def test_trace_metadata_merges_into_existing_dependency_entity():
     )
 
     result = await InvestigationEngine(ExistingDependencyGraphTools()).investigate(incident)
-    entity = next(item for item in result.entities if item.id == "dependency:postgresql/orders")
+    matching = [
+        item
+        for item in result.entities
+        if item.kind == "TraceDependency" and item.name == "postgresql/orders"
+    ]
+    assert [item.id for item in matching] == ["dependency:postgresql/orders@orders-db"]
+    entity = matching[0]
 
     assert entity.metadata["db.system"] == "postgresql"
     assert entity.metadata["db.namespace"] == "orders"
@@ -195,6 +202,12 @@ async def test_trace_confirmation_does_not_merge_same_dependency_across_instance
     }
     assert "dependency:kafka/orders-events@kafka-prod" in dependency_ids
     assert "dependency:kafka/orders-events@kafka-canary" in dependency_ids
+
+
+def test_dependency_instance_includes_port_and_handles_ipv6():
+    assert dependency_instance({"server.address": "orders-db", "server.port": 5432}) == "orders-db:5432"
+    assert dependency_instance({"server.address": "2001:db8::1", "server.port": 6379}) == "[2001:db8::1]:6379"
+    assert dependency_instance({"dependency.instance": "explicit:9092"}) == "explicit:9092"
 
 
 def test_query_safety_escapes_regex_control_and_path_segments():
