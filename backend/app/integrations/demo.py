@@ -389,19 +389,21 @@ class StatefulDemoTools(TraceDemoTools):
         consumer_group: str | None,
         at: datetime,
         window_minutes: int = 15,
+        instance_hint: str | None = None,
     ) -> dict[str, Any]:
         if self.dependency != "kafka":
-            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes)
+            return await super().kafka_dependency_metrics(topic, consumer_group, at, window_minutes, instance_hint)
         return {
             "kind": "kafka",
             "topic": topic,
             "consumer_group": consumer_group,
+            "instance_hint": instance_hint,
             "window_minutes": window_minutes,
             "signals": {
-                "consumer_lag": {"value": 25000.0, "query": 'sum(kafka_consumergroup_lag{topic="orders-events",consumergroup="checkout-workers"})'},
-                "under_replicated_partitions": {"value": 0.0, "query": 'sum(kafka_topic_partition_under_replicated_partition{topic="orders-events"})'},
-                "offline_partitions": {"value": 0.0, "query": 'count(kafka_topic_partition_leader{topic="orders-events"} < 0)'},
-                "consumer_group_members": {"value": 4.0, "query": 'min(kafka_consumergroup_members{consumergroup="checkout-workers"})'},
+                "consumer_lag": {"value": 25000.0, "query": 'sum(kafka_consumergroup_lag{topic="orders-events",consumergroup="checkout-workers",instance=~".*kafka-prod.*"})'},
+                "under_replicated_partitions": {"value": 0.0, "query": 'sum(kafka_topic_partition_under_replicated_partition{topic="orders-events",instance=~".*kafka-prod.*"})'},
+                "offline_partitions": {"value": 0.0, "query": 'count(kafka_topic_partition_leader{topic="orders-events",instance=~".*kafka-prod.*"} < 0)'},
+                "consumer_group_members": {"value": 4.0, "query": 'min(kafka_consumergroup_members{consumergroup="checkout-workers",instance=~".*kafka-prod.*"})'},
             },
         }
 
