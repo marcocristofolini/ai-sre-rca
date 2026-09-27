@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -115,28 +116,73 @@ class ReadOnlyHTTPTools:
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         window = self.settings.service_graph_window_minutes
         escaped = service.replace('"', '\\"')
-        query = (
-            f'sum(increase(traces_service_graph_request_total{{server="{escaped}"}}[{window}m])) by (client, server, connection_type) > 0 '
-            f'or sum(increase(traces_service_graph_request_total{{client="{escaped}"}}[{window}m])) by (client, server, connection_type) > 0'
+        selector_server = f'{{server="{escaped}"}}'
+        selector_client = f'{{client="{escaped}"}}'
+        grouping = "by (client, server, connection_type)"
+
+        request_query = (
+            f'sum(increase(traces_service_graph_request_total{selector_server}[{window}m])) {grouping} > 0 '
+            f'or sum(increase(traces_service_graph_request_total{selector_client}[{window}m])) {grouping} > 0'
         )
-        payload = await self.prometheus_query(query, at)
+        failed_query = (
+            f'sum(increase(traces_service_graph_request_failed_total{selector_server}[{window}m])) {grouping} '
+            f'or sum(increase(traces_service_graph_request_failed_total{selector_client}[{window}m])) {grouping}'
+        )
+        latency_query = (
+            f'histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_server}[5m])) '
+            f'by (client, server, connection_type, le)) '
+            f'or histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_client}[5m])) '
+            f'by (client, server, connection_type, le))'
+        )
+        request_payload, failed_payload, latency_payload = await asyncio.gather(
+            self.prometheus_query(request_query, at),
+            self.prometheus_query(failed_query, at),
+            self.prometheus_query(latency_query, at),
+        )
+
+        merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+        def merge_payload(payload: dict[str, Any], field: str) -> None:
+            for row in payload.get("data", {}).get("result", []):
+                metric = row.get("metric", {})
+                client = metric.get("client")
+                server = metric.get("server")
+                if not client or not server:
+                    continue
+                connection_type = metric.get("connection_type", "unset")
+                key = (str(client), str(server), str(connection_type))
+                try:
+                    value = float(row.get("value", [0, "0"])[1])
+                except (TypeError, ValueError, IndexError):
+                    value = 0.0
+                merged.setdefault(
+                    key,
+                    {
+                        "client": str(client),
+                        "server": str(server),
+                        "connection_type": str(connection_type),
+                        "requests": 0.0,
+                        "failures": 0.0,
+                        "p95_seconds": None,
+                    },
+                )[field] = value
+
+        merge_payload(request_payload, "requests")
+        merge_payload(failed_payload, "failures")
+        merge_payload(latency_payload, "p95_seconds")
+
         edges: list[dict[str, Any]] = []
-        for row in payload.get("data", {}).get("result", []):
-            metric = row.get("metric", {})
-            try:
-                value = float(row.get("value", [0, "0"])[1])
-            except (TypeError, ValueError, IndexError):
-                value = 0.0
-            client = metric.get("client")
-            server = metric.get("server")
-            if client and server:
-                edges.append({
-                    "client": client,
-                    "server": server,
-                    "requests": value,
-                    "connection_type": metric.get("connection_type", "unset"),
-                    "query": query,
-                })
+        for item in merged.values():
+            requests = float(item.get("requests") or 0.0)
+            failures = float(item.get("failures") or 0.0)
+            item["error_ratio"] = failures / requests if requests > 0 else 0.0
+            item["query"] = request_query
+            item["red_queries"] = {
+                "requests": request_query,
+                "failures": failed_query,
+                "p95": latency_query,
+            }
+            edges.append(item)
         return edges
 
     def _tempo_headers(self) -> dict[str, str]:
