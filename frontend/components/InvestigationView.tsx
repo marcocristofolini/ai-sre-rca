@@ -45,7 +45,9 @@ export default function InvestigationView({ data }: { data: Investigation }) {
         <div>
           <div className="eyebrow">{data.incident.severity.toUpperCase()} · {data.incident.alert_name}</div>
           <h1>{data.incident.title}</h1>
-          <p className="muted">{data.incident.cluster} / {data.incident.namespace} / {data.incident.pod}</p>
+          <p className="muted">
+            {[data.incident.cluster, data.incident.namespace, data.incident.pod ?? data.incident.service].filter(Boolean).join(' / ')}
+          </p>
         </div>
         <div className="statusBadge">{data.status.toUpperCase()}</div>
       </section>
