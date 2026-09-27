@@ -15,6 +15,7 @@ export type Investigation = {
     namespace?: string;
     pod?: string;
     node?: string;
+    service?: string;
     severity: string;
     alert_name: string;
   };
@@ -64,6 +65,30 @@ export type Investigation = {
     contradicting_signals: number;
   };
   remediation: Array<{ priority: string; action: string; reason: string }>;
+  trace_analyses: Array<{
+    trace_id: string;
+    root_service: string;
+    root_operation: string;
+    duration_ms: number;
+    error_count: number;
+    services: string[];
+    candidate_service?: string;
+    candidate_operation?: string;
+    candidate_reason?: string;
+    candidate_strength: string;
+    source_query?: string;
+    causal_chain: Array<{
+      service: string;
+      operation: string;
+      span_id: string;
+      parent_span_id?: string;
+      kind: string;
+      status: string;
+      duration_ms: number;
+      role: 'origin' | 'propagated' | 'context';
+      reason: string;
+    }>;
+  }>;
 };
 
 export async function fetchDemo(): Promise<Investigation> {
