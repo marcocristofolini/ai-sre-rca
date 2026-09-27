@@ -10,6 +10,7 @@ from app.core.k8s_signals import classify_pod_scenario
 from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
 from app.core.scoring import score_hypothesis
+from app.core.trace_analysis import enrich_with_trace_causality
 from app.memory.base import IncidentMemory
 from app.integrations.base import InvestigationTools
 from app.llm.hypotheses import HypothesisGenerator, NullHypothesisGenerator
@@ -98,17 +99,25 @@ class InvestigationEngine:
         incident_id = f"inc-{uuid4().hex[:12]}"
         similar = await self._similar_incidents(incident)
         alert = incident.alert_name.lower()
+
         if incident.node and ("nodenotready" in alert or "node-not-ready" in alert or not incident.pod):
-            return await investigate_node_not_ready(
+            result = await investigate_node_not_ready(
                 incident_id=incident_id,
                 incident=incident,
                 similar=similar,
                 tools=self.tools,
                 hypothesis_generator=self.hypothesis_generator,
             )
-        if incident.pod and incident.namespace:
-            return await self._investigate_pod(incident_id, incident, similar)
-        return self._generic_result(incident_id, incident, similar)
+        elif incident.pod and incident.namespace:
+            result = await self._investigate_pod(incident_id, incident, similar)
+        else:
+            result = self._generic_result(incident_id, incident, similar)
+
+        return await enrich_with_trace_causality(
+            result,
+            tools=self.tools,
+            settings=self.settings,
+        )
 
     async def _similar_incidents(self, incident: IncidentInput) -> list[SimilarIncident]:
         if not self.memory:
@@ -342,7 +351,13 @@ class InvestigationEngine:
                     source=client_id,
                     target=server_id,
                     relationship="calls",
-                    metadata={"requests": edge.get("requests"), "connection_type": edge.get("connection_type")},
+                    metadata={
+                        "requests": edge.get("requests"),
+                        "failures": edge.get("failures"),
+                        "error_ratio": edge.get("error_ratio"),
+                        "p95_seconds": edge.get("p95_seconds"),
+                        "connection_type": edge.get("connection_type"),
+                    },
                     evidence_ids=[topology_ev.id],
                 ))
 

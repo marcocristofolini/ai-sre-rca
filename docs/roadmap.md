@@ -1,4 +1,4 @@
-# Roadmap after v0.3
+# Roadmap after v0.4
 
 ## Completed in v0.2
 
@@ -26,23 +26,30 @@
 - [x] read-only autoscaling discovery through typed Kubernetes API calls
 - [x] regression coverage for all v0.3 deterministic scenarios
 
-## v0.3.x — remaining Kubernetes depth
+## Completed in v0.4 — trace-aware causal propagation
 
-- [ ] ImagePullBackOff / ErrImagePull
-- [ ] PDB blocking and disruption-budget analysis
-- [ ] topology-spread and advanced affinity explanations
-- [ ] Karpenter consolidation-specific RCA
-- [ ] PVC attach/mount runtime failures beyond scheduler binding
-- [ ] per-container memory metric correlation instead of pod aggregate only
+- [x] Tempo/TraceQL read-only adapter
+- [x] representative trace IDs around the incident window
+- [x] standard OTLP JSON trace parsing
+- [x] parent/child span ancestry reconstruction
+- [x] deepest failing span selection
+- [x] repeated-origin confirmation across independent traces
+- [x] upstream/downstream error propagation
+- [x] TraceQL RED metrics: rate, error and p95 duration
+- [x] service-graph edge RED metrics: requests, failures, error ratio and p95
+- [x] virtual database/messaging/external dependency nodes
+- [x] trace-to-deployment correlation from OTel resource attributes
+- [x] Kubernetes-RCA precedence guardrail
+- [x] trace-aware UI and demo route
+- [x] v0.4 regression coverage
 
-## v0.4 — trace-aware causal propagation
+## v0.4.x — remaining tracing depth
 
-- [ ] Tempo/TraceQL adapter
-- [ ] representative trace IDs around incident window
-- [ ] upstream/downstream error propagation
-- [ ] edge RED metrics: rate, error, duration
-- [ ] virtual database/messaging nodes
-- [ ] trace-to-deployment correlation
+- [ ] trace-to-log derived-field correlation
+- [ ] explicit exemplar ingestion from Prometheus/Mimir
+- [ ] operation-level anomaly baselines
+- [ ] sampling-ratio-aware evidence weighting
+- [ ] trace correlation across multi-cluster service identities
 
 ## v0.5 — stateful dependencies
 
@@ -50,6 +57,7 @@
 - [ ] Kafka adapter: consumer lag, ISR, partition leadership
 - [ ] Redis adapter: memory pressure, evictions, latency
 - [ ] dependency-specific deterministic hypotheses
+- [ ] causal promotion from trace dependency node to stateful adapter evidence
 
 ## v0.6 — operational productization
 

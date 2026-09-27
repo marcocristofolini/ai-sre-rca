@@ -22,6 +22,7 @@ class IncidentInput(BaseModel):
     namespace: str | None = None
     pod: str | None = None
     node: str | None = None
+    service: str | None = None
     alert_name: str = "ManualInvestigation"
     severity: str = "warning"
     starts_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -114,7 +115,36 @@ class InvestigationResult(BaseModel):
     timeline: list[TimelineEvent]
     root_cause: RootCause
     remediation: list[Remediation]
+    trace_analyses: list[TraceAnalysis] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TraceCausalHop(BaseModel):
+    service: str
+    operation: str
+    span_id: str
+    parent_span_id: str | None = None
+    kind: str = "unspecified"
+    status: Literal["ok", "error", "unset"] = "unset"
+    duration_ms: float = 0.0
+    role: Literal["origin", "propagated", "context"] = "context"
+    reason: str = ""
+
+
+class TraceAnalysis(BaseModel):
+    trace_id: str
+    root_service: str
+    root_operation: str
+    duration_ms: float
+    error_count: int = 0
+    services: list[str] = Field(default_factory=list)
+    causal_chain: list[TraceCausalHop] = Field(default_factory=list)
+    candidate_service: str | None = None
+    candidate_operation: str | None = None
+    candidate_reason: str | None = None
+    candidate_strength: Literal["weak", "medium", "strong"] = "weak"
+    source_query: str | None = None
+    deployment_context: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class AlertmanagerAlert(BaseModel):

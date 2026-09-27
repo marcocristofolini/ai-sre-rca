@@ -22,6 +22,7 @@ async def alertmanager(payload: AlertmanagerWebhook, request: Request):
             namespace=labels.get("namespace"),
             pod=labels.get("pod"),
             node=labels.get("node"),
+            service=labels.get("service") or labels.get("service_name") or labels.get("service.name") or labels.get("app"),
             starts_at=alert.startsAt or IncidentInput.model_fields["starts_at"].default_factory(),
             labels=labels,
             annotations=annotations,
