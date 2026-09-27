@@ -462,8 +462,9 @@ class ReadOnlyHTTPTools:
 
     def _tempo_headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
-        if self.settings.tempo_tenant_id:
-            headers["X-Scope-OrgID"] = self.settings.tempo_tenant_id
+        tenant_id = self._cluster_value("tempo_tenant_id", self.settings.tempo_tenant_id)
+        if tenant_id:
+            headers["X-Scope-OrgID"] = str(tenant_id)
         return headers
 
     async def tempo_search_traces(
@@ -711,14 +712,17 @@ class ReadOnlyHTTPTools:
                     headers=argocd_headers,
                 ),
             ]
-            output = list(await asyncio.gather(*probes))
-            output.append({
-                "source": "github",
-                "status": "healthy" if self.settings.github_api_url else "disabled",
-                "detail": "configured" if self.settings.github_api_url else "not configured",
-                "cluster": cluster,
-                "latency_ms": None,
-            })
-            return output
+            github_headers = {"Accept": "application/vnd.github+json"}
+            if self.settings.github_token:
+                github_headers["Authorization"] = f"Bearer {self.settings.github_token}"
+            probes.append(
+                probe(
+                    "github",
+                    self.settings.github_api_url,
+                    "/rate_limit",
+                    headers=github_headers,
+                )
+            )
+            return list(await asyncio.gather(*probes))
         finally:
             self.reset_cluster(token)
