@@ -9,7 +9,7 @@ from app.config import Settings
 from app.core.engine import InvestigationEngine
 from app.integrations.http_tools import ReadOnlyHTTPTools
 from app.schemas import IncidentInput
-from tests.test_stateful_dependency_v05 import StatefulTools
+from tests.test_stateful_dependency_v05 import StatefulTools, dependency_trace_payload
 
 
 START = datetime(2026, 9, 27, 6, 0, tzinfo=timezone.utc)
@@ -23,6 +23,23 @@ class CapturingHTTPTools(ReadOnlyHTTPTools):
     async def prometheus_query(self, query: str, at: datetime) -> dict:
         self.queries.append(query)
         return {"data": {"result": [{"value": [at.timestamp(), "0"]}]}}
+
+
+class SplitInstanceKafkaTools(StatefulTools):
+    def __init__(self):
+        super().__init__("kafka")
+
+    async def tempo_get_trace(self, trace_id, start=None, end=None):
+        seed = int(trace_id.rsplit("-", 1)[1])
+        payload = dependency_trace_payload(seed, "kafka")
+        if seed == 2:
+            for resource in payload["trace"]["resourceSpans"]:
+                for scope in resource.get("scopeSpans", []):
+                    for span in scope.get("spans", []):
+                        for attr in span.get("attributes", []):
+                            if attr.get("key") == "server.address":
+                                attr["value"]["stringValue"] = "kafka-canary"
+        return payload
 
 
 class ExistingDependencyGraphTools(StatefulTools):
@@ -71,6 +88,41 @@ async def test_postgres_without_instance_identity_does_not_query_global_metrics(
 
 
 @pytest.mark.asyncio
+async def test_kafka_without_instance_identity_does_not_query_global_metrics():
+    tools = CapturingHTTPTools()
+
+    result = await tools.kafka_dependency_metrics(
+        "orders-events",
+        "checkout-workers",
+        START,
+        15,
+        None,
+    )
+
+    assert tools.queries == []
+    assert all(signal["value"] is None for signal in result["signals"].values())
+    assert all("instance identity required" in signal["error"] for signal in result["signals"].values())
+
+
+@pytest.mark.asyncio
+async def test_kafka_instance_regex_is_escaped():
+    tools = CapturingHTTPTools()
+    hint = "kafka.*(prod)"
+
+    await tools.kafka_dependency_metrics(
+        "orders-events",
+        "checkout-workers",
+        START,
+        15,
+        hint,
+    )
+
+    assert tools.queries
+    assert all("kafka.*(prod)" not in query for query in tools.queries)
+    assert all(r"kafka\\.\\*\\(prod\\)" in query for query in tools.queries)
+
+
+@pytest.mark.asyncio
 async def test_redis_without_instance_identity_does_not_query_global_metrics():
     tools = CapturingHTTPTools()
 
@@ -109,6 +161,34 @@ async def test_trace_metadata_merges_into_existing_dependency_entity():
     assert entity.metadata["db.system"] == "postgresql"
     assert entity.metadata["db.namespace"] == "orders"
     assert entity.metadata["server.address"] == "orders-db"
+
+
+@pytest.mark.asyncio
+async def test_trace_confirmation_does_not_merge_same_dependency_across_instances():
+    incident = IncidentInput(
+        title="Checkout dependency errors",
+        cluster="prod",
+        service="frontend",
+        alert_name="HighErrorRate",
+        severity="critical",
+        starts_at=START,
+    )
+    settings = Settings(stateful_dependency_analysis_enabled=False)
+
+    result = await InvestigationEngine(
+        SplitInstanceKafkaTools(),
+        settings=settings,
+    ).investigate(incident)
+
+    trace_hypothesis = next(item for item in result.hypotheses if item.id == "trace-causal-propagation")
+    assert trace_hypothesis.status != "confirmed"
+    dependency_ids = {
+        entity.id
+        for entity in result.entities
+        if entity.kind == "TraceDependency" and entity.name == "kafka/orders-events"
+    }
+    assert "dependency:kafka/orders-events@kafka-prod" in dependency_ids
+    assert "dependency:kafka/orders-events@kafka-canary" in dependency_ids
 
 
 def test_non_finite_prometheus_values_are_unknown():
