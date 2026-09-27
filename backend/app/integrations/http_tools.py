@@ -156,39 +156,51 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        db = self._prom_label(database)
-        instance_matcher = ""
-        if instance_hint:
-            safe_instance = self._prom_label(re.escape(instance_hint))
-            instance_matcher = f',instance=~".*{safe_instance}.*"'
+        signal_names = (
+            "connections",
+            "active_connections",
+            "idle_in_transaction",
+            "max_connections",
+            "locks",
+            "access_exclusive_locks",
+            "deadlocks_delta",
+            "replication_lag_bytes",
+            "long_tx_seconds",
+        )
+        if not instance_hint:
+            return {
+                "kind": "postgresql",
+                "database": database,
+                "instance_hint": None,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {
+                        "value": None,
+                        "query": None,
+                        "error": "instance identity required to scope PostgreSQL telemetry",
+                    }
+                    for name in signal_names
+                },
+            }
 
-        db_selector = f'{{datname="{db}"{instance_matcher}}}'
+        db = self._prom_label(database)
+        safe_instance = self._prom_label(re.escape(instance_hint))
+        instance_matcher = f',instance=~".*{safe_instance}.*"'
+        instance_selector = f'{{instance=~".*{safe_instance}.*"}}'
+        db_selector = f'{{datname="{db}"{instance_matcher}}'
+
         queries = {
             "connections": f"sum(pg_stat_activity_count{db_selector})",
             "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"{instance_matcher}}})',
             "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"{instance_matcher}}})',
+            "max_connections": f"max(pg_settings_max_connections{instance_selector})",
             "locks": f"sum(pg_locks_count{db_selector})",
-            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="AccessExclusiveLock"{instance_matcher}}})',
+            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"{instance_matcher}}})',
             "deadlocks_delta": f"sum(increase(pg_stat_database_deadlocks{db_selector}[{window_minutes}m]))",
-            "long_tx_seconds": f"max(pg_long_running_transactions{db_selector})",
+            "replication_lag_bytes": f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})",
+            "long_tx_seconds": f"max(pg_long_running_transactions_oldest_timestamp_seconds{instance_selector})",
         }
-        if instance_hint:
-            instance_selector = f'{{instance=~".*{self._prom_label(re.escape(instance_hint))}.*"}}'
-            queries["max_connections"] = f"max(pg_settings_max_connections{instance_selector})"
-            queries["replication_lag_bytes"] = f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})"
-
         result = await self._named_prometheus_scalars(queries, at)
-        if not instance_hint:
-            result["max_connections"] = {
-                "value": None,
-                "query": None,
-                "error": "instance identity required to scope max_connections",
-            }
-            result["replication_lag_bytes"] = {
-                "value": None,
-                "query": None,
-                "error": "instance identity required to scope replication lag",
-            }
         return {
             "kind": "postgresql",
             "database": database,
@@ -246,11 +258,33 @@ class ReadOnlyHTTPTools:
         at: datetime,
         window_minutes: int = 15,
     ) -> dict[str, Any]:
-        selector = ""
-        if instance_hint:
-            safe_hint = self._prom_label(re.escape(instance_hint))
-            selector = f'{{instance=~".*{safe_hint}.*"}}'
+        signal_names = (
+            "memory_used_bytes",
+            "memory_max_bytes",
+            "config_maxmemory_bytes",
+            "evictions_delta",
+            "blocked_clients",
+            "connected_clients",
+            "max_clients",
+            "command_latency_seconds",
+        )
+        if not instance_hint:
+            return {
+                "kind": "redis",
+                "instance_hint": None,
+                "window_minutes": window_minutes,
+                "signals": {
+                    name: {
+                        "value": None,
+                        "query": None,
+                        "error": "instance identity required to scope Redis telemetry",
+                    }
+                    for name in signal_names
+                },
+            }
 
+        safe_hint = self._prom_label(re.escape(instance_hint))
+        selector = f'{{instance=~".*{safe_hint}.*"}}'
         queries = {
             "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
             "memory_max_bytes": f"max(redis_memory_max_bytes{selector})",
