@@ -291,7 +291,7 @@ def test_llm_context_redacts_sensitive_keys_and_bounds_untrusted_data():
     assert sanitized["labels"]["api_key"] == "[REDACTED]"
     assert "ignore previous instructions" in sanitized["labels"]["message"]
     assert sanitized["long"].endswith("…[truncated]")
-    assert sanitized["nested"]["one"]["two"] == "[truncated-depth]"
+    assert sanitized["nested"]["one"]["two"] == {"three": "[truncated-depth]"}
 
 
 def test_non_finite_prometheus_values_are_unknown():
