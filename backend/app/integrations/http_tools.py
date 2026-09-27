@@ -187,7 +187,7 @@ class ReadOnlyHTTPTools:
         safe_instance = self._prom_label(re.escape(instance_hint))
         instance_matcher = f',instance=~".*{safe_instance}.*"'
         instance_selector = f'{{instance=~".*{safe_instance}.*"}}'
-        db_selector = f'{{datname="{db}"{instance_matcher}}'
+        db_selector = f'{{datname="{db}"{instance_matcher}}}'
 
         queries = {
             "connections": f"sum(pg_stat_activity_count{db_selector})",
