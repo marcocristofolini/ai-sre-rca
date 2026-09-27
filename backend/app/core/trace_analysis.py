@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import Any
 
 from app.config import Settings
+from app.core.dependency_identity import dependency_instance
 from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
@@ -242,6 +243,7 @@ def analyze_trace(
         candidate_instance = str(dependency_metadata.get("server.address") or "") or None
         dependency_metadata = candidate.get("dependency_metadata", {})
         candidate_instance = str(dependency_metadata.get("server.address") or "") or None
+        candidate_instance = dependency_instance(candidate.get("dependency_metadata"))
         target = candidate.get("target")
         if target and candidate.get("kind") in {"client", "producer"}:
             candidate_reason = f"downstream {candidate.get('target_kind', 'dependency')} call failed"
@@ -603,7 +605,7 @@ async def enrich_with_trace_causality(
     }
 
     def dependency_entity_id(service_name: str, metadata: dict[str, Any] | None = None) -> str:
-        instance = str((metadata or {}).get("server.address") or "")
+        instance = dependency_instance(metadata)
         return f"dependency:{service_name}@{instance}" if instance else f"dependency:{service_name}"
 
     def ensure_entity(entity_id: str, name: str, kind: str, metadata: dict[str, Any] | None = None) -> None:
@@ -628,6 +630,16 @@ async def enrich_with_trace_causality(
         if ev.facts.get("trace_id")
     }
 
+    def traced_dependency_instances(service_name: str) -> set[str]:
+        return {
+            instance
+            for analysis in analyses
+            for hop in analysis.causal_chain
+            if hop.service == service_name
+            and hop.kind in {"database", "messaging", "external-service"}
+            and (instance := dependency_instance(hop.metadata))
+        }
+
     if graph_red_edges:
         graph_ev = next(
             (
@@ -646,12 +658,16 @@ async def enrich_with_trace_causality(
             ensure_entity(client_id, client, "Service")
             connection_type = str(edge.get("connection_type") or "unset")
             server_kind = "TraceDependency" if connection_type in {"database", "messaging_system", "virtual_node"} else "Service"
-            server_entity_id = (
-                f"dependency:{server}"
-                if server_kind == "TraceDependency"
-                else server_id
-            )
-            ensure_entity(server_entity_id, server, server_kind, {"connection_type": connection_type})
+            server_metadata: dict[str, Any] = {"connection_type": connection_type}
+            if server_kind == "TraceDependency":
+                instances = traced_dependency_instances(server)
+                if len(instances) == 1:
+                    instance = next(iter(instances))
+                    server_metadata["server.address"] = instance
+                server_entity_id = dependency_entity_id(server, server_metadata)
+            else:
+                server_entity_id = server_id
+            ensure_entity(server_entity_id, server, server_kind, server_metadata)
             evidence_ids = [graph_ev.id] if graph_ev else []
             key = (client_id, server_entity_id, "calls", tuple(evidence_ids))
             if key in existing_edges:
