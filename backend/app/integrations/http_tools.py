@@ -31,6 +31,9 @@ class ReadOnlyHTTPTools:
         )
 
     def set_cluster(self, cluster: str):
+        registry = self.settings.cluster_config
+        if registry and cluster not in registry:
+            raise ValueError(f"cluster is not configured: {cluster}")
         return self._cluster_ctx.set(cluster)
 
     def reset_cluster(self, token) -> None:
