@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.awareness import router as awareness_router
 from app.api.incidents import router as incidents_router
+from app.api.planner import router as planner_router
 from app.api.webhooks import router as webhooks_router
 from app.api.system import router as system_router
 from app.auth import AuthManager
@@ -88,11 +89,15 @@ async def healthz():
         "auth_enabled": settings.auth_enabled,
         "notifications_enabled": settings.notifications_enabled,
         "query_budget_enabled": settings.query_budget_enabled,
+        "persistent_awareness_graph": True,
+        "agentic_planner_enabled": settings.agentic_planner_enabled,
+        "awareness_max_traversal_depth": settings.awareness_max_traversal_depth,
         "configured_clusters": sorted(settings.cluster_config),
     }
 
 
 app.include_router(incidents_router)
 app.include_router(awareness_router)
+app.include_router(planner_router)
 app.include_router(webhooks_router)
 app.include_router(system_router)

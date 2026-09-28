@@ -148,18 +148,23 @@ Persistent Awareness Graph:
 - [x] bounded graph and history query API
 - [x] PostgreSQL and in-memory repository parity
 - [x] regression tests for identity, temporal history and isolation
-- [ ] topology reconciliation and stale/tombstone semantics
-- [ ] service-centric neighborhood projections
-- [ ] graph-backed blast-radius traversal
+- [x] freshness reconciliation from last_seen with no unsafe tombstone inference
+- [x] service-centric bounded neighborhood projections
+- [x] graph-backed blast-radius traversal with explicit impact direction
+- [x] unknown and stale relationship types/instances excluded from current impact traversal
+- [ ] authoritative tombstones from full inventory reconciliation
 - [ ] first-class deployment/change event nodes
 - [ ] persistent graph explorer UI
 
 Agentic investigation foundation:
 
-- [ ] Investigation Planner with bounded planning budget
-- [ ] typed specialist-agent contracts
-- [ ] Kubernetes, metrics, logs, traces, database and change specialists
-- [ ] parallel branch execution with shared evidence IDs
-- [ ] deterministic hypothesis verification remains the root-cause authority
+- [x] Investigation Planner with bounded task/context/query budgets
+- [x] typed specialist task contracts
+- [x] allow-listed Kubernetes, metrics, logs, traces, database and change task types
+- [x] database/stateful branch depends on typed trace identity
+- [x] planner context retrieval from bounded Awareness Graph neighborhoods
+- [x] deterministic hypothesis verification remains the root-cause authority
+- [ ] parallel specialist execution with shared evidence IDs
+- [ ] per-specialist execution contracts and result envelopes
 - [ ] rejected-hypothesis explanation graph
-- [ ] planner context retrieval from bounded Awareness Graph neighborhoods
+- [ ] optional model-assisted planning compiled through the specialist allow-list

@@ -8,14 +8,30 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - v0.8 Persistent Awareness Graph foundation with stable canonical entity and relationship identities.
 - Tenant- and cluster-scoped current graph state plus append-only temporal observations.
 - Idempotent graph ingestion whenever an investigation is persisted.
-- Persistent relationship evidence references and first/last-seen history.
-- Viewer API for bounded graph snapshots and target history.
-- PostgreSQL and in-memory persistence parity with regression tests for identity, history and isolation.
-- Bilingual Persistent Awareness Graph architecture documentation.
+- Viewer APIs for graph snapshots, target history and reconciled topology.
+- Fresh/stale topology reconciliation from last_seen without inferring unsafe tombstones.
+- Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
+- Graph-backed blast radius with an allow-listed relationship impact-direction model.
+- Unknown or stale graph relationships remain visible as topology/history context but are excluded from current impact traversal.
+- Bounded Investigation Planner with allow-listed read-only specialist task types.
+- Planner budgets for maximum tasks, parallelism, graph context nodes and queries per specialist.
+- Explicit traces -> database/stateful task dependency so stateful checks require typed dependency identity.
+- Planner context retrieval from the Persistent Awareness Graph.
+- Planner audit events and investigator-role enforcement.
+- PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
+- Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
+
+### Safety
+- The planner is plan-only: it cannot execute specialist agents, confirm root cause, attach evidence IDs or request remediation.
+- Blast radius never traverses unknown relationship types.
+- Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
+- Existing deterministic hypothesis verification remains the only root-cause authority.
+- The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
-- Topology reconciliation, stale/tombstone semantics and service-centric graph projections.
-- Graph-backed blast radius and the bounded Investigation Planner / specialist-agent runtime.
+- Parallel specialist execution with shared evidence/result envelopes.
+- Authoritative tombstones from full inventory reconciliation.
+- Persistent graph explorer UI and first-class deployment/change event nodes.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 

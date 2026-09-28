@@ -49,15 +49,57 @@ flowchart LR
 
 A ingestão ocorre no limite de persistência do repositório. Com PostgreSQL, o payload da investigação e as atualizações do Awareness Graph são confirmados na mesma transação do repositório. O repositório em memória implementa o mesmo contrato para testes e demo.
 
+## Reconciliação de topologia
+
+A v0.8 agora classifica entidades e relações persistentes como `fresh` ou `stale` usando `last_seen` e um threshold controlado pelo servidor.
+
+~~~mermaid
+flowchart LR
+    CUR[Estado Atual do Grafo] --> AGE[Comparar last_seen com threshold]
+    AGE -->|dentro do threshold| F[Fresh]
+    AGE -->|mais antigo| S[Stale]
+    OBS[Observações Append-only] --> CUR
+    S --> KEEP[Preservar nó/aresta histórica]
+    KEEP --> NO[Sem deleção inferida]
+~~~
+
+O sistema propositalmente **não** infere deleção ou tombstone pela ausência em um incidente posterior. Observações derivadas de incidentes são parciais e não equivalem a snapshots autoritativos do inventário do cluster. Tombstones reais dependem de uma futura fonte de reconciliação de inventário completo.
+
+## Projeções centradas em serviço
+
+A projeção resolve a entidade canônica exata do tipo `Service` e percorre um neighborhood topológico sob budgets rígidos de profundidade, nós e arestas. Se o mesmo nome de serviço existir em mais de um namespace, o caller precisa informar o namespace em vez de receber uma correspondência arbitrária.
+
+## Blast radius
+
+Blast radius não é uma travessia genérica do grafo. Cada tipo de relação possui direção explícita de impacto:
+
+| Relação | Direção armazenada | Direção de impacto |
+| --- | --- | --- |
+| `calls` / `depends_on` | caller → dependência | dependência → caller |
+| `scheduled_on` | workload → node | node → workload |
+| `owned_by` | filho → owner | owner → filho |
+| `managed_by` | workload → manager | manager → workload |
+| `syncs_from` | app → revisão/fonte | fonte → app |
+| `represented_by` | recurso → objeto controller | controller → recurso |
+| `runs_as` | serviço → workload | workload → serviço |
+| `serves` | workload → serviço | workload → serviço |
+
+Tipos de relação desconhecidos permanecem visíveis nas respostas de topologia, mas nunca são percorridos como caminhos de impacto. Relações classificadas como `stale` também são excluídas da propagação de blast radius atual e retornadas separadamente como IDs de relações stale ignoradas.
+
 ## API
 
 ~~~text
 GET /api/v1/awareness/graph?cluster=<cluster>
 GET /api/v1/awareness/graph?cluster=<cluster>&namespace=<ns>&kind=<kind>
 GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
+GET /api/v1/awareness/topology?cluster=<cluster>
+GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
+GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
 ~~~
 
 O tenant vem do principal autenticado. Um principal global com `tenant_id="*"` precisa informar explicitamente `tenant_id`; principals comuns não podem consultar outro tenant. A autorização de cluster existente continua obrigatória.
+
+Os limites padrão no servidor são `depth=4`, `nodes=200`, `edges=800`, com threshold de stale em 24 horas. Todos podem ser configurados por Helm/variáveis de ambiente.
 
 ## Invariantes de segurança
 
@@ -70,10 +112,17 @@ O tenant vem do principal autenticado. Um principal global com `tenant_id="*"` p
 
 ## Próximas fases da v0.8
 
-- reconciliação de topologia e semântica de stale/tombstone;
-- projeções centradas em serviço;
-- blast radius por travessia do grafo;
+Concluído na branch atual:
+
+- reconciliação de freshness sem inferência insegura de tombstone;
+- projeções bounded centradas em serviço;
+- blast radius com direção causal explícita;
+- contexto bounded do grafo para o Investigation Planner.
+
+Ainda planejado:
+
+- tombstones autoritativos a partir de reconciliação de inventário completo;
 - mudanças/deploys como eventos temporais first-class;
-- contexto bounded do grafo para o futuro Investigation Planner;
-- métricas/retention do grafo;
-- UI de exploração do grafo.
+- métricas e política de retention do grafo;
+- UI de exploração do grafo;
+- execução paralela de especialistas usando neighborhoods bounded.

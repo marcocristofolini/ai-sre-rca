@@ -49,7 +49,42 @@ flowchart LR
 
 Graph ingestion happens inside the repository save boundary. With PostgreSQL, the investigation payload and its awareness updates are committed in the same repository transaction. The in-memory repository implements the same contract for tests and demo mode.
 
-A later v0.8 phase can add reconciliation and stale-state semantics without changing canonical IDs.
+## Topology reconciliation
+
+v0.8 now classifies persistent entities and relationships as `fresh` or `stale` from `last_seen` and a server-controlled threshold.
+
+~~~mermaid
+flowchart LR
+    CUR[Current Graph State] --> AGE[Compare last_seen with threshold]
+    AGE -->|inside threshold| F[Fresh]
+    AGE -->|older than threshold| S[Stale]
+    OBS[Append-only Observations] --> CUR
+    S --> KEEP[Keep historical node/edge]
+    KEEP --> NO[No inferred deletion]
+~~~
+
+The system deliberately does **not** infer deletion or a tombstone from absence in a later incident. Incident-derived observations are partial, not authoritative cluster inventory snapshots. True tombstones require a future full-inventory reconciliation source.
+
+## Service-centric projections
+
+A service projection resolves the exact canonical `Service` entity and walks an undirected topology neighborhood under hard depth/node/edge budgets. If the same service name exists in multiple namespaces, the caller must provide a namespace rather than receiving an arbitrary match.
+
+## Blast radius
+
+Blast radius is not a generic graph traversal. Relationship types have explicit impact direction:
+
+| Relationship | Stored direction | Impact direction |
+| --- | --- | --- |
+| `calls` / `depends_on` | caller → dependency | dependency → caller |
+| `scheduled_on` | workload → node | node → workload |
+| `owned_by` | child → owner | owner → child |
+| `managed_by` | workload → manager | manager → workload |
+| `syncs_from` | app → revision/source | source → app |
+| `represented_by` | resource → controller object | controller object → resource |
+| `runs_as` | service → workload | workload → service |
+| `serves` | workload → service | workload → service |
+
+Unknown relationship types remain visible in topology responses but are never traversed as impact paths. Relationships classified as `stale` are also excluded from current blast-radius propagation and are returned separately as skipped stale relationship IDs.
 
 ## API
 
@@ -57,9 +92,14 @@ A later v0.8 phase can add reconciliation and stale-state semantics without chan
 GET /api/v1/awareness/graph?cluster=<cluster>
 GET /api/v1/awareness/graph?cluster=<cluster>&namespace=<ns>&kind=<kind>
 GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
+GET /api/v1/awareness/topology?cluster=<cluster>
+GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
+GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
 ~~~
 
 The tenant comes from the authenticated principal. A platform principal with `tenant_id="*"` must explicitly provide `tenant_id`; ordinary principals cannot request another tenant. Existing cluster authorization is enforced before graph access.
+
+Default server-side bounds are `depth=4`, `nodes=200`, `edges=800`, with a 24-hour stale threshold. They are configurable through Helm/environment settings.
 
 ## Safety invariants
 
@@ -72,10 +112,17 @@ The tenant comes from the authenticated principal. A platform principal with `te
 
 ## Next v0.8 phases
 
-- topology reconciliation and stale/tombstone semantics;
-- service-centric graph projections;
-- graph-backed blast-radius traversal;
+Completed in the current development branch:
+
+- freshness reconciliation without unsafe tombstone inference;
+- service-centric bounded graph projections;
+- causal-direction-aware blast-radius traversal;
+- bounded graph context for the Investigation Planner.
+
+Still planned:
+
+- authoritative tombstones from full inventory reconciliation;
 - change/deployment nodes as first-class temporal events;
-- agent-planner context retrieval from bounded graph neighborhoods;
 - graph health metrics and retention policy;
-- UI graph explorer.
+- UI graph explorer;
+- parallel specialist execution using bounded graph neighborhoods.

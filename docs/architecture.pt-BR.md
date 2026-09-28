@@ -1,4 +1,4 @@
-# Arquitetura — v0.7
+# Arquitetura — v0.8 em desenvolvimento
 
 **Português do Brasil** · [English](architecture.md)
 
@@ -7,38 +7,45 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Normalizador de Incidente]
+    N --> PLAN[Investigation Planner Bounded<br/>plan-only na v0.8 atual]
     N --> I[Investigation Engine]
+
+    PAG[(Persistent Awareness Graph)] --> CTX[Contexto Bounded do Serviço]
+    CTX --> PLAN
+    PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
 
     I --> K[Adapter Kubernetes]
     I --> P[Adapter Prometheus]
     I --> L[Adapter Loki]
-    I --> O[Service Graph OpenTelemetry]
-    I --> T[Tempo / TraceQL<br/>Causalidade por Traces]
-    I --> AR[Adapter Argo CD]
-    I --> GH[Adapter GitHub]
-    I --> KA[Adapter Karpenter]
+    I --> T[Tempo / TraceQL]
+    I --> AR[Argo CD / GitHub]
+    I --> KA[Karpenter]
 
-    K --> G[Awareness Graph]
-    P --> G
-    L --> G
-    O --> G
-    T --> G
-    AR --> G
-    GH --> G
-    KA --> G
+    K --> LG[Grafo Local do Incidente]
+    P --> LG
+    L --> LG
+    T --> LG
+    AR --> LG
+    KA --> LG
 
-    G --> SD[Investigadores Stateful<br/>PostgreSQL / Kafka / Redis]
-    SD --> EV[Store / Avaliador de Evidências]
+    LG --> EV[Avaliador de Evidências]
+    LG --> PAG
+    PAG --> REC[Reconciliação Fresh / Stale]
+    PAG --> SV[Projeções por Serviço]
+    PAG --> BR[Blast Radius]
+
     EV --> H[Hipóteses Determinísticas]
     EV --> MEM[Memória de Incidentes<br/>PostgreSQL + pgvector]
-    EV --> LLM[LLM Opcional<br/>Propositor de Hipóteses]
-
+    EV --> LLM[LLM Opcional<br/>Somente Propositor]
     MEM --> H
     LLM --> H
     H --> RC[Seletor de Causa Raiz]
     RC --> RCA[RCA Estruturado]
     RCA --> API[REST API]
-    RCA --> UI[UI de Investigação Next.js]
+    RCA --> UI[UI Next.js]
+
+    PT -. próxima fase .-> ORCH[Orquestrador Paralelo de Especialistas]
+    ORCH -. próxima fase .-> EV
 ```
 
 ## Ciclo de investigação
@@ -332,3 +339,117 @@ A v0.7 implementa o boundary de remediação como outro runtime. O investigator 
 O remediator usa registry separado de credenciais, Roles Helm por namespace com get/patch somente em deployments/scale, dry-run server-side, aprovação com papel remediator exato, regra de quatro olhos, expiração de plano, detecção de drift por resourceVersion e rollback explícito.
 
 Detalhes: [remediation.pt-BR.md](remediation.pt-BR.md).
+
+
+## Persistent Awareness Graph e serviços de topologia — v0.8
+
+O grafo local do incidente agora é canonicalizado e persistido, permitindo que a topologia operacional se acumule entre investigações sem deixar IDs locais vazarem entre escopos.
+
+```mermaid
+flowchart LR
+    IR[InvestigationResult<br/>entities + graph_edges] --> CAN[Canonicalizador]
+    CAN --> CE[(awareness_entities<br/>estado atual)]
+    CAN --> CR[(awareness_relationships<br/>estado atual)]
+    CAN --> AO[(awareness_observations<br/>histórico append-only)]
+
+    CE --> REC[Reconciliação Fresh / Stale]
+    CR --> REC
+    AO --> HIST[API de Histórico do Alvo]
+
+    REC --> SP[Projeção Centrada em Serviço]
+    REC --> BR[Blast Radius]
+    SP --> PC[Contexto do Planner]
+    BR --> API8[APIs Awareness v0.8]
+```
+
+A identidade canônica da entidade deriva de `tenant + cluster + kind + namespace + name`. A identidade da relação deriva dos endpoints canônicos no mesmo escopo mais o tipo da relação. Persistir novamente o mesmo incidente é idempotente.
+
+### Reconciliação não inventa deleção
+
+```mermaid
+flowchart TD
+    LS[last_seen] --> CMP{Mais antigo que o threshold de stale?}
+    CMP -->|Não| F[Fresh]
+    CMP -->|Sim| S[Stale]
+    S --> KEEP[Preservar registro atual + histórico]
+    KEEP --> WAIT[Aguardar fonte autoritativa de inventário]
+    WAIT -. futuro .-> T[Tombstone / deleção]
+```
+
+Observações de incidentes são parciais. Portanto, um recurso ausente em um RCA posterior não é tratado como deletado.
+
+### Projeção de serviço
+
+```mermaid
+flowchart LR
+    SVC[Service Canônico] --> N1[Vizinhos Depth 1]
+    N1 --> N2[Vizinhos Depth 2]
+    N2 --> NX[Até a profundidade configurada]
+
+    B1[Max depth] --> SVC
+    B2[Max nodes] --> SVC
+    B3[Max edges] --> SVC
+
+    SVC --> OUT[Topologia Bounded do Serviço]
+    N1 --> OUT
+    N2 --> OUT
+    NX --> OUT
+```
+
+A busca é exata. Se o mesmo nome de serviço existir em namespaces diferentes, o namespace passa a ser obrigatório em vez de escolher um nó arbitrariamente.
+
+### Blast radius causal
+
+A direção armazenada no grafo e a direção de impacto são propositalmente separadas.
+
+```mermaid
+flowchart LR
+    FE[frontend] -->|calls| CO[checkout]
+    CO -->|calls| PG[(postgres)]
+    DEP[Deployment checkout] -->|serves| CO
+
+    PG -. impacto: calls reverso .-> CO
+    CO -. impacto: calls reverso .-> FE
+    DEP -. impacto: serves forward .-> CO
+```
+
+Tipos de relação conhecidos passam por uma allow-list explícita de direção de impacto. Relações desconhecidas aparecem nas APIs de topologia, mas nunca são percorridas no blast radius. Relações stale são apenas contexto histórico e são ignoradas na propagação de impacto atual.
+
+## Investigation Planner Bounded — v0.8
+
+O planner atual é determinístico e plan-only. Ele usa a identidade do incidente, feature flags e um neighborhood bounded do serviço para decidir quais ramos tipados de especialistas são relevantes.
+
+```mermaid
+flowchart TD
+    INC[IncidentInput] --> PLAN[Planner Determinístico]
+    PAG[Persistent Awareness Graph] --> CTX[Contexto Bounded de 1 Salto]
+    CTX --> PLAN
+    CFG[Budgets do Servidor + Feature Flags] --> PLAN
+
+    PLAN --> K[Tarefa Kubernetes]
+    PLAN --> M[Tarefa Métricas]
+    PLAN --> L[Tarefa Logs]
+    PLAN --> T[Tarefa Traces]
+    T --> DB[Tarefa Database / Stateful]
+    PLAN --> CH[Tarefa Mudanças]
+
+    K --> IP[InvestigationPlan]
+    M --> IP
+    L --> IP
+    T --> IP
+    DB --> IP
+    CH --> IP
+
+    IP -. ainda não implementado .-> ORCH[Execução Paralela de Especialistas]
+    ORCH -. futuros envelopes de evidência .-> EV[Avaliador Determinístico]
+```
+
+Propriedades de segurança do planner:
+
+- existem somente seis tipos allow-listed de tarefas especialistas;
+- toda tarefa é read-only;
+- quantidade de tarefas, contexto do grafo, paralelismo e budget de queries por especialista têm limites no servidor;
+- database/stateful depende da tarefa de traces para que a identidade da dependência seja tipada antes de consultar telemetria específica;
+- o planner não confirma hipóteses, não anexa evidências, não executa mutações e não contorna o plano de remediação separado.
+
+Detalhes: [persistent-awareness-graph.pt-BR.md](persistent-awareness-graph.pt-BR.md) e [agentic-investigation.pt-BR.md](agentic-investigation.pt-BR.md).

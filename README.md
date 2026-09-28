@@ -8,20 +8,34 @@ Evidence-first, read-only SRE incident investigator for Kubernetes, distributed 
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
-## v0.8 development — Persistent Awareness Graph foundation
+## v0.8 development — persistent awareness + bounded agentic planning
 
-v0.8 begins the transition from an incident-local RCA engine toward an autonomous, evidence-verified SRE platform. The first foundation is a **persistent temporal Awareness Graph**:
+v0.8 is evolving the project from an incident-local RCA engine into an autonomous, evidence-verified SRE platform. The current development branch now includes:
 
-- stable canonical entity and relationship identities across independent incidents;
-- tenant- and cluster-scoped graph persistence;
-- current graph state plus append-only temporal observations;
-- evidence references preserved on persistent relationships;
-- idempotent ingestion when the same incident is persisted again;
-- bounded graph and history APIs for future blast-radius, memory and agent-planning layers.
+- **Persistent temporal Awareness Graph** with canonical entity/relationship identity across incidents.
+- **Tenant + cluster isolation** at identity, persistence and query boundaries.
+- **Current state + append-only observations** with idempotent ingestion.
+- **Topology reconciliation** that classifies current records as `fresh` or `stale` from `last_seen` without inventing deletion/tombstones from incomplete incident data.
+- **Service-centric topology projections** with bounded depth, node and edge budgets.
+- **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown or stale relationships are visible as context but never traversed as current impact paths.
+- **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
+- **Typed task dependencies.** Stateful/database investigation is planned only after the trace branch that provides typed dependency identity.
+- **Persistent graph context for planning** with hard server-side limits on context size, task count, parallelism and per-specialist query budgets.
 
-The LLM still cannot create graph facts directly or confirm root cause. Future agentic planning will consume bounded graph context while deterministic evidence verification remains authoritative.
+Current v0.8 APIs include:
 
-Design: [docs/persistent-awareness-graph.md](docs/persistent-awareness-graph.md).
+```text
+GET  /api/v1/awareness/graph
+GET  /api/v1/awareness/history/{target_id}
+GET  /api/v1/awareness/topology
+GET  /api/v1/awareness/services/{service_name}
+GET  /api/v1/awareness/blast-radius/{target_id}
+POST /api/v1/planner/plan
+```
+
+The planner is intentionally **plan-only** at this stage. It chooses bounded investigation branches but does not yet execute specialist agents in parallel. The existing deterministic evidence evaluator remains the only authority that can confirm root cause, and the LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
+
+Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.md) · [Agentic Investigation](docs/agentic-investigation.md).
 
 ## What changed in v0.7
 
@@ -95,29 +109,35 @@ v0.5.1 tightens stateful RCA correctness after the v0.5 review: invalid stateful
 
 ```mermaid
 flowchart TD
-    A[Alertmanager / API] --> B[Incident Normalizer]
-    B --> C[Investigation Engine<br/>Deterministic Playbooks]
+    A[Alertmanager / API] --> N[Incident Normalizer]
+    N --> P[Bounded Investigation Planner<br/>plan-only]
+    N --> E[Investigation Engine]
 
-    C --> K[Kubernetes<br/>Pod / ReplicaSet / Deployment / Node]
-    C --> O[Observability<br/>Prometheus / Loki / OpenTelemetry]
-    C --> CH[Change Sources<br/>Argo CD / GitHub]
-    C --> KA[Karpenter<br/>NodeClaim / NodePool]
+    G[(Persistent Awareness Graph)] --> C[Bounded Service Context]
+    C --> P
+    P --> T[Allow-listed Specialist Tasks]
 
-    K --> G[Awareness Graph]
-    O --> G
-    CH --> G
-    KA --> G
+    E --> K[Kubernetes]
+    E --> O[Prometheus / Loki / Tempo]
+    E --> CH[Argo CD / GitHub / Karpenter]
+    K --> L[Incident-local Graph + Evidence]
+    O --> L
+    CH --> L
 
-    G --> E[Evidence Evaluator]
-    E --> M[Incident Memory<br/>PostgreSQL + pgvector]
-    E --> L[Optional LLM<br/>Hypothesis Proposer Only]
+    L --> G
+    G --> R[Fresh / Stale Reconciliation]
+    G --> S[Service Projections]
+    G --> B[Blast Radius]
 
-    M --> R[Evidence-backed RCA]
-    L --> R
-    E --> R
+    L --> D[Deterministic Evaluator]
+    D --> M[Incident Memory<br/>PostgreSQL + pgvector]
+    D --> H[Verified Hypotheses]
+    H --> RCA[Evidence-backed RCA]
+    RCA --> API[REST API]
+    RCA --> UI[Next.js UI]
 
-    R --> API[REST API]
-    R --> UI[Next.js UI]
+    T -. next phase .-> X[Parallel Specialist Execution]
+    X -. shared evidence .-> D
 ```
 
 More diagrams are available in [docs/architecture.md](docs/architecture.md).
@@ -140,6 +160,10 @@ Open:
 - Stateful Kafka demo: `http://localhost:3000/stateful/kafka`
 - Stateful Redis demo: `http://localhost:3000/stateful/redis`
 - Operational health/RBAC UI: `http://localhost:3000/ops`
+- Reconciled topology API: `GET /api/v1/awareness/topology?cluster=<cluster>`
+- Service topology API: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
+- Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
+- Investigation planner: `POST /api/v1/planner/plan`
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 
