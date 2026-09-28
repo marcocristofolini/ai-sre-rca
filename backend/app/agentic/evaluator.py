@@ -83,6 +83,42 @@ def _direct_kubernetes_blockers(
     return sorted(set(blockers))
 
 
+def _specialist_context_blockers(
+    execution: AgenticExecutionResult,
+    specialist: str,
+) -> list[str]:
+    blockers: list[str] = []
+    planned = {task.specialist for task in execution.plan.tasks}
+    results = {
+        result.specialist: result
+        for result in execution.specialist_results
+    }
+
+    if specialist in {"traces", "database"} and "kubernetes" in planned:
+        kubernetes = results.get("kubernetes")
+        if kubernetes is None or kubernetes.status != "completed":
+            blockers.append(
+                "Kubernetes specialist was planned but did not complete; "
+                "downstream promotion cannot assume infrastructure evidence is absent"
+            )
+
+    if specialist == "database":
+        traces = results.get("traces")
+        if traces is None or traces.status != "completed":
+            blockers.append(
+                "stateful promotion requires a completed trace specialist"
+            )
+
+    denied = execution.query_budget.get("denied")
+    if specialist in {"traces", "database"} and isinstance(denied, list) and denied:
+        blockers.append(
+            "global query budget denied one or more operations; "
+            "downstream evaluation is incomplete"
+        )
+
+    return blockers
+
+
 def _trace_gate(
     support: list[Evidence],
 ) -> tuple[bool, str]:
@@ -218,6 +254,24 @@ def _build_explanation_graph(
     else:
         integrity_gate_id = None
 
+    context_reasons = sorted({
+        reason
+        for item in evaluated
+        if item.decision == "blocked_by_incomplete_context"
+        for reason in item.reasons
+    })
+    if context_reasons:
+        context_gate_id = "gate:specialist-context"
+        nodes[context_gate_id] = ExplanationNode(
+            id=context_gate_id,
+            kind="gate",
+            label="required specialist context completeness",
+            status="failed",
+            metadata={"reasons": context_reasons},
+        )
+    else:
+        context_gate_id = None
+
     for item in evaluated:
         hypothesis_node_id = f"hypothesis:{item.id}"
         nodes[hypothesis_node_id] = ExplanationNode(
@@ -299,6 +353,18 @@ def _build_explanation_graph(
             edges.append(
                 ExplanationEdge(
                     source=integrity_gate_id,
+                    target=hypothesis_node_id,
+                    relationship="blocks",
+                )
+            )
+
+        if (
+            item.decision == "blocked_by_incomplete_context"
+            and context_gate_id
+        ):
+            edges.append(
+                ExplanationEdge(
+                    source=context_gate_id,
                     target=hypothesis_node_id,
                     relationship="blocks",
                 )
@@ -421,7 +487,17 @@ def evaluate_shared_evidence(
                     hypothesis.status = HypothesisStatus.INCONCLUSIVE
                     decision = "inconclusive"
 
+            context_blockers = _specialist_context_blockers(
+                execution,
+                specialist,
+            )
             if (
+                context_blockers
+                and hypothesis.status == HypothesisStatus.CONFIRMED
+            ):
+                decision = "blocked_by_incomplete_context"
+                reasons.extend(context_blockers)
+            elif (
                 precedence_blockers
                 and specialist in {"traces", "database"}
                 and hypothesis.status == HypothesisStatus.CONFIRMED
@@ -450,6 +526,7 @@ def evaluate_shared_evidence(
         if item.status == HypothesisStatus.CONFIRMED
         and item.decision not in {
             "blocked_by_precedence",
+            "blocked_by_incomplete_context",
             "invalid_evidence",
         }
     ]
