@@ -3,10 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.db.repository import MemoryRepository
-from app.remediation.executor import RemediationDriftError, ScaleState
+from app.remediation.executor import (
+    KubernetesScaleExecutor,
+    RemediationClusterError,
+    RemediationDriftError,
+    ScaleState,
+)
 from app.remediation.service import (
     GuardedRemediationService,
     RemediationApprovalError,
@@ -317,3 +323,117 @@ def test_remediator_is_a_separate_fastapi_application():
     assert "/api/v1/remediation/plans" in paths
     assert "/api/v1/incidents/investigate" not in paths
     assert remediator_app.version == "0.7.0"
+
+
+
+def test_remediation_cluster_registry_fails_closed():
+    with pytest.raises(ValidationError, match="remediation_cluster_config_json"):
+        Settings(remediation_cluster_config_json="{")
+
+    with pytest.raises(ValidationError, match="remediation_cluster_config_json"):
+        Settings(remediation_cluster_config_json='{"prod-a":"token"}')
+
+
+def test_remediation_executor_rejects_insecure_kubernetes_api(tmp_path):
+    token = tmp_path / "token"
+    ca = tmp_path / "ca.crt"
+    token.write_text("secret")
+    ca.write_text("ca")
+
+    executor = KubernetesScaleExecutor(Settings(
+        remediation_cluster_config_json=(
+            '{"prod-a":{'
+            f'"kubernetes_api_url":"http://k8s.example",'
+            f'"kubernetes_token_file":"{token}",'
+            f'"kubernetes_ca_file":"{ca}"'
+            '}}'
+        )
+    ))
+
+    with pytest.raises(RemediationClusterError, match="must use HTTPS"):
+        executor._api_url("prod-a")
+
+
+@pytest.mark.asyncio
+async def test_scale_executor_uses_only_scale_subresource_and_server_dry_run(
+    tmp_path,
+    monkeypatch,
+):
+    token = tmp_path / "token"
+    ca = tmp_path / "ca.crt"
+    token.write_text("secret-token")
+    ca.write_text("fake-ca")
+
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, payload, status_code=200):
+            self._payload = payload
+            self.status_code = status_code
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(self.status_code)
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            calls.append(("client", kwargs))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, path):
+            calls.append(("get", path))
+            return FakeResponse({
+                "metadata": {"resourceVersion": "rv-1"},
+                "spec": {"replicas": 3},
+            })
+
+        async def patch(self, path, *, params, json):
+            calls.append(("patch", path, params, json))
+            return FakeResponse({
+                "metadata": {"resourceVersion": "rv-2"},
+                "spec": {"replicas": json["spec"]["replicas"]},
+            })
+
+    monkeypatch.setattr(
+        "app.remediation.executor.httpx.AsyncClient",
+        FakeClient,
+    )
+
+    executor = KubernetesScaleExecutor(Settings(
+        remediation_cluster_config_json=(
+            '{"prod-a":{'
+            f'"kubernetes_api_url":"https://k8s.example",'
+            f'"kubernetes_token_file":"{token}",'
+            f'"kubernetes_ca_file":"{ca}"'
+            '}}'
+        )
+    ))
+
+    current = await executor.inspect_scale("prod-a", "payments", "checkout")
+    result = await executor.dry_run_scale(
+        "prod-a",
+        "payments",
+        "checkout",
+        5,
+        current,
+    )
+
+    get_call = next(item for item in calls if item[0] == "get")
+    patch_call = next(item for item in calls if item[0] == "patch")
+
+    assert get_call[1].endswith(
+        "/namespaces/payments/deployments/checkout/scale"
+    )
+    assert patch_call[1] == get_call[1]
+    assert patch_call[2]["dryRun"] == "All"
+    assert patch_call[3]["metadata"]["resourceVersion"] == "rv-1"
+    assert patch_call[3]["spec"]["replicas"] == 5
+    assert result["dry_run"] == "All"
