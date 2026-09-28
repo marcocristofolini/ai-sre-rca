@@ -1,4 +1,4 @@
-# Roadmap after v0.6
+# Roadmap after v0.6.1
 
 ## Completed in v0.2
 
@@ -85,6 +85,14 @@
 - [x] Alertmanager machine-token authentication
 - [x] operational /ops UI
 - [x] external Kubernetes Secret injection for sensitive environment variables
+
+## Completed in v0.6.1 — operational isolation hardening
+
+- [x] tenant-scoped incident lookup at the persistence boundary
+- [x] cross-tenant incident identifiers remain not-found rather than disclosing existence
+- [x] tenant-scoped retention purge with explicit wildcard platform scope
+- [x] fail-closed validation for malformed multi-cluster registry configuration
+- [x] regression coverage for isolation and cluster-registry validation
 
 ## v0.6.x — operational depth
 
