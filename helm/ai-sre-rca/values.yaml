@@ -41,7 +41,7 @@ backend:
     LLM_BASE_URL: "http://ollama.ai.svc:11434/v1"
     LLM_MODEL: "local-model"
     CORS_ORIGINS: "http://ai-sre-rca-frontend"
-    AUTH_ENABLED: "false"
+    AUTH_ENABLED: "true"
     OIDC_ALGORITHMS: "RS256,ES256"
     OIDC_ROLES_CLAIM: "roles"
     OIDC_TENANT_CLAIM: "tenant"
@@ -131,10 +131,9 @@ networkPolicy:
     - {}
   additionalBackendIngress: []
   additionalFrontendEgress: []
-  remediatorIngress:
-    - {}
-  remediatorEgress:
-    - {}
+  # Fail closed for the mutation plane. Configure explicit peers when enabled.
+  remediatorIngress: []
+  remediatorEgress: []
   # Empty object means unrestricted backend egress once the policy is enabled.
   # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
   backendEgress:
