@@ -233,6 +233,14 @@ class KubernetesScaleExecutor:
             raise RemediationDriftError(
                 "scale target changed after dry-run; create a new remediation plan"
             )
+        pre_execute_dry_run = await self._patch_scale(
+            cluster,
+            namespace,
+            deployment,
+            desired_replicas,
+            current.resource_version,
+            dry_run=True,
+        )
         payload = await self._patch_scale(
             cluster,
             namespace,
@@ -242,6 +250,7 @@ class KubernetesScaleExecutor:
             dry_run=False,
         )
         return {
+            "pre_execute_dry_run_replicas": pre_execute_dry_run.get("spec", {}).get("replicas"),
             "previous_replicas": current.replicas,
             "desired_replicas": desired_replicas,
             "previous_resource_version": current.resource_version,
@@ -267,6 +276,14 @@ class KubernetesScaleExecutor:
             raise RemediationDriftError(
                 "scale target changed after execution; rollback is blocked"
             )
+        pre_rollback_dry_run = await self._patch_scale(
+            cluster,
+            namespace,
+            deployment,
+            previous_replicas,
+            current.resource_version,
+            dry_run=True,
+        )
         payload = await self._patch_scale(
             cluster,
             namespace,
@@ -276,6 +293,7 @@ class KubernetesScaleExecutor:
             dry_run=False,
         )
         return {
+            "pre_rollback_dry_run_replicas": pre_rollback_dry_run.get("spec", {}).get("replicas"),
             "from_replicas": current.replicas,
             "restored_replicas": previous_replicas,
             "previous_resource_version": current.resource_version,
