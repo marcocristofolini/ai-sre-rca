@@ -340,6 +340,13 @@ class GuardedRemediationService:
                 f"plan cannot execute from state {plan.status.value}"
             )
 
+        claimed = plan.model_copy(deep=True)
+        claimed.status = RemediationPlanStatus.EXECUTING
+        plan = await self._save_if_status(
+            claimed,
+            expected_status=RemediationPlanStatus.APPROVED,
+        )
+
         request = ScaleDeploymentPlanRequest(
             incident_id=plan.incident_id,
             namespace=plan.namespace,
@@ -348,16 +355,21 @@ class GuardedRemediationService:
             rationale=plan.rationale,
         )
         static = self.policy.evaluate_static(incident, request)
-        if not static.allowed:
+        runtime = self.policy.evaluate_runtime(
+            request,
+            int(plan.rollback["previous_replicas"]),
+        )
+        if not static.allowed or not runtime.allowed:
             plan.status = RemediationPlanStatus.EXECUTION_FAILED
             plan.failure = "policy changed after approval"
             plan.policy_checks.extend(static.checks)
+            plan.policy_checks.extend(runtime.checks)
             await self._save(plan)
             await self._audit(
                 plan,
                 actor=actor,
                 action="remediation.execution_blocked",
-                detail={"checks": static.checks},
+                detail={"checks": [*static.checks, *runtime.checks]},
             )
             return plan
 
@@ -416,6 +428,12 @@ class GuardedRemediationService:
             raise RemediationPlanStateError(
                 f"plan cannot roll back from state {plan.status.value}"
             )
+        claimed = plan.model_copy(deep=True)
+        claimed.status = RemediationPlanStatus.ROLLING_BACK
+        plan = await self._save_if_status(
+            claimed,
+            expected_status=RemediationPlanStatus.EXECUTED,
+        )
         previous_replicas = int(plan.rollback["previous_replicas"])
         try:
             execution_resource_version = plan.execution.get("resource_version")
