@@ -120,6 +120,9 @@ class FakeScaleExecutor:
 def settings(**overrides):
     values = {
         "auth_enabled": True,
+        "oidc_issuer": "https://issuer.example",
+        "oidc_audience": "ai-sre-rca-remediator",
+        "oidc_jwks_url": "https://issuer.example/jwks",
         "remediation_enabled": True,
         "remediation_allowed_actions": "scale_deployment",
         "remediation_allowed_namespaces": "payments",
@@ -625,6 +628,18 @@ def test_remediator_runtime_requires_auth_and_shared_database():
 
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
         validate_remediator_runtime(settings(database_url=None))
+
+    with pytest.raises(RuntimeError, match="OIDC"):
+        validate_remediator_runtime(settings(
+            database_url="postgresql+asyncpg://user:pass@db/remediation",
+            oidc_jwks_url=None,
+        ))
+
+    with pytest.raises(RuntimeError, match="REMEDIATOR_ROLE"):
+        validate_remediator_runtime(settings(
+            database_url="postgresql+asyncpg://user:pass@db/remediation",
+            remediator_role="admin",
+        ))
 
     validate_remediator_runtime(
         settings(database_url="postgresql+asyncpg://user:pass@db/remediation")
