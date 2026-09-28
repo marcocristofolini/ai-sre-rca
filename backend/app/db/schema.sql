@@ -26,6 +26,25 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS remediation_plans (
+  id VARCHAR(64) PRIMARY KEY,
+  incident_id VARCHAR(64) NOT NULL,
+  tenant_id VARCHAR(255) NOT NULL,
+  cluster VARCHAR(255) NOT NULL,
+  namespace VARCHAR(255) NOT NULL,
+  deployment VARCHAR(255) NOT NULL,
+  action_type VARCHAR(64) NOT NULL,
+  status VARCHAR(64) NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_remediation_tenant_created
+  ON remediation_plans(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_remediation_incident
+  ON remediation_plans(incident_id, tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_investigations_alert_name ON investigations(alert_name);
 CREATE INDEX IF NOT EXISTS idx_investigations_created_at ON investigations(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_investigations_tenant ON investigations(tenant_id);

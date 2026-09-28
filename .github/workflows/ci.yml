@@ -60,9 +60,25 @@ jobs:
           helm template ai-sre-rca helm/ai-sre-rca \
             --set networkPolicy.enabled=true \
             --set backend.existingSecret=ai-sre-secrets \
+            --set remediator.enabled=true \
+            --set remediator.existingSecret=ai-sre-remediator-secrets \
+            --set 'remediator.targetNamespaces[0]=payments' \
             > /tmp/ai-sre-rca-hardened.yaml
           grep -q "kind: NetworkPolicy" /tmp/ai-sre-rca-hardened.yaml
           grep -Eq 'name: "?ai-sre-secrets"?' /tmp/ai-sre-rca-hardened.yaml
+          grep -Eq 'name: "?ai-sre-remediator-secrets"?' /tmp/ai-sre-rca-hardened.yaml
+          grep -q "name: ai-sre-rca-remediator" /tmp/ai-sre-rca-hardened.yaml
+          grep -q 'resources: \["deployments/scale"\]' /tmp/ai-sre-rca-hardened.yaml
+          grep -q 'verbs: \["get", "patch"\]' /tmp/ai-sre-rca-hardened.yaml
+
+          if helm template ai-sre-rca helm/ai-sre-rca \
+            --set remediator.enabled=true \
+            --set remediator.serviceAccount.name=ai-sre-rca \
+            >/tmp/ai-sre-rca-invalid.yaml 2>/tmp/ai-sre-rca-invalid.err; then
+            echo "Expected Helm to reject shared investigator/remediator ServiceAccount" >&2
+            exit 1
+          fi
+          grep -q "must differ from the investigator" /tmp/ai-sre-rca-invalid.err
 
 
   smoke:
@@ -108,6 +124,13 @@ jobs:
           BACKEND_PID=$!
 
           (
+            cd backend
+            DEMO_MODE=true DATABASE_URL= LLM_ENABLED=false REMEDIATION_ENABLED=false \
+              python -m uvicorn app.remediation.main:app --host 127.0.0.1 --port 18082
+          ) >/tmp/ai-sre-remediator.log 2>&1 &
+          REMEDIATOR_PID=$!
+
+          (
             cd frontend/.next/standalone
             API_URL=http://127.0.0.1:18080 HOSTNAME=127.0.0.1 PORT=13000 \
               node server.js
@@ -115,7 +138,7 @@ jobs:
           FRONTEND_PID=$!
 
           cleanup() {
-            kill "$FRONTEND_PID" "$BACKEND_PID" 2>/dev/null || true
+            kill "$FRONTEND_PID" "$REMEDIATOR_PID" "$BACKEND_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
 
@@ -126,6 +149,7 @@ jobs:
           import urllib.request
 
           BACKEND = "http://127.0.0.1:18080"
+          REMEDIATOR = "http://127.0.0.1:18082"
           FRONTEND = "http://127.0.0.1:13000"
 
           def get(url, expected=200, attempts=40):
@@ -149,9 +173,19 @@ jobs:
 
           health = json.loads(get(f"{BACKEND}/healthz"))
           assert health["status"] == "ok"
-          assert health["version"] == "0.6.1"
+          assert health["version"] == "0.7.0"
           assert health["demo_mode"] is True
           assert health["stateful_dependency_rca"] is True
+
+          remediator_health = json.loads(get(f"{REMEDIATOR}/healthz"))
+          assert remediator_health["status"] == "ok"
+          assert remediator_health["version"] == "0.7.0"
+          assert remediator_health["service"] == "remediator"
+          assert remediator_health["separate_identity"] is True
+          remediator_openapi = json.loads(get(f"{REMEDIATOR}/openapi.json"))
+          assert "/api/v1/remediation/plans" in remediator_openapi["paths"]
+          investigator_openapi = json.loads(get(f"{BACKEND}/openapi.json"))
+          assert "/api/v1/remediation/plans" not in investigator_openapi["paths"]
 
           kube = json.loads(get(f"{BACKEND}/api/v1/incidents/demo"))
           assert kube["status"] == "resolved"
@@ -217,6 +251,8 @@ jobs:
           cat /tmp/ai-sre-backend.log || true
           echo "=== frontend ==="
           cat /tmp/ai-sre-frontend.log || true
+          echo "=== remediator ==="
+          cat /tmp/ai-sre-remediator.log || true
 
 
   container-smoke:
@@ -246,6 +282,15 @@ jobs:
             ai-sre-rca-backend:ci
 
           docker run -d \
+            --name ai-sre-rca-remediator \
+            --network ai-sre-rca-smoke \
+            -e DATABASE_URL= \
+            -e REMEDIATION_ENABLED=false \
+            -p 18082:8080 \
+            ai-sre-rca-backend:ci \
+            uvicorn app.remediation.main:app --host 0.0.0.0 --port 8080
+
+          docker run -d \
             --name ai-sre-rca-frontend \
             --network ai-sre-rca-smoke \
             -e API_URL=http://ai-sre-rca-backend:8080 \
@@ -253,7 +298,7 @@ jobs:
             ai-sre-rca-frontend:ci
 
           cleanup() {
-            docker rm -f ai-sre-rca-frontend ai-sre-rca-backend >/dev/null 2>&1 || true
+            docker rm -f ai-sre-rca-frontend ai-sre-rca-remediator ai-sre-rca-backend >/dev/null 2>&1 || true
             docker network rm ai-sre-rca-smoke >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
@@ -268,11 +313,13 @@ jobs:
             done
             echo "Timed out waiting for $url" >&2
             docker logs ai-sre-rca-backend || true
+            docker logs ai-sre-rca-remediator || true
             docker logs ai-sre-rca-frontend || true
             return 1
           }
 
           wait_for http://127.0.0.1:18081/healthz
+          wait_for http://127.0.0.1:18082/healthz
           wait_for http://127.0.0.1:13001/
 
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/incidents/demo/stateful/postgresql)" = "200"
@@ -280,11 +327,13 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/ops)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
 
-          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.6.1"'
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.7.0"'
+          curl -fsS http://127.0.0.1:18082/healthz | grep -q '"service":"remediator"'
           echo "Production container smoke test passed"
 
       - name: Print container logs on failure
         if: failure()
         run: |
           docker logs ai-sre-rca-backend || true
+          docker logs ai-sre-rca-remediator || true
           docker logs ai-sre-rca-frontend || true

@@ -1,0 +1,63 @@
+{{- if .Values.remediator.enabled }}
+{{- if eq .Values.remediator.serviceAccount.name .Values.serviceAccount.name }}
+{{- fail "remediator.serviceAccount.name must differ from the investigator serviceAccount.name" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-remediator
+spec:
+  replicas: {{ .Values.remediator.replicas }}
+  selector:
+    matchLabels: { app: {{ .Release.Name }}-remediator }
+  template:
+    metadata:
+      labels: { app: {{ .Release.Name }}-remediator }
+    spec:
+      serviceAccountName: {{ .Values.remediator.serviceAccount.name }}
+      containers:
+        - name: remediator
+          image: "{{ .Values.remediator.image.repository }}:{{ .Values.remediator.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+            - app.remediation.main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+          ports:
+            - containerPort: 8080
+          {{- if .Values.remediator.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.remediator.existingSecret | quote }}
+          {{- end }}
+          env:
+            {{- range $key, $value := .Values.remediator.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: REMEDIATION_ALLOWED_NAMESPACES
+              value: {{ join "," .Values.remediator.targetNamespaces | quote }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+{{ toYaml .Values.resources.remediator | indent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-remediator
+spec:
+  selector: { app: {{ .Release.Name }}-remediator }
+  ports:
+    - port: {{ .Values.remediator.service.port }}
+      targetPort: 8080
+{{- end }}

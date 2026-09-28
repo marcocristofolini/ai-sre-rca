@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.6.1"
+    tag: "0.7.0"
   replicas: 2
   existingSecret: ""
   service:
@@ -41,7 +41,7 @@ backend:
     LLM_BASE_URL: "http://ollama.ai.svc:11434/v1"
     LLM_MODEL: "local-model"
     CORS_ORIGINS: "http://ai-sre-rca-frontend"
-    AUTH_ENABLED: "false"
+    AUTH_ENABLED: "true"
     OIDC_ALGORITHMS: "RS256,ES256"
     OIDC_ROLES_CLAIM: "roles"
     OIDC_TENANT_CLAIM: "tenant"
@@ -61,10 +61,46 @@ backend:
     QUERY_BUDGET_MAX_WALL_SECONDS: "45"
     CLUSTER_CONFIG_JSON: "{}"
 
+remediator:
+  enabled: false
+  image:
+    repository: ghcr.io/your-org/ai-sre-rca-backend
+    tag: "0.7.0"
+  replicas: 1
+  existingSecret: ""
+  service:
+    port: 8080
+  serviceAccount:
+    create: true
+    name: ai-sre-rca-remediator
+  # Empty by default: no namespace receives write RBAC until explicitly listed.
+  targetNamespaces: []
+  env:
+    AUTH_ENABLED: "true"
+    OIDC_ALGORITHMS: "RS256,ES256"
+    OIDC_ROLES_CLAIM: "roles"
+    OIDC_TENANT_CLAIM: "tenant"
+    OIDC_CLUSTERS_CLAIM: "clusters"
+    DEFAULT_TENANT_ID: "default"
+    INVESTIGATOR_ROLE: "investigator"
+    REMEDIATOR_ROLE: "remediator"
+    CORS_ORIGINS: "http://ai-sre-rca-frontend"
+    REMEDIATION_ENABLED: "true"
+    REMEDIATION_REQUIRE_DISTINCT_APPROVER: "true"
+    REMEDIATION_PLAN_TTL_MINUTES: "30"
+    REMEDIATION_ALLOWED_ACTIONS: "scale_deployment"
+    # Exact confirmed deterministic root-cause IDs allowed to justify scale.
+    REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST: ""
+    REMEDIATION_MIN_REPLICAS: "1"
+    REMEDIATION_MAX_REPLICAS: "20"
+    REMEDIATION_MAX_REPLICA_DELTA: "3"
+    # Example for an in-cluster remediator: {"prod-us":{}}
+    REMEDIATION_CLUSTER_CONFIG_JSON: "{}"
+
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.6.1"
+    tag: "0.7.0"
   replicas: 2
   service:
     port: 3000
@@ -83,6 +119,9 @@ resources:
   frontend:
     requests: { cpu: 50m, memory: 96Mi }
     limits: { cpu: 500m, memory: 256Mi }
+  remediator:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 256Mi }
 
 
 networkPolicy:
@@ -94,6 +133,9 @@ networkPolicy:
     - {}
   additionalBackendIngress: []
   additionalFrontendEgress: []
+  # Fail closed for the mutation plane. Configure explicit peers when enabled.
+  remediatorIngress: []
+  remediatorEgress: []
   # Empty object means unrestricted backend egress once the policy is enabled.
   # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
   backendEgress:

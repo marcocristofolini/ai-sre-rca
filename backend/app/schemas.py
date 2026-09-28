@@ -103,6 +103,66 @@ class Remediation(BaseModel):
     requires_approval: bool = True
 
 
+
+
+class RemediationPlanStatus(str, Enum):
+    POLICY_DENIED = "policy_denied"
+    DRY_RUN_FAILED = "dry_run_failed"
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXECUTING = "executing"
+    EXECUTED = "executed"
+    EXECUTION_FAILED = "execution_failed"
+    ROLLING_BACK = "rolling_back"
+    ROLLED_BACK = "rolled_back"
+    ROLLBACK_FAILED = "rollback_failed"
+    EXPIRED = "expired"
+
+
+class ScaleDeploymentPlanRequest(BaseModel):
+    incident_id: str
+    action_type: Literal["scale_deployment"] = "scale_deployment"
+    namespace: str
+    deployment: str
+    desired_replicas: int = Field(ge=0, le=10000)
+    rationale: str = Field(min_length=3, max_length=1000)
+
+
+class RemediationDecisionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class RemediationPlan(BaseModel):
+    id: str = Field(default_factory=lambda: f"rem-{uuid4().hex[:12]}")
+    incident_id: str
+    tenant_id: str
+    cluster: str
+    action_type: Literal["scale_deployment"]
+    namespace: str
+    deployment: str
+    desired_replicas: int
+    rationale: str
+    requested_by: str
+    status: RemediationPlanStatus
+    policy_checks: list[dict[str, Any]] = Field(default_factory=list)
+    dry_run: dict[str, Any] = Field(default_factory=dict)
+    rollback: dict[str, Any] = Field(default_factory=dict)
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    rejected_by: str | None = None
+    rejected_at: datetime | None = None
+    approval_note: str | None = None
+    execution: dict[str, Any] = Field(default_factory=dict)
+    executed_at: datetime | None = None
+    rollback_execution: dict[str, Any] = Field(default_factory=dict)
+    rolled_back_at: datetime | None = None
+    failure: str | None = None
+    expires_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class SimilarIncident(BaseModel):
     incident_id: str
     title: str

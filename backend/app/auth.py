@@ -74,6 +74,7 @@ class AuthManager:
                     self.settings.viewer_role,
                     self.settings.investigator_role,
                     self.settings.admin_role,
+                    self.settings.remediator_role,
                 }),
                 clusters=frozenset({"*"}),
                 claims={"auth_disabled": True},
@@ -153,6 +154,25 @@ def require_role(role: str) -> Callable[..., Any]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"role {role} is required",
+            )
+        return principal
+
+    return dependency
+
+
+def require_any_exact_configured_role(*setting_names: str) -> Callable[..., Any]:
+    async def dependency(
+        request: Request,
+        principal: Principal = Depends(get_principal),
+    ) -> Principal:
+        roles = {
+            str(getattr(request.app.state.settings, name))
+            for name in setting_names
+        }
+        if not principal.roles.intersection(roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"one of roles {sorted(roles)} is required",
             )
         return principal
 

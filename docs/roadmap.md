@@ -1,4 +1,4 @@
-# Roadmap after v0.6.1
+# Roadmap after v0.7
 
 ## Completed in v0.2
 
@@ -104,15 +104,32 @@
 - [ ] scheduled retention job independent from process restarts
 - [ ] capability history and alerting
 
-## v0.7 — guarded remediation plane
+## Completed in v0.7 — guarded remediation plane
 
 Separate service and identity:
 
-- [ ] proposed action plan
-- [ ] policy validation
-- [ ] dry-run where supported
-- [ ] explicit human approval
-- [ ] narrow per-action credentials
-- [ ] rollback plan and audit record
+- [x] persisted proposed action plan
+- [x] static and runtime policy validation
+- [x] Kubernetes server-side dry-run
+- [x] explicit human approval and rejection
+- [x] exact remediator OIDC role
+- [x] four-eyes requester/approver separation
+- [x] plan TTL / expiration
+- [x] narrow per-action credentials
+- [x] first action restricted to deployments/scale
+- [x] resourceVersion and replica drift protection
+- [x] rollback plan and audit record
+- [x] tenant/cluster-scoped plan access
+- [x] separate Helm Deployment and ServiceAccount
+- [x] namespace-scoped get/patch Role for deployments/scale
+- [x] investigator remains independently deployable and read-only
+- [x] v0.7 regression coverage
 
-The read-only investigator should remain usable independently of remediation.
+## v0.7.x — remediation depth
+
+- [ ] policy bundles per tenant/cluster
+- [ ] signed approval evidence
+- [ ] post-action health verification
+- [ ] rollback proposal generation from failed verification
+- [ ] additional typed actions only when they can preserve the same narrow-credential model
+- [ ] external immutable remediation audit sink

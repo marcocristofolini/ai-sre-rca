@@ -194,8 +194,12 @@ networkPolicy:
   enabled: true
 ```
 
-Frontend→backend e DNS são gerados automaticamente. O ingress do backend permite o frontend. O egress do backend é configurável porque API Kubernetes, observabilidade e Git variam entre ambientes. Substitua a regra padrão de egress irrestrito antes de habilitar uma política estrita de produção.
+Frontend→backend e DNS são gerados automaticamente. O ingress do backend permite o frontend. O egress do backend é configurável porque API Kubernetes, observabilidade e Git variam entre ambientes. Quando o remediator da v0.7 é habilitado, ele recebe NetworkPolicy própria usando remediatorIngress e remediatorEgress. As duas listas começam vazias, então o plano de mutação fica bloqueado por rede, exceto DNS, até que peers explícitos sejam configurados.
 
 ## Boundary de segurança
 
-A v0.6.1 **não** adiciona credenciais de remediação. O RBAC Kubernetes permanece GET/LIST/WATCH. Banco operacional, audit log e notificações são funções do plano de controle; eles não dão ao investigador privilégios de mutação sobre workloads.
+O RBAC Kubernetes do investigator continua GET/LIST/WATCH. A v0.7 adiciona mutação somente no ServiceAccount separado do remediator, e o Helm limita essa identidade a get/patch em deployments/scale nos namespaces declarados explicitamente.
+
+O remediator usa registry de credenciais separado e workflow humano explícito. Compartilhar DATABASE_URL permite validar o incidente e persistir auditoria; isso não compartilha credenciais Kubernetes de mutação com o investigator.
+
+Consulte [remediation.pt-BR.md](remediation.pt-BR.md) para gates de política, dry-run, aprovação, proteção contra drift e rollback.

@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.6.1
+# AI SRE RCA — v0.7.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,22 @@
 Evidence-first, read-only SRE incident investigator for Kubernetes, distributed traces and stateful dependencies, designed so that telemetry and typed checks—not an LLM—decide the root cause.
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
+
+## What changed in v0.7
+
+v0.7 adds a **guarded remediation plane** while keeping the RCA investigator read-only:
+
+- separate FastAPI process, Deployment and Kubernetes ServiceAccount for remediation;
+- first allow-listed action: typed Deployment scaling through deployments/scale only;
+- static/runtime policy gates and Kubernetes server-side dry-run before approval;
+- exact OIDC remediator role with four-eyes approval enabled by default;
+- plan TTL, explicit reject/execute/rollback transitions and audit events;
+- replica/resourceVersion drift detection before execution;
+- rollback metadata captured before approval;
+- namespace-scoped Helm Roles limited to get/patch on deployments/scale;
+- separate REMEDIATION_CLUSTER_CONFIG_JSON credentials, never reused by the investigator.
+
+Full design and API: [docs/remediation.md](docs/remediation.md).
 
 ## v0.6.1 operational isolation hardening
 
@@ -460,6 +476,7 @@ For production, store Argo/Git/model credentials in Kubernetes Secrets or worklo
 ```text
 backend/
   app/core/           deterministic engine/playbooks/scoring
+  app/remediation/    separate guarded remediation service
   app/integrations/   Kubernetes, Prometheus, Loki, Argo, GitHub, Karpenter
   app/llm/            optional hypothesis proposer
   app/memory/         embedding + memory protocol
@@ -472,14 +489,12 @@ docs/                 architecture and roadmap
 
 ## Next evolution
 
-v0.5 completes the first deterministic stateful-dependency layer. The next highest-value increments are:
+After v0.7, the highest-value increments are:
 
-1. Operational productization: OIDC/RBAC for UI/API, NetworkPolicy templates, multi-cluster tenancy, retention and per-query budgets.
-2. Slack/PagerDuty delivery with evidence-backed incident summaries.
-3. Evidence hashing and immutable audit metadata.
-4. PostgreSQL depth: blocker/blockee graphs, pg_stat_statements correlation and database-specific saturation baselines.
-5. Kafka depth: rebalance history, broker/JMX throughput and partition-level leader/ISR timelines.
-6. Redis depth: slowlog/hot-key and keyspace/TTL analysis with cardinality-safe collection.
-7. Remaining Kubernetes depth: ImagePullBackOff, PDB blocking and runtime PVC/volume failures.
-8. Trace-to-log derived fields, explicit exemplars and sampling-aware trace evidence.
-9. A separate human-approved remediation plane with policy validation and rollback metadata.
+1. Remediation policy bundles per tenant/cluster and signed approval evidence.
+2. Post-action verification gates and rollback proposals, still requiring explicit execution.
+3. PostgreSQL blocker/blockee graphs and pg_stat_statements correlation.
+4. Kafka rebalance/broker timelines and Redis slowlog/hot-key analysis.
+5. Remaining Kubernetes depth: ImagePullBackOff, PDB blocking and runtime PVC/volume failures.
+6. Trace-to-log derived fields, explicit exemplars and sampling-aware trace evidence.
+7. External immutable audit sink and signed incident/remediation export bundles.

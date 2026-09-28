@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+
+from app.config import Settings
+from app.core.integrity import verify_evidence_hash
+from app.schemas import (
+    HypothesisStatus,
+    InvestigationResult,
+    ScaleDeploymentPlanRequest,
+)
+
+
+@dataclass(frozen=True)
+class PolicyDecision:
+    allowed: bool
+    checks: list[dict[str, Any]]
+
+
+class RemediationPolicy:
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    @staticmethod
+    def _check(name: str, allowed: bool, detail: str) -> dict[str, Any]:
+        return {"check": name, "allowed": allowed, "detail": detail}
+
+    def evaluate_static(
+        self,
+        incident: InvestigationResult,
+        request: ScaleDeploymentPlanRequest,
+    ) -> PolicyDecision:
+        root_hypothesis = next(
+            (
+                hypothesis
+                for hypothesis in incident.hypotheses
+                if hypothesis.id == incident.root_cause.hypothesis_id
+            ),
+            None,
+        )
+        root_hypothesis_verified = bool(
+            root_hypothesis
+            and root_hypothesis.origin == "playbook"
+            and root_hypothesis.status == HypothesisStatus.CONFIRMED
+        )
+        evidence_by_id = {item.id: item for item in incident.evidence}
+        support_ids = (
+            list(root_hypothesis.supporting_evidence)
+            if root_hypothesis is not None
+            else []
+        )
+        supporting_evidence_integrity = bool(support_ids) and all(
+            evidence_id in evidence_by_id
+            and verify_evidence_hash(evidence_by_id[evidence_id])
+            for evidence_id in support_ids
+        )
+
+        starts_at = incident.incident.starts_at
+        incident_age_minutes: float | None = None
+        incident_is_fresh = False
+        if starts_at.tzinfo is not None:
+            incident_age_minutes = (
+                datetime.now(timezone.utc) - starts_at.astimezone(timezone.utc)
+            ).total_seconds() / 60
+            incident_is_fresh = (
+                -5.0
+                <= incident_age_minutes
+                <= self.settings.remediation_max_incident_age_minutes
+            )
+
+        deployment_matches = any(
+            entity.kind.lower() == "deployment"
+            and entity.name == request.deployment
+            and (entity.namespace or incident.incident.namespace) == request.namespace
+            for entity in incident.entities
+        )
+        checks = [
+            self._check(
+                "remediation_enabled",
+                self.settings.remediation_enabled,
+                "guarded remediation plane is enabled",
+            ),
+            self._check(
+                "authentication_enabled",
+                self.settings.auth_enabled,
+                "interactive OIDC authentication is enabled",
+            ),
+            self._check(
+                "incident_resolved",
+                incident.status == "resolved",
+                f"incident status is {incident.status}",
+            ),
+            self._check(
+                "incident_freshness",
+                incident_is_fresh,
+                (
+                    f"age_minutes={incident_age_minutes!r}; "
+                    f"max={self.settings.remediation_max_incident_age_minutes}"
+                ),
+            ),
+            self._check(
+                "evidence_strength",
+                incident.root_cause.evidence_strength in {"medium", "strong"}
+                and incident.root_cause.supporting_signals > 0,
+                (
+                    f"root-cause evidence is {incident.root_cause.evidence_strength}; "
+                    f"supporting_signals={incident.root_cause.supporting_signals}"
+                ),
+            ),
+            self._check(
+                "verified_deterministic_root_hypothesis",
+                root_hypothesis_verified,
+                f"hypothesis_id={incident.root_cause.hypothesis_id!r}",
+            ),
+            self._check(
+                "supporting_evidence_integrity",
+                supporting_evidence_integrity,
+                f"supporting_evidence_ids={support_ids}",
+            ),
+            self._check(
+                "action_allowlist",
+                request.action_type in self.settings.remediation_allowed_action_set,
+                f"action={request.action_type}",
+            ),
+            self._check(
+                "causal_hypothesis_allowlist",
+                bool(incident.root_cause.hypothesis_id)
+                and incident.root_cause.hypothesis_id
+                in self.settings.remediation_scale_hypothesis_set,
+                f"hypothesis_id={incident.root_cause.hypothesis_id!r}",
+            ),
+            self._check(
+                "namespace_allowlist",
+                request.namespace in self.settings.remediation_allowed_namespace_set,
+                f"namespace={request.namespace}",
+            ),
+            self._check(
+                "incident_namespace",
+                incident.incident.namespace == request.namespace,
+                f"incident namespace={incident.incident.namespace!r}",
+            ),
+            self._check(
+                "investigated_deployment",
+                deployment_matches,
+                f"deployment={request.deployment}",
+            ),
+            self._check(
+                "replica_bounds",
+                self.settings.remediation_min_replicas
+                <= request.desired_replicas
+                <= self.settings.remediation_max_replicas,
+                (
+                    f"desired={request.desired_replicas}; "
+                    f"allowed={self.settings.remediation_min_replicas}.."
+                    f"{self.settings.remediation_max_replicas}"
+                ),
+            ),
+            self._check(
+                "remediation_cluster_registry",
+                incident.incident.cluster in self.settings.remediation_cluster_config,
+                f"cluster={incident.incident.cluster}",
+            ),
+        ]
+        return PolicyDecision(
+            allowed=all(item["allowed"] for item in checks),
+            checks=checks,
+        )
+
+    def evaluate_runtime(
+        self,
+        request: ScaleDeploymentPlanRequest,
+        current_replicas: int,
+    ) -> PolicyDecision:
+        delta = abs(request.desired_replicas - current_replicas)
+        checks = [
+            self._check(
+                "not_noop",
+                request.desired_replicas != current_replicas,
+                f"current={current_replicas}; desired={request.desired_replicas}",
+            ),
+            self._check(
+                "replica_delta",
+                delta <= self.settings.remediation_max_replica_delta,
+                (
+                    f"delta={delta}; "
+                    f"max={self.settings.remediation_max_replica_delta}"
+                ),
+            ),
+        ]
+        return PolicyDecision(
+            allowed=all(item["allowed"] for item in checks),
+            checks=checks,
+        )

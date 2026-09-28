@@ -1,4 +1,4 @@
-# Architecture — v0.5
+# Architecture — v0.7
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
@@ -279,12 +279,14 @@ The LLM cannot query Kubernetes directly, execute PromQL/LogQL itself, run shell
 flowchart LR
     INV[Investigator ServiceAccount<br/>GET / LIST / WATCH only] --> SRC[Telemetry + Infra Evidence Sources]
     SRC --> RCA[Evidence-backed RCA]
-    RCA --> REC[Recommended Remediation]
-    REC --> AP{Explicit Human Approval}
+    RCA --> PLAN[Proposed Remediation Plan]
+    PLAN --> POL[Policy / Allow-list Validation]
+    POL --> DRY[Kubernetes dryRun=All]
+    DRY --> AP{Explicit Human Approval}
     AP -->|Approved| RID[Separate Remediation Identity]
-    RID --> POL[Policy / Allow-list Validation]
-    POL --> DRY[Dry-run where supported]
-    DRY --> ACT[Execute Narrow Action]
+    RID --> DRIFT{Target state unchanged?}
+    DRIFT -->|Yes| ACT[Execute Narrow Action]
+    DRIFT -->|No| BLOCK[Block and require fresh plan]
     ACT --> AUDIT[Audit Record + Rollback Metadata]
     AP -->|Rejected| STOP[No Action]
 
@@ -300,7 +302,7 @@ flowchart LR
 - Per-source query timeouts, range limits and cardinality budgets.
 - Tenant and cluster isolation.
 - Admission policy that rejects write verbs for the investigator ServiceAccount.
-- Separate identity and explicit human approval for any future remediation executor.
+- Separate remediator identity, policy gates, dry-run and explicit human approval for every mutating action.
 
 
 ## Operational plane — v0.6
@@ -321,3 +323,12 @@ flowchart LR
 ```
 
 v0.6 adds authentication, tenant/cluster isolation, budgets, retention, audit and operational delivery without changing the investigator's read-only boundary. Full details: [operations.md](operations.md).
+
+
+## Guarded remediation plane — v0.7
+
+v0.7 implements the remediation boundary as a separate runtime. The investigator has no remediation routes and retains its read-only Kubernetes identity. The remediator is independently deployable and currently exposes only a typed Deployment scale operation.
+
+The remediator uses a separate cluster credential registry, namespace-scoped Helm Roles with get/patch on deployments/scale, server-side dry-run, exact remediator-role approval, four-eyes separation, plan expiration, resourceVersion drift detection and explicit rollback.
+
+Full details: [remediation.md](remediation.md).
