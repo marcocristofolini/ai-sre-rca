@@ -54,6 +54,13 @@ class RemediationPolicy:
                 f"action={request.action_type}",
             ),
             self._check(
+                "causal_hypothesis_allowlist",
+                bool(incident.root_cause.hypothesis_id)
+                and incident.root_cause.hypothesis_id
+                in self.settings.remediation_scale_hypothesis_set,
+                f"hypothesis_id={incident.root_cause.hypothesis_id!r}",
+            ),
+            self._check(
                 "namespace_allowlist",
                 request.namespace in self.settings.remediation_allowed_namespace_set,
                 f"namespace={request.namespace}",
