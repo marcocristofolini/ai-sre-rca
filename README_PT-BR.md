@@ -23,6 +23,8 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Contexto persistente do grafo para o planner**, com limites rígidos no servidor para contexto, quantidade de tarefas, paralelismo e queries por especialista.
 - **Execução paralela experimental de especialistas**, protegida por `AGENTIC_EXECUTION_ENABLED=false` por padrão. Ramos independentes rodam em paralelo; ramos dependentes só entram depois que os pré-requisitos concluem.
 - **Shared evidence envelope** com verificação da integridade das evidências. Hipóteses branch-local são advisory-only e a resposta de execução propositalmente não possui campo `root_cause`.
+- **Avaliador determinístico do shared envelope** que recalcula scores apenas com evidências verificadas, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph das hipóteses descartadas.
+- **Três superfícies agentic distintas:** `plan` compila, `execute` apenas coleta evidências read-only dos especialistas e `investigate` executa ambos mais a avaliação determinística. Somente `investigate` pode retornar um verdict de causa raiz.
 
 APIs atuais da v0.8:
 
@@ -34,9 +36,10 @@ GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
+POST /api/v1/planner/investigate
 ```
 
-O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas está implementada como runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. O avaliador determinístico existente continua sendo a única autoridade que pode confirmar a causa raiz, e o LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
+O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas é um runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. O novo caminho `/investigate` então revalida o shared envelope, recalcula scores determinísticos, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph antes de permitir um verdict de causa raiz. O LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md) · [Investigação Agentic](docs/agentic-investigation.pt-BR.md).
 
@@ -121,6 +124,8 @@ flowchart TD
     P --> T[Tarefas Allow-listed de Especialistas]
     T -->|opt-in| X[Especialistas Paralelos Read-only]
     X --> SE[Shared Evidence Envelope]
+    SE --> V[Avaliador Determinístico do Shared Envelope]
+    V --> EG[Explanation Graph de Hipóteses Descartadas]
 
     E --> K[Kubernetes]
     E --> O[Prometheus / Loki / Tempo]
@@ -135,7 +140,7 @@ flowchart TD
     G --> B[Blast Radius]
 
     L --> D[Avaliador Determinístico]
-    SE -. fronteira de autoridade .-> D
+    V -. mesmas regras de autoridade .-> D
     D --> M[Memória de Incidentes<br/>PostgreSQL + pgvector]
     D --> H[Hipóteses Verificadas]
     H --> RCA[RCA Baseado em Evidências]
@@ -168,6 +173,7 @@ Acesse:
 - API de blast radius: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
 - Preview do Investigation Planner: `POST /api/v1/planner/plan`
 - Execução paralela experimental de especialistas: `POST /api/v1/planner/execute` (exige `AGENTIC_EXECUTION_ENABLED=true`)
+- Investigação agentic completa com verdict determinístico + explanation graph: `POST /api/v1/planner/investigate` (mesmo opt-in da execução)
 
 O stack do Docker Compose usa a imagem `pgvector/pgvector:pg17` e habilita automaticamente a extensão `vector`.
 
