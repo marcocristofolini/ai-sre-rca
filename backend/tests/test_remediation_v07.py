@@ -92,8 +92,18 @@ class FakeScaleExecutor:
         namespace,
         deployment,
         previous_replicas,
+        *,
+        expected_replicas,
+        expected_resource_version,
     ):
         self.rollback_calls += 1
+        if (
+            self.replicas != expected_replicas
+            or self.resource_version != expected_resource_version
+        ):
+            raise RemediationDriftError(
+                "scale target changed after execution; rollback is blocked"
+            )
         current = self.replicas
         self.replicas = previous_replicas
         self.resource_version = "rv-rollback"
@@ -110,6 +120,7 @@ def settings(**overrides):
         "remediation_enabled": True,
         "remediation_allowed_actions": "scale_deployment",
         "remediation_allowed_namespaces": "payments",
+        "remediation_scale_hypothesis_allowlist": "capacity-saturation",
         "remediation_cluster_config_json": '{"prod-a":{}}',
         "remediation_min_replicas": 1,
         "remediation_max_replicas": 10,
@@ -147,6 +158,7 @@ def resolved_incident() -> InvestigationResult:
         root_cause=RootCause(
             title="Checkout capacity saturation",
             summary="Current evidence confirms capacity saturation.",
+            hypothesis_id="capacity-saturation",
             evidence_strength="strong",
             supporting_signals=3,
             contradicting_signals=0,
@@ -437,3 +449,53 @@ async def test_scale_executor_uses_only_scale_subresource_and_server_dry_run(
     assert patch_call[3]["metadata"]["resourceVersion"] == "rv-1"
     assert patch_call[3]["spec"]["replicas"] == 5
     assert result["dry_run"] == "All"
+
+
+
+@pytest.mark.asyncio
+async def test_scale_policy_requires_explicit_causal_hypothesis_allowlist():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(
+        repo,
+        executor,
+        settings(remediation_scale_hypothesis_allowlist="other-hypothesis"),
+    )
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+
+    assert plan.status == RemediationPlanStatus.POLICY_DENIED
+    assert executor.inspect_calls == 0
+    causal_check = next(
+        item
+        for item in plan.policy_checks
+        if item["check"] == "causal_hypothesis_allowlist"
+    )
+    assert causal_check["allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_rollback_is_blocked_if_target_drifted_after_execution():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+    plan = await service.approve(plan, actor="remediator-b", note=None)
+    plan = await service.execute(plan, incident, actor="remediator-b")
+    assert plan.status == RemediationPlanStatus.EXECUTED
+
+    executor.replicas = 6
+    executor.resource_version = "rv-after-external-change"
+
+    plan = await service.rollback(
+        plan,
+        actor="remediator-c",
+        note="Attempt rollback after external scale.",
+    )
+
+    assert plan.status == RemediationPlanStatus.ROLLBACK_FAILED
+    assert "rollback is blocked" in (plan.failure or "")
+    assert executor.replicas == 6
