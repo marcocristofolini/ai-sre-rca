@@ -21,7 +21,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Exact OIDC remediator role and four-eyes requester/approver separation by default.
 - Explicit approve, reject, execute and rollback API transitions.
 - Plan TTL with automatic expiration.
-- resourceVersion and replica drift protection before execution.
+- resourceVersion and replica drift protection before execution and rollback.
+- Atomic compare-and-save state claims for approval, execution and rollback concurrency.
+- A second Kubernetes server-side dry-run immediately before execution/rollback mutation.
 - Rollback metadata captured before approval and persisted execution/rollback results.
 - Separate REMEDIATION_CLUSTER_CONFIG_JSON credential registry.
 - Helm remediator Deployment/Service, separate ServiceAccount and namespace-scoped scale Roles.
@@ -36,6 +38,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - The remediator has no generic Kubernetes patch, shell, kubectl, pods/exec, create/delete, Argo sync or cloud mutation primitive.
 - Helm grants only get/patch on deployments/scale and only in explicitly listed namespaces.
 - Remediation is disabled by default; the default target namespace list is empty.
+- Scale is denied unless the RCA root is a confirmed deterministic playbook hypothesis whose exact ID is explicitly allow-listed.
 - An RCA recommendation never executes automatically. Dry-run, explicit approval and explicit execution are separate steps.
 
 ## [0.6.1] - 2026-09-27
