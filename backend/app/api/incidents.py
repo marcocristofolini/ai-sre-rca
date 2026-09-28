@@ -32,7 +32,11 @@ async def _authorized_result(
     request: Request,
     principal: Principal,
 ) -> InvestigationResult:
-    result = await request.app.state.repo.get(incident_id)
+    tenant_scope = None if principal.tenant_id == "*" else principal.tenant_id
+    result = await request.app.state.repo.get(
+        incident_id,
+        tenant_id=tenant_scope,
+    )
     if not result:
         raise HTTPException(status_code=404, detail="incident not found")
     authorize_tenant(principal, result.incident.tenant_id)
