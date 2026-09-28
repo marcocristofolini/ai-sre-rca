@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     viewer_role: str = "viewer"
     investigator_role: str = "investigator"
     admin_role: str = "admin"
+    remediator_role: str = "remediator"
     alertmanager_webhook_token: str | None = None
     alertmanager_tenant_id: str = "default"
 
@@ -43,6 +44,18 @@ class Settings(BaseSettings):
     query_budget_max_calls: int = 80
     query_budget_max_calls_per_source: int = 30
     query_budget_max_wall_seconds: float = 45.0
+
+    # Guarded remediation plane. Disabled by default and intentionally uses
+    # a separate cluster credential registry from the read-only investigator.
+    remediation_enabled: bool = False
+    remediation_require_distinct_approver: bool = True
+    remediation_plan_ttl_minutes: int = 30
+    remediation_allowed_actions: str = "scale_deployment"
+    remediation_allowed_namespaces: str = ""
+    remediation_min_replicas: int = 1
+    remediation_max_replicas: int = 20
+    remediation_max_replica_delta: int = 3
+    remediation_cluster_config_json: str = "{}"
 
     # Optional JSON map keyed by logical cluster name. Each entry can override
     # kubernetes_api_url/token_file/ca_file and Prometheus/Loki/Tempo/Argo CD URLs.
@@ -110,19 +123,28 @@ class Settings(BaseSettings):
     def oidc_algorithm_list(self) -> list[str]:
         return [v.strip() for v in self.oidc_algorithms.split(",") if v.strip()]
 
-    @field_validator("cluster_config_json")
-    @classmethod
-    def validate_cluster_config_json(cls, raw: str) -> str:
+    @staticmethod
+    def _validate_cluster_registry(raw: str, name: str) -> str:
         value = (raw or "{}").strip() or "{}"
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError as exc:
-            raise ValueError("CLUSTER_CONFIG_JSON must be valid JSON") from exc
+            raise ValueError(f"{name} must be valid JSON") from exc
         if not isinstance(parsed, dict):
-            raise ValueError("CLUSTER_CONFIG_JSON must be a JSON object")
+            raise ValueError(f"{name} must be a JSON object")
         if any(not isinstance(config, dict) for config in parsed.values()):
-            raise ValueError("each CLUSTER_CONFIG_JSON cluster entry must be a JSON object")
+            raise ValueError(f"each {name} cluster entry must be a JSON object")
         return value
+
+    @field_validator("cluster_config_json")
+    @classmethod
+    def validate_cluster_config_json(cls, raw: str) -> str:
+        return cls._validate_cluster_registry(raw, "CLUSTER_CONFIG_JSON")
+
+    @field_validator("remediation_cluster_config_json")
+    @classmethod
+    def validate_remediation_cluster_config_json(cls, raw: str) -> str:
+        return cls._validate_cluster_registry(raw, "REMEDIATION_CLUSTER_CONFIG_JSON")
 
     @property
     def cluster_config(self) -> dict[str, dict[str, Any]]:
@@ -131,6 +153,30 @@ class Settings(BaseSettings):
             str(name): dict(config)
             for name, config in value.items()
         }
+
+    @property
+    def remediation_cluster_config(self) -> dict[str, dict[str, Any]]:
+        value = json.loads(self.remediation_cluster_config_json or "{}")
+        return {
+            str(name): dict(config)
+            for name, config in value.items()
+        }
+
+    @property
+    def remediation_allowed_action_set(self) -> frozenset[str]:
+        return frozenset(
+            item.strip()
+            for item in self.remediation_allowed_actions.split(",")
+            if item.strip()
+        )
+
+    @property
+    def remediation_allowed_namespace_set(self) -> frozenset[str]:
+        return frozenset(
+            item.strip()
+            for item in self.remediation_allowed_namespaces.split(",")
+            if item.strip()
+        )
 
 
 @lru_cache
