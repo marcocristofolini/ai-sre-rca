@@ -332,6 +332,50 @@ async def test_remediation_plan_repository_is_tenant_scoped():
     assert await repo.get_remediation_plan(plan.id, tenant_id="tenant-a") is not None
 
 
+
+@pytest.mark.asyncio
+async def test_atomic_execution_claim_blocks_stale_second_execution():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+    plan = await service.approve(plan, actor="remediator-b", note=None)
+    stale = plan.model_copy(deep=True)
+
+    executed = await service.execute(plan, incident, actor="remediator-b")
+    assert executed.status == RemediationPlanStatus.EXECUTED
+    assert executor.execute_calls == 1
+
+    with pytest.raises(RemediationPlanStateError, match="changed concurrently"):
+        await service.execute(stale, incident, actor="remediator-c")
+
+    assert executor.execute_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_atomic_approval_blocks_stale_rejection():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+    stale = plan.model_copy(deep=True)
+
+    approved = await service.approve(plan, actor="remediator-b", note=None)
+    assert approved.status == RemediationPlanStatus.APPROVED
+
+    with pytest.raises(RemediationPlanStateError, match="changed concurrently"):
+        await service.reject(
+            stale,
+            actor="remediator-c",
+            note="stale decision",
+        )
+
+
+
 def test_investigator_api_does_not_expose_remediation_routes():
     from app.main import app as investigator_app
 
@@ -460,6 +504,21 @@ async def test_scale_executor_uses_only_scale_subresource_and_server_dry_run(
     assert patch_call[3]["metadata"]["resourceVersion"] == "rv-1"
     assert patch_call[3]["spec"]["replicas"] == 5
     assert result["dry_run"] == "All"
+
+    execution = await executor.execute_scale(
+        "prod-a",
+        "payments",
+        "checkout",
+        5,
+        expected_replicas=3,
+        expected_resource_version="rv-1",
+    )
+    patch_calls = [item for item in calls if item[0] == "patch"]
+    assert len(patch_calls) == 3
+    assert patch_calls[-2][2]["dryRun"] == "All"
+    assert "dryRun" not in patch_calls[-1][2]
+    assert execution["pre_execute_dry_run_replicas"] == 5
+    assert execution["returned_replicas"] == 5
 
 
 
