@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.6.1
+# AI SRE RCA — v0.7.0
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,22 @@
 Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernetes, traces distribuídos e dependências stateful, desenhado para que telemetria e verificações tipadas — e não um LLM — determinem a causa raiz.
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
+
+## O que mudou na v0.7
+
+A v0.7 adiciona um **plano de remediação guardada** sem tirar o investigator do modo read-only:
+
+- outro processo FastAPI, outro Deployment e outro ServiceAccount Kubernetes;
+- primeira ação permitida: scale tipado de Deployment usando somente deployments/scale;
+- gates estáticos/dinâmicos e dry-run server-side antes da aprovação;
+- papel OIDC remediator exato, com regra de quatro olhos habilitada por padrão;
+- TTL do plano, rejeição/execução/rollback explícitos e audit log;
+- detecção de drift por réplicas e resourceVersion antes da execução;
+- metadata de rollback capturada antes da aprovação;
+- Roles Helm por namespace limitados a get/patch em deployments/scale;
+- credenciais em REMEDIATION_CLUSTER_CONFIG_JSON, nunca reaproveitadas pelo investigator.
+
+Design e API: [docs/remediation.pt-BR.md](docs/remediation.pt-BR.md).
 
 ## v0.6.1 hardening de isolamento operacional
 
@@ -460,6 +476,7 @@ Em produção, armazene credenciais de Argo/Git/modelo em Kubernetes Secrets ou 
 ```text
 backend/
   app/core/           engine determinística / playbooks / scoring
+  app/remediation/    serviço separado de remediação guardada
   app/integrations/   Kubernetes, Prometheus, Loki, Argo, GitHub, Karpenter
   app/llm/            propositor opcional de hipóteses
   app/memory/         embeddings + protocolo de memória
@@ -472,14 +489,12 @@ docs/                 arquitetura e roadmap
 
 ## Próxima evolução
 
-A v0.5 conclui a primeira camada determinística para dependências stateful. Os próximos incrementos de maior valor são:
+Depois da v0.7, os próximos incrementos de maior valor são:
 
-1. Productização operacional: OIDC/RBAC para UI/API, templates de NetworkPolicy, multi-cluster tenancy, retenção e budgets por consulta.
-2. Entrega via Slack/PagerDuty com resumos de incidente baseados em evidências.
-3. Hashing de evidências e metadados de auditoria imutáveis.
-4. Profundidade PostgreSQL: grafo blocker/blockee, correlação com pg_stat_statements e baselines específicos por banco.
-5. Profundidade Kafka: histórico de rebalance, throughput broker/JMX e timeline por partição de leader/ISR.
-6. Profundidade Redis: slowlog/hot keys e análise de keyspace/TTL com controle de cardinalidade.
-7. Kubernetes: ImagePullBackOff, bloqueios por PDB e falhas de PVC/volumes em runtime.
-8. Correlação trace → logs por derived fields, exemplars explícitos e evidência de trace sensível ao sampling.
-9. Plano separado de remediação com aprovação humana, validação de políticas e metadados de rollback.
+1. Bundles de política de remediação por tenant/cluster e evidência assinada de aprovação.
+2. Verificação pós-ação e propostas de rollback, mantendo execução humana explícita.
+3. PostgreSQL com blocker/blockee e correlação por pg_stat_statements.
+4. Kafka com timelines de rebalance/broker e Redis com slowlog/hot keys.
+5. Kubernetes: ImagePullBackOff, bloqueios por PDB e falhas de PVC/volumes em runtime.
+6. Correlação trace → logs por derived fields, exemplars e evidência sensível a sampling.
+7. Audit sink externo imutável e bundles assinados de export de incidente/remediação.
