@@ -9,6 +9,21 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 - Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
 
+## [0.6.1] - 2026-09-27
+
+### Fixed
+- Incident reads are tenant-scoped at the repository query boundary, so cross-tenant incident IDs remain indistinguishable from unknown IDs.
+- Manual retention purge is tenant-scoped for ordinary tenant admins; only a principal with `tenant_id="*"` receives platform-wide purge scope.
+- Invalid `CLUSTER_CONFIG_JSON` now fails settings validation instead of silently disabling the configured cluster registry.
+- Regression tests cover tenant-scoped reads, tenant-scoped retention and fail-closed cluster-registry parsing.
+
+### Changed
+- API, backend package, frontend and Helm chart versions are now 0.6.1.
+
+### Safety
+- The patch strengthens operational isolation without adding infrastructure mutation methods, workload write credentials or remediation privileges.
+- Existing evidence-first, query-budget, cluster-authorization and read-only integration guardrails remain unchanged.
+
 ## [0.6.0] - 2026-09-27
 
 ### Added
@@ -180,7 +195,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...v0.6.0
 [0.5.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.3.0...v0.4.0
