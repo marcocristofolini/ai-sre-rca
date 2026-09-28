@@ -99,7 +99,7 @@ Example plan:
 
 REMEDIATION_CLUSTER_CONFIG_JSON is deliberately separate from CLUSTER_CONFIG_JSON. For an in-cluster remediator, a configured logical cluster can use the remediator Pod's own ServiceAccount token. Remote clusters must use separate mounted credentials.
 
-The Helm remediator is disabled by default. targetNamespaces is also empty by default, so no write Role is created until namespaces are explicitly listed.
+The Helm remediator is disabled by default. targetNamespaces is also empty by default, so no write Role is created until namespaces are explicitly listed. Helm rejects configurations that reuse the investigator ServiceAccount name for the remediator.
 
 For each target namespace the chart creates only:
 
@@ -125,7 +125,7 @@ REMEDIATION_CLUSTER_CONFIG_JSON={"prod-us":{}}
 REMEDIATOR_ROLE=remediator
 ~~~
 
-DATABASE_URL should point to the same operational database used by the investigator. This shares incident state and audit storage, not Kubernetes mutation credentials.
+When REMEDIATION_ENABLED=true, the remediator refuses startup unless AUTH_ENABLED=true, DATABASE_URL is persistent/shared, OIDC issuer/audience/JWKS are all configured, and REMEDIATOR_ROLE is distinct from viewer/investigator/admin. DATABASE_URL should point to the same operational database used by the investigator. This shares incident state and audit storage, not Kubernetes mutation credentials.
 
 ## State machine
 
