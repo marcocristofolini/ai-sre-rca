@@ -179,6 +179,7 @@ def _build_explanation_graph(
     *,
     selected_id: str | None,
     precedence_blockers: list[str],
+    integrity_blocked: bool,
     status: str,
 ) -> HypothesisExplanationGraph:
     nodes: dict[str, ExplanationNode] = {}
@@ -205,6 +206,17 @@ def _build_explanation_graph(
         )
     else:
         gate_id = None
+
+    if integrity_blocked:
+        integrity_gate_id = "gate:evidence-integrity"
+        nodes[integrity_gate_id] = ExplanationNode(
+            id=integrity_gate_id,
+            kind="gate",
+            label="shared evidence integrity",
+            status="failed",
+        )
+    else:
+        integrity_gate_id = None
 
     for item in evaluated:
         hypothesis_node_id = f"hypothesis:{item.id}"
@@ -283,6 +295,15 @@ def _build_explanation_graph(
                 )
             )
 
+        if item.decision == "invalid_evidence" and integrity_gate_id:
+            edges.append(
+                ExplanationEdge(
+                    source=integrity_gate_id,
+                    target=hypothesis_node_id,
+                    relationship="blocks",
+                )
+            )
+
         edges.append(
             ExplanationEdge(
                 source=hypothesis_node_id,
@@ -307,6 +328,11 @@ def evaluate_shared_evidence(
         for item in execution.shared_evidence.evidence
         if verify_evidence_hash(item)
     ]
+    integrity_blocked = (
+        not execution.shared_evidence.evidence_integrity_ok
+        or len(verified_evidence)
+        != len(execution.shared_evidence.evidence)
+    )
     evidence_by_id = {
         item.id: item for item in verified_evidence
     }
@@ -350,7 +376,8 @@ def evaluate_shared_evidence(
             set(original_contradict)
             - set(hypothesis.contradicting_evidence)
         )
-        if missing_support or missing_contradict:
+        missing_references = bool(missing_support or missing_contradict)
+        if missing_references:
             reasons.append(
                 "evidence references missing from the integrity-verified shared envelope"
             )
@@ -358,12 +385,13 @@ def evaluate_shared_evidence(
         score_hypothesis(hypothesis, evidence_by_id)
         decision = _decision_for_status(hypothesis.status)
 
-        if original_support and not hypothesis.supporting_evidence:
+        if missing_references or integrity_blocked:
             hypothesis.status = HypothesisStatus.INCONCLUSIVE
             decision = "invalid_evidence"
-            reasons.append(
-                "all supporting evidence references were rejected or unavailable"
-            )
+            if integrity_blocked:
+                reasons.append(
+                    "shared evidence envelope integrity verification failed"
+                )
 
         support = [
             evidence_by_id[item]
@@ -461,6 +489,7 @@ def evaluate_shared_evidence(
         evidence_by_id,
         selected_id=selected.id if selected else None,
         precedence_blockers=precedence_blockers,
+        integrity_blocked=integrity_blocked,
         status=status,
     )
 
