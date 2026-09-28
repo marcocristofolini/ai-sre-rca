@@ -31,6 +31,22 @@ def validate_remediator_runtime(settings) -> None:
         raise RuntimeError(
             "remediation requires shared persistent DATABASE_URL"
         )
+    if not (
+        settings.oidc_issuer
+        and settings.oidc_audience
+        and settings.oidc_jwks_url
+    ):
+        raise RuntimeError(
+            "remediation requires complete OIDC issuer/audience/JWKS configuration"
+        )
+    if settings.remediator_role in {
+        settings.viewer_role,
+        settings.investigator_role,
+        settings.admin_role,
+    }:
+        raise RuntimeError(
+            "REMEDIATOR_ROLE must be distinct from viewer/investigator/admin roles"
+        )
 
 
 @asynccontextmanager
