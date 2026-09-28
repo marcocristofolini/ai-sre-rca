@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.config import Settings
-from app.schemas import InvestigationResult, ScaleDeploymentPlanRequest
+from app.schemas import (
+    HypothesisStatus,
+    InvestigationResult,
+    ScaleDeploymentPlanRequest,
+)
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,12 @@ class RemediationPolicy:
         incident: InvestigationResult,
         request: ScaleDeploymentPlanRequest,
     ) -> PolicyDecision:
+        root_hypothesis_verified = any(
+            hypothesis.id == incident.root_cause.hypothesis_id
+            and hypothesis.origin == "playbook"
+            and hypothesis.status == HypothesisStatus.CONFIRMED
+            for hypothesis in incident.hypotheses
+        )
         deployment_matches = any(
             entity.kind.lower() == "deployment"
             and entity.name == request.deployment
@@ -45,8 +55,17 @@ class RemediationPolicy:
             ),
             self._check(
                 "evidence_strength",
-                incident.root_cause.evidence_strength in {"medium", "strong"},
-                f"root-cause evidence is {incident.root_cause.evidence_strength}",
+                incident.root_cause.evidence_strength in {"medium", "strong"}
+                and incident.root_cause.supporting_signals > 0,
+                (
+                    f"root-cause evidence is {incident.root_cause.evidence_strength}; "
+                    f"supporting_signals={incident.root_cause.supporting_signals}"
+                ),
+            ),
+            self._check(
+                "verified_deterministic_root_hypothesis",
+                root_hypothesis_verified,
+                f"hypothesis_id={incident.root_cause.hypothesis_id!r}",
             ),
             self._check(
                 "action_allowlist",
