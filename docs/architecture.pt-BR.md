@@ -470,6 +470,7 @@ Propriedades de segurança do planner:
 - seleção puramente trace-aware continua exigindo origem repetida em traces independentes;
 - seleção stateful continua exigindo identidade de origem no trace mais telemetria atual específica da dependência;
 - sinais Kubernetes diretos bloqueiam promoção downstream de trace/stateful;
+- um specialist Kubernetes de maior precedência que foi planejado precisa concluir antes de qualquer candidato downstream de trace/stateful ser selecionado;
 - `/execute` continua sem causa raiz; somente `/investigate` pode retornar verdict determinístico;
 - a execução agentic fica desabilitada por padrão.
 
