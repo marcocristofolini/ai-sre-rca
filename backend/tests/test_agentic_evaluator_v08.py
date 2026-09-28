@@ -255,3 +255,47 @@ async def test_investigate_endpoint_is_disabled_by_default():
             principal=principal,
         )
     assert exc.value.status_code == 404
+
+
+class BrokenKubernetesStatefulTools(StatefulDemoTools):
+    async def get_pod(self, namespace: str, pod: str):
+        raise RuntimeError("kubernetes unavailable")
+
+
+@pytest.mark.asyncio
+async def test_downstream_promotion_is_blocked_when_kubernetes_context_failed():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_execution_enabled=True,
+        query_budget_enabled=False,
+    )
+    plan = await build_investigation_plan(
+        repo,
+        incident=kubernetes_incident(),
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=BrokenKubernetesStatefulTools("postgresql"),
+        settings=settings,
+    )
+    by_specialist = {
+        result.specialist: result
+        for result in execution.specialist_results
+    }
+    assert by_specialist["kubernetes"].status == "failed"
+    assert by_specialist["traces"].status == "completed"
+    assert by_specialist["database"].status == "completed"
+
+    evaluation = evaluate_shared_evidence(execution)
+
+    assert evaluation.status == "inconclusive"
+    assert evaluation.root_cause is None
+    assert any(
+        item.decision == "blocked_by_incomplete_context"
+        for item in evaluation.evaluated_hypotheses
+    )
+    assert any(
+        node.id == "gate:specialist-context"
+        for node in evaluation.explanation_graph.nodes
+    )
