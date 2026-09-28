@@ -11,7 +11,9 @@ from app.schemas import (
     Evidence,
     GraphEdge,
     Hypothesis,
+    HypothesisStatus,
     IncidentInput,
+    RootCause,
     StatefulDependencyAnalysis,
     TraceAnalysis,
 )
@@ -103,6 +105,75 @@ class SharedEvidenceEnvelope(BaseModel):
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+
+EvaluationDecision = Literal[
+    "selected",
+    "supported",
+    "testing",
+    "ruled_out",
+    "inconclusive",
+    "blocked_by_precedence",
+    "invalid_evidence",
+]
+
+
+class EvaluatedHypothesis(BaseModel):
+    id: str
+    specialist: SpecialistKind
+    statement: str
+    status: HypothesisStatus
+    decision: EvaluationDecision
+    score: float
+    supporting_evidence: list[str] = Field(default_factory=list)
+    contradicting_evidence: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    precedence_rank: int
+
+
+class ExplanationNode(BaseModel):
+    id: str
+    kind: Literal["hypothesis", "evidence", "gate", "verdict"]
+    label: str
+    status: str = ""
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ExplanationEdge(BaseModel):
+    source: str
+    target: str
+    relationship: Literal[
+        "supports",
+        "contradicts",
+        "blocks",
+        "selected",
+        "considered",
+    ]
+
+
+class HypothesisExplanationGraph(BaseModel):
+    nodes: list[ExplanationNode] = Field(default_factory=list)
+    edges: list[ExplanationEdge] = Field(default_factory=list)
+
+
+class AgenticEvaluationResult(BaseModel):
+    schema_version: Literal["ai-sre-rca.agentic-evaluation.v1"] = (
+        "ai-sre-rca.agentic-evaluation.v1"
+    )
+    plan_id: str
+    tenant_id: str
+    cluster: str
+    status: Literal["resolved", "inconclusive"]
+    root_cause: RootCause | None = None
+    evaluated_hypotheses: list[EvaluatedHypothesis] = Field(
+        default_factory=list
+    )
+    explanation_graph: HypothesisExplanationGraph
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+
 class AgenticExecutionResult(BaseModel):
     schema_version: Literal["ai-sre-rca.agentic.v1"] = (
         "ai-sre-rca.agentic.v1"
@@ -114,3 +185,8 @@ class AgenticExecutionResult(BaseModel):
     query_budget: dict[str, object] = Field(default_factory=dict)
     started_at: datetime
     finished_at: datetime
+
+
+class AgenticInvestigationResult(BaseModel):
+    execution: AgenticExecutionResult
+    evaluation: AgenticEvaluationResult
