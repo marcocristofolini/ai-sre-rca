@@ -83,6 +83,7 @@ The executor recompiles the plan server-side immediately before execution. Clien
 - Trace-only RCA still requires repeated origin across independent representative traces.
 - Stateful promotion still requires trace-origin identity plus dependency-specific current telemetry.
 - Direct Kubernetes failure signals block downstream trace/stateful promotion until a higher-precedence playbook can be selected.
+- If a Kubernetes specialist was planned but failed, was skipped unexpectedly or exhausted its context, downstream trace/stateful promotion is blocked; missing infrastructure evidence is never treated as a clean infrastructure result.
 
 ## API
 
