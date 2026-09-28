@@ -99,7 +99,7 @@ Exemplo de plano:
 
 REMEDIATION_CLUSTER_CONFIG_JSON é separado de CLUSTER_CONFIG_JSON. Em cluster local, um cluster lógico configurado pode usar o token do ServiceAccount do próprio Pod do remediator. Clusters remotos devem usar credenciais distintas montadas somente nesse serviço.
 
-O remediator do Helm vem desabilitado por padrão. targetNamespaces também começa vazio, então nenhum Role de escrita é criado até os namespaces serem declarados explicitamente.
+O remediator do Helm vem desabilitado por padrão. targetNamespaces também começa vazio, então nenhum Role de escrita é criado até os namespaces serem declarados explicitamente. O Helm rejeita configurações que reutilizem o nome do ServiceAccount do investigator no remediator.
 
 Para cada namespace alvo, o chart cria somente:
 
@@ -125,7 +125,7 @@ REMEDIATION_CLUSTER_CONFIG_JSON={"prod-us":{}}
 REMEDIATOR_ROLE=remediator
 ~~~
 
-DATABASE_URL deve apontar para o mesmo banco operacional usado pelo investigator. O compartilhamento é do estado do incidente e da auditoria, não da credencial Kubernetes de mutação.
+Com REMEDIATION_ENABLED=true, o remediator recusa o startup se AUTH_ENABLED não estiver true, se DATABASE_URL não for persistente/compartilhado, se issuer/audience/JWKS do OIDC estiverem incompletos ou se REMEDIATOR_ROLE reutilizar viewer/investigator/admin. DATABASE_URL deve apontar para o mesmo banco operacional usado pelo investigator. O compartilhamento é do estado do incidente e da auditoria, não da credencial Kubernetes de mutação.
 
 ## Máquina de estados
 
