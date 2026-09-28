@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.6.1",
+    version="0.7.0",
     description="Evidence-first, read-only SRE incident investigator with deterministic Kubernetes playbooks, trace-aware causal propagation, stateful dependency RCA, operational tenancy/audit controls, topology, change correlation and incident memory",
     lifespan=lifespan,
 )
@@ -78,7 +78,7 @@ app.state.engine = InvestigationEngine(
 async def healthz():
     return {
         "status": "ok",
-        "version": "0.6.1",
+        "version": "0.7.0",
         "demo_mode": settings.demo_mode,
         "persistence": "postgres+pgvector" if settings.database_url else "memory",
         "llm_hypotheses": settings.llm_enabled,
