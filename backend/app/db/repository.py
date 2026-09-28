@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.models import AuditEventRecord, Base, InvestigationRecord, RemediationPlanRecord
@@ -22,6 +22,11 @@ class InvestigationRepository(Protocol):
         plan_id: str,
         tenant_id: str | None = None,
     ) -> RemediationPlan | None: ...
+    async def save_remediation_plan_if_status(
+        self,
+        plan: RemediationPlan,
+        expected_status: str,
+    ) -> bool: ...
     async def list_remediation_plans(
         self,
         tenant_id: str,
@@ -115,6 +120,17 @@ class MemoryRepository:
         if tenant_id is not None and plan.tenant_id != tenant_id:
             return None
         return plan.model_copy(deep=True)
+
+    async def save_remediation_plan_if_status(
+        self,
+        plan: RemediationPlan,
+        expected_status: str,
+    ) -> bool:
+        current = self._remediation.get(plan.id)
+        if current is None or current.status.value != expected_status:
+            return False
+        self._remediation[plan.id] = plan.model_copy(deep=True)
+        return True
 
     async def list_remediation_plans(
         self,
@@ -319,6 +335,29 @@ class SQLRepository:
         if not record:
             return None
         return RemediationPlan.model_validate(record.payload)
+
+    async def save_remediation_plan_if_status(
+        self,
+        plan: RemediationPlan,
+        expected_status: str,
+    ) -> bool:
+        statement = (
+            update(RemediationPlanRecord)
+            .where(
+                RemediationPlanRecord.id == plan.id,
+                RemediationPlanRecord.tenant_id == plan.tenant_id,
+                RemediationPlanRecord.status == expected_status,
+            )
+            .values(
+                status=plan.status.value,
+                payload=plan.model_dump(mode="json"),
+                updated_at=plan.updated_at,
+            )
+        )
+        async with self.sessions() as session:
+            result = await session.execute(statement)
+            await session.commit()
+        return int(result.rowcount or 0) == 1
 
     async def list_remediation_plans(
         self,
