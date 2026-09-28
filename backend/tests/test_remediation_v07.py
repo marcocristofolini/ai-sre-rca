@@ -20,6 +20,8 @@ from app.remediation.service import (
 )
 from app.schemas import (
     Entity,
+    Hypothesis,
+    HypothesisStatus,
     IncidentInput,
     InvestigationResult,
     Remediation,
@@ -153,7 +155,16 @@ def resolved_incident() -> InvestigationResult:
             )
         ],
         evidence=[],
-        hypotheses=[],
+        hypotheses=[
+            Hypothesis(
+                id="capacity-saturation",
+                statement="Checkout deployment capacity is saturated.",
+                status=HypothesisStatus.CONFIRMED,
+                origin="playbook",
+                score=0.95,
+                rationale="Deterministic capacity evidence confirmed.",
+            )
+        ],
         timeline=[],
         root_cause=RootCause(
             title="Checkout capacity saturation",
@@ -499,3 +510,24 @@ async def test_rollback_is_blocked_if_target_drifted_after_execution():
     assert plan.status == RemediationPlanStatus.ROLLBACK_FAILED
     assert "rollback is blocked" in (plan.failure or "")
     assert executor.replicas == 6
+
+
+
+@pytest.mark.asyncio
+async def test_scale_policy_rejects_unverified_or_llm_root_hypothesis():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    incident.hypotheses[0].origin = "llm"
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+
+    assert plan.status == RemediationPlanStatus.POLICY_DENIED
+    assert executor.inspect_calls == 0
+    verified = next(
+        item
+        for item in plan.policy_checks
+        if item["check"] == "verified_deterministic_root_hypothesis"
+    )
+    assert verified["allowed"] is False
