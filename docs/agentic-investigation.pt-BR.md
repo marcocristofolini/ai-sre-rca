@@ -83,6 +83,7 @@ O executor recompila o plano no servidor imediatamente antes da execução. O cl
 - RCA puramente trace-aware continua exigindo origem repetida em traces independentes representativos.
 - Promoção stateful continua exigindo identidade de origem no trace mais telemetria atual específica da dependência.
 - Sinais Kubernetes diretos bloqueiam promoção downstream de trace/stateful até que um playbook de maior precedência possa ser selecionado.
+- Se o specialist Kubernetes foi planejado mas falhou, foi pulado inesperadamente ou não concluiu seu contexto, a promoção downstream de trace/stateful é bloqueada; ausência de evidência de infraestrutura nunca é interpretada como infraestrutura saudável.
 
 ## API
 
