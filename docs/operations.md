@@ -194,8 +194,12 @@ networkPolicy:
   enabled: true
 ```
 
-Frontend-to-backend and DNS egress are generated automatically. Backend ingress allows the frontend. Backend egress is configurable because Kubernetes API, observability and Git endpoints differ between environments. Replace the default unrestricted backend egress rule before enabling a strict production policy.
+Frontend-to-backend and DNS egress are generated automatically. Backend ingress allows the frontend. Backend egress is configurable because Kubernetes API, observability and Git endpoints differ between environments. When the v0.7 remediator is enabled, it receives its own NetworkPolicy using remediatorIngress and remediatorEgress. Replace unrestricted defaults with environment-specific peers before enabling a strict production policy.
 
 ## Security boundary
 
-v0.6.1 does **not** add remediation credentials. Kubernetes RBAC remains GET/LIST/WATCH. The operational database, audit log and notification delivery are control-plane functions; they do not give the investigator mutation privileges over workloads.
+The investigator Kubernetes RBAC remains GET/LIST/WATCH. v0.7 adds mutation only in the separate remediator ServiceAccount, and Helm limits that identity to get/patch on deployments/scale in explicitly listed namespaces.
+
+The remediator uses a separate credential registry and explicit human workflow. Sharing DATABASE_URL allows incident validation and audit persistence; it does not share Kubernetes mutation credentials with the investigator.
+
+See [remediation.md](remediation.md) for policy gates, dry-run, approval, drift protection and rollback.
