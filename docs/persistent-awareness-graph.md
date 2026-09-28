@@ -29,10 +29,10 @@ Both IDs use SHA-256-derived stable identifiers. Tenant and cluster are part of 
 The graph stores three record families:
 
 - `awareness_entities`: current logical entity state, first/last seen timestamps and observation count;
-- `awareness_relationships`: current relationship state, evidence references, first/last seen and observation count;
+- `awareness_relationships`: current relationship state, evidence references from the latest observation, first/last seen and observation count;
 - `awareness_observations`: immutable per-incident observations for entity or relationship history.
 
-Observation IDs are deterministic from `incident + target`. Re-saving the same incident is therefore idempotent and cannot inflate observation counts.
+Observation IDs are deterministic from `incident + target`. Re-saving the same incident is therefore idempotent and cannot inflate observation counts. Older metadata and evidence references remain in `awareness_observations`; the current entity/relationship record reflects the newest observation.
 
 ~~~mermaid
 flowchart LR

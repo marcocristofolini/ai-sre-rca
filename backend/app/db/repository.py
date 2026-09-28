@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.awareness.models import (
@@ -121,7 +121,7 @@ class MemoryRepository:
                 if entity.last_seen >= current.last_seen:
                     current.last_seen = entity.last_seen
                     current.last_incident_id = entity.last_incident_id
-                    current.metadata = {**current.metadata, **entity.metadata}
+                    current.metadata = dict(entity.metadata)
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -137,8 +137,8 @@ class MemoryRepository:
                 if relationship.last_seen >= current.last_seen:
                     current.last_seen = relationship.last_seen
                     current.last_incident_id = relationship.last_incident_id
-                    current.metadata = {**current.metadata, **relationship.metadata}
-                current.evidence_ids = sorted(set(current.evidence_ids + relationship.evidence_ids))
+                    current.metadata = dict(relationship.metadata)
+                    current.evidence_ids = list(relationship.evidence_ids)
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -206,6 +206,7 @@ class MemoryRepository:
             and item.target_id in entity_ids
         ]
         relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships = relationships[: max_items * 4]
         return AwarenessGraphSnapshot(
             tenant_id=tenant_id,
             cluster=cluster,
@@ -405,7 +406,7 @@ class SQLRepository:
                 if entity.last_seen >= record.last_seen:
                     record.last_seen = entity.last_seen
                     record.last_incident_id = entity.last_incident_id
-                    record.metadata_json = {**(record.metadata_json or {}), **entity.metadata}
+                    record.metadata_json = dict(entity.metadata)
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
@@ -443,8 +444,8 @@ class SQLRepository:
                 if relationship.last_seen >= record.last_seen:
                     record.last_seen = relationship.last_seen
                     record.last_incident_id = relationship.last_incident_id
-                    record.metadata_json = {**(record.metadata_json or {}), **relationship.metadata}
-                record.evidence_ids = sorted(set((record.evidence_ids or []) + relationship.evidence_ids))
+                    record.metadata_json = dict(relationship.metadata)
+                    record.evidence_ids = list(relationship.evidence_ids)
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
@@ -522,7 +523,9 @@ class SQLRepository:
         if namespace is not None:
             statement = statement.where(AwarenessEntityRecord.namespace == namespace)
         if kind is not None:
-            statement = statement.where(AwarenessEntityRecord.kind.ilike(kind))
+            statement = statement.where(
+                func.lower(AwarenessEntityRecord.kind) == kind.lower()
+            )
 
         async with self.sessions() as session:
             entity_rows = list((await session.scalars(statement)).all())
@@ -538,6 +541,7 @@ class SQLRepository:
                         AwarenessRelationshipRecord.target_id.in_(entity_ids),
                     )
                     .order_by(AwarenessRelationshipRecord.last_seen.desc())
+                    .limit(max_items * 4)
                 )
                 relationship_rows = list(
                     (await session.scalars(rel_statement)).all()

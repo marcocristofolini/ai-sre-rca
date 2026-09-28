@@ -97,7 +97,16 @@ async def test_awareness_graph_accumulates_same_logical_entities_across_incident
 
     relationship = graph.relationships[0]
     assert relationship.observation_count == 2
-    assert set(relationship.evidence_ids) == {"ev-inc-1", "ev-inc-2"}
+    assert relationship.evidence_ids == ["ev-inc-2"]
+
+    relationship_history = await repo.get_awareness_history(
+        relationship.id,
+        "tenant-a",
+        "prod",
+    )
+    assert [item.incident_id for item in relationship_history] == ["inc-2", "inc-1"]
+    assert relationship_history[0].payload["evidence_ids"] == ["ev-inc-2"]
+    assert relationship_history[1].payload["evidence_ids"] == ["ev-inc-1"]
 @pytest.mark.asyncio
 async def test_awareness_ingestion_is_idempotent_for_same_incident():
     repo = MemoryRepository()

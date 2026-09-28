@@ -29,10 +29,10 @@ Os dois usam identificadores estáveis derivados de SHA-256. Tenant e cluster fa
 O grafo armazena três famílias de registros:
 
 - `awareness_entities`: estado lógico atual, first/last seen e contador de observações;
-- `awareness_relationships`: relação atual, referências de evidência, first/last seen e contador;
+- `awareness_relationships`: relação atual, referências de evidência da observação mais recente, first/last seen e contador;
 - `awareness_observations`: observações imutáveis por incidente para histórico de entidade ou relação.
 
-O ID de cada observação é determinístico a partir de `incidente + alvo`. Salvar novamente o mesmo incidente é idempotente e não aumenta os contadores.
+O ID de cada observação é determinístico a partir de `incidente + alvo`. Salvar novamente o mesmo incidente é idempotente e não aumenta os contadores. Metadata e referências de evidência antigas permanecem em `awareness_observations`; o registro atual da entidade/relação reflete a observação mais recente.
 
 ~~~mermaid
 flowchart LR

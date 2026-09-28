@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import DateTime, Integer, JSON, String, Text, func
+from sqlalchemy import DateTime, Index, Integer, JSON, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.memory.embedding import EMBEDDING_DIM
@@ -67,6 +67,21 @@ class RemediationPlanRecord(Base):
 
 class AwarenessEntityRecord(Base):
     __tablename__ = "awareness_entities"
+    __table_args__ = (
+        Index(
+            "awareness_entities_scope_last_seen_idx",
+            "tenant_id",
+            "cluster",
+            "last_seen",
+        ),
+        Index(
+            "awareness_entities_scope_kind_namespace_idx",
+            "tenant_id",
+            "cluster",
+            "kind",
+            "namespace",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(255), index=True)
@@ -85,6 +100,22 @@ class AwarenessEntityRecord(Base):
 
 class AwarenessRelationshipRecord(Base):
     __tablename__ = "awareness_relationships"
+    __table_args__ = (
+        Index(
+            "awareness_relationships_scope_last_seen_idx",
+            "tenant_id",
+            "cluster",
+            "last_seen",
+        ),
+        Index(
+            "awareness_relationships_scope_endpoints_idx",
+            "tenant_id",
+            "cluster",
+            "source_id",
+            "target_id",
+        ),
+    )
+
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(255), index=True)
     cluster: Mapped[str] = mapped_column(String(255), index=True)
@@ -101,6 +132,15 @@ class AwarenessRelationshipRecord(Base):
 
 class AwarenessObservationRecord(Base):
     __tablename__ = "awareness_observations"
+    __table_args__ = (
+        Index(
+            "awareness_observations_scope_target_time_idx",
+            "tenant_id",
+            "cluster",
+            "target_id",
+            "observed_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(255), index=True)
