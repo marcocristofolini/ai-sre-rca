@@ -6,9 +6,9 @@ from typing import Protocol
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from app.db.models import AuditEventRecord, Base, InvestigationRecord
+from app.db.models import AuditEventRecord, Base, InvestigationRecord, RemediationPlanRecord
 from app.memory.embedding import cosine_similarity, hash_embedding
-from app.schemas import AuditEvent, IncidentInput, InvestigationResult, SimilarIncident
+from app.schemas import AuditEvent, IncidentInput, InvestigationResult, RemediationPlan, SimilarIncident
 
 
 class InvestigationRepository(Protocol):
@@ -16,6 +16,18 @@ class InvestigationRepository(Protocol):
     async def save(self, result: InvestigationResult) -> None: ...
     async def get(self, incident_id: str, tenant_id: str | None = None) -> InvestigationResult | None: ...
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]: ...
+    async def save_remediation_plan(self, plan: RemediationPlan) -> None: ...
+    async def get_remediation_plan(
+        self,
+        plan_id: str,
+        tenant_id: str | None = None,
+    ) -> RemediationPlan | None: ...
+    async def list_remediation_plans(
+        self,
+        tenant_id: str,
+        incident_id: str | None = None,
+        limit: int = 50,
+    ) -> list[RemediationPlan]: ...
     async def append_audit(self, event: AuditEvent) -> None: ...
     async def list_audit(self, incident_id: str, tenant_id: str) -> list[AuditEvent]: ...
     async def purge_expired(
@@ -45,6 +57,7 @@ def incident_fingerprint(incident: IncidentInput, root_cause: str | None = None)
 class MemoryRepository:
     def __init__(self):
         self._items: dict[str, InvestigationResult] = {}
+        self._remediation: dict[str, RemediationPlan] = {}
         self._audit: list[AuditEvent] = []
 
     async def initialize(self) -> None:
@@ -87,6 +100,36 @@ class MemoryRepository:
             for score, result in ranked[:limit]
             if score > 0.05
         ]
+
+    async def save_remediation_plan(self, plan: RemediationPlan) -> None:
+        self._remediation[plan.id] = plan.model_copy(deep=True)
+
+    async def get_remediation_plan(
+        self,
+        plan_id: str,
+        tenant_id: str | None = None,
+    ) -> RemediationPlan | None:
+        plan = self._remediation.get(plan_id)
+        if plan is None:
+            return None
+        if tenant_id is not None and plan.tenant_id != tenant_id:
+            return None
+        return plan.model_copy(deep=True)
+
+    async def list_remediation_plans(
+        self,
+        tenant_id: str,
+        incident_id: str | None = None,
+        limit: int = 50,
+    ) -> list[RemediationPlan]:
+        plans = [
+            item.model_copy(deep=True)
+            for item in self._remediation.values()
+            if item.tenant_id == tenant_id
+            and (incident_id is None or item.incident_id == incident_id)
+        ]
+        plans.sort(key=lambda item: item.created_at, reverse=True)
+        return plans[:max(1, min(limit, 100))]
 
     async def append_audit(self, event: AuditEvent) -> None:
         self._audit.append(event)
@@ -236,6 +279,66 @@ class SQLRepository:
                 namespace=record.namespace,
             ))
         return output
+
+    async def save_remediation_plan(self, plan: RemediationPlan) -> None:
+        async with self.sessions() as session:
+            record = await session.get(RemediationPlanRecord, plan.id)
+            payload = plan.model_dump(mode="json")
+            if record:
+                record.status = plan.status.value
+                record.payload = payload
+                record.updated_at = plan.updated_at
+            else:
+                session.add(RemediationPlanRecord(
+                    id=plan.id,
+                    incident_id=plan.incident_id,
+                    tenant_id=plan.tenant_id,
+                    cluster=plan.cluster,
+                    namespace=plan.namespace,
+                    deployment=plan.deployment,
+                    action_type=plan.action_type,
+                    status=plan.status.value,
+                    payload=payload,
+                    created_at=plan.created_at,
+                    updated_at=plan.updated_at,
+                ))
+            await session.commit()
+
+    async def get_remediation_plan(
+        self,
+        plan_id: str,
+        tenant_id: str | None = None,
+    ) -> RemediationPlan | None:
+        statement = select(RemediationPlanRecord).where(
+            RemediationPlanRecord.id == plan_id
+        )
+        if tenant_id is not None:
+            statement = statement.where(RemediationPlanRecord.tenant_id == tenant_id)
+        async with self.sessions() as session:
+            record = await session.scalar(statement)
+        if not record:
+            return None
+        return RemediationPlan.model_validate(record.payload)
+
+    async def list_remediation_plans(
+        self,
+        tenant_id: str,
+        incident_id: str | None = None,
+        limit: int = 50,
+    ) -> list[RemediationPlan]:
+        statement = (
+            select(RemediationPlanRecord)
+            .where(RemediationPlanRecord.tenant_id == tenant_id)
+            .order_by(RemediationPlanRecord.created_at.desc())
+            .limit(max(1, min(limit, 100)))
+        )
+        if incident_id is not None:
+            statement = statement.where(
+                RemediationPlanRecord.incident_id == incident_id
+            )
+        async with self.sessions() as session:
+            records = (await session.scalars(statement)).all()
+        return [RemediationPlan.model_validate(record.payload) for record in records]
 
     async def append_audit(self, event: AuditEvent) -> None:
         async with self.sessions() as session:
