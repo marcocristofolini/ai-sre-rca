@@ -44,6 +44,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - The execution endpoint recompiles the plan server-side rather than accepting executable plans from callers.
 - The evaluator does not trust specialist-local `confirmed` state; it recalculates score and causal eligibility from the integrity-verified envelope.
 - Missing support or contradiction references fail closed and prevent root-cause selection.
+- A planned higher-precedence Kubernetes specialist that does not complete blocks downstream trace/stateful promotion, preventing absence-by-failure from being treated as clean infrastructure evidence.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
