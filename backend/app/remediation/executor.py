@@ -118,19 +118,26 @@ class KubernetesScaleExecutor:
         namespace: str,
         deployment: str,
     ) -> ScaleState:
-        async with httpx.AsyncClient(
-            base_url=self._api_url(cluster),
-            headers=self._headers(cluster),
-            verify=self._verify(cluster),
-            timeout=10,
-        ) as client:
-            response = await client.get(self._path(namespace, deployment))
-            if response.status_code == 404:
-                raise RemediationExecutionError(
-                    f"deployment scale target not found: {namespace}/{deployment}"
-                )
-            response.raise_for_status()
-            payload = response.json()
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._api_url(cluster),
+                headers=self._headers(cluster),
+                verify=self._verify(cluster),
+                timeout=10,
+            ) as client:
+                response = await client.get(self._path(namespace, deployment))
+                if response.status_code == 404:
+                    raise RemediationExecutionError(
+                        f"deployment scale target not found: {namespace}/{deployment}"
+                    )
+                response.raise_for_status()
+                payload = response.json()
+        except RemediationExecutionError:
+            raise
+        except httpx.HTTPError as exc:
+            raise RemediationExecutionError(
+                f"Kubernetes scale inspection failed: {exc.__class__.__name__}"
+            ) from exc
         try:
             replicas = int(payload["spec"]["replicas"])
             resource_version = str(payload["metadata"]["resourceVersion"])
@@ -159,23 +166,30 @@ class KubernetesScaleExecutor:
             "metadata": {"resourceVersion": resource_version},
             "spec": {"replicas": desired_replicas},
         }
-        async with httpx.AsyncClient(
-            base_url=self._api_url(cluster),
-            headers=self._headers(cluster),
-            verify=self._verify(cluster),
-            timeout=10,
-        ) as client:
-            response = await client.patch(
-                self._path(namespace, deployment),
-                params=params,
-                json=payload,
-            )
-            if response.status_code == 409:
-                raise RemediationDriftError(
-                    "Kubernetes rejected the scale because resourceVersion changed"
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._api_url(cluster),
+                headers=self._headers(cluster),
+                verify=self._verify(cluster),
+                timeout=10,
+            ) as client:
+                response = await client.patch(
+                    self._path(namespace, deployment),
+                    params=params,
+                    json=payload,
                 )
-            response.raise_for_status()
-            return response.json()
+                if response.status_code == 409:
+                    raise RemediationDriftError(
+                        "Kubernetes rejected the scale because resourceVersion changed"
+                    )
+                response.raise_for_status()
+                return response.json()
+        except RemediationDriftError:
+            raise
+        except httpx.HTTPError as exc:
+            raise RemediationExecutionError(
+                f"Kubernetes scale mutation failed: {exc.__class__.__name__}"
+            ) from exc
 
     async def dry_run_scale(
         self,
@@ -241,8 +255,18 @@ class KubernetesScaleExecutor:
         namespace: str,
         deployment: str,
         previous_replicas: int,
+        *,
+        expected_replicas: int,
+        expected_resource_version: str,
     ) -> dict[str, Any]:
         current = await self.inspect_scale(cluster, namespace, deployment)
+        if (
+            current.replicas != expected_replicas
+            or current.resource_version != expected_resource_version
+        ):
+            raise RemediationDriftError(
+                "scale target changed after execution; rollback is blocked"
+            )
         payload = await self._patch_scale(
             cluster,
             namespace,
