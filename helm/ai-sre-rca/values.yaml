@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.7.0"
+    tag: "0.8.0"
   replicas: 2
   existingSecret: ""
   service:
@@ -59,13 +59,23 @@ backend:
     QUERY_BUDGET_MAX_CALLS: "80"
     QUERY_BUDGET_MAX_CALLS_PER_SOURCE: "30"
     QUERY_BUDGET_MAX_WALL_SECONDS: "45"
+    AWARENESS_STALE_AFTER_MINUTES: "1440"
+    AWARENESS_MAX_TRAVERSAL_DEPTH: "4"
+    AWARENESS_MAX_TRAVERSAL_NODES: "200"
+    AWARENESS_MAX_TRAVERSAL_EDGES: "800"
+    AGENTIC_PLANNER_ENABLED: "true"
+    AGENTIC_EXECUTION_ENABLED: "false"
+    AGENTIC_MAX_TASKS: "6"
+    AGENTIC_MAX_PARALLEL_TASKS: "4"
+    AGENTIC_MAX_CONTEXT_NODES: "50"
+    AGENTIC_SPECIALIST_MAX_QUERIES: "12"
     CLUSTER_CONFIG_JSON: "{}"
 
 remediator:
   enabled: false
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.7.0"
+    tag: "0.8.0"
   replicas: 1
   existingSecret: ""
   service:
@@ -100,7 +110,7 @@ remediator:
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.7.0"
+    tag: "0.8.0"
   replicas: 2
   service:
     port: 3000

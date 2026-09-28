@@ -1,4 +1,4 @@
-# Architecture — v0.7
+# Architecture — v0.8 development
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
@@ -7,32 +7,39 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Incident Normalizer]
+    N --> PLAN[Bounded Investigation Planner]
     N --> I[Investigation Engine]
+
+    PAG[(Persistent Awareness Graph)] --> CTX[Bounded Service Context]
+    CTX --> PLAN
+    PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
+    PT -->|opt-in| ORCH[Parallel Read-only Specialists]
+    ORCH --> SE[Shared Evidence Envelope]
 
     I --> K[Kubernetes Adapter]
     I --> P[Prometheus Adapter]
     I --> L[Loki Adapter]
-    I --> O[OpenTelemetry Service Graph]
-    I --> T[Tempo / TraceQL<br/>Trace Causality]
-    I --> AR[Argo CD Adapter]
-    I --> GH[GitHub Adapter]
-    I --> KA[Karpenter Adapter]
+    I --> T[Tempo / TraceQL]
+    I --> AR[Argo CD / GitHub]
+    I --> KA[Karpenter]
 
-    K --> G[Awareness Graph]
-    P --> G
-    L --> G
-    O --> G
-    T --> G
-    AR --> G
-    GH --> G
-    KA --> G
+    K --> LG[Incident-local Graph]
+    P --> LG
+    L --> LG
+    T --> LG
+    AR --> LG
+    KA --> LG
 
-    G --> SD[Stateful Investigators<br/>PostgreSQL / Kafka / Redis]
-    SD --> EV[Evidence Store / Evaluator]
+    LG --> EV[Evidence Evaluator]
+    SE -. separate authority boundary .-> EV
+    LG --> PAG
+    PAG --> REC[Fresh / Stale Reconciliation]
+    PAG --> SV[Service Projections]
+    PAG --> BR[Blast Radius]
+
     EV --> H[Deterministic Hypotheses]
     EV --> MEM[Incident Memory<br/>PostgreSQL + pgvector]
-    EV --> LLM[Optional LLM<br/>Hypothesis Proposer]
-
+    EV --> LLM[Optional LLM<br/>Hypothesis Proposer Only]
     MEM --> H
     LLM --> H
     H --> RC[Root Cause Selector]
@@ -332,3 +339,124 @@ v0.7 implements the remediation boundary as a separate runtime. The investigator
 The remediator uses a separate cluster credential registry, namespace-scoped Helm Roles with get/patch on deployments/scale, server-side dry-run, exact remediator-role approval, four-eyes separation, plan expiration, resourceVersion drift detection and explicit rollback.
 
 Full details: [remediation.md](remediation.md).
+
+
+## Persistent Awareness Graph and topology services — v0.8
+
+The incident-local graph is now canonicalized and persisted so operational topology can accumulate across investigations without letting local IDs leak across scopes.
+
+```mermaid
+flowchart LR
+    IR[InvestigationResult<br/>entities + graph_edges] --> CAN[Canonicalizer]
+    CAN --> CE[(awareness_entities<br/>current state)]
+    CAN --> CR[(awareness_relationships<br/>current state)]
+    CAN --> AO[(awareness_observations<br/>append-only history)]
+
+    CE --> REC[Fresh / Stale Reconciliation]
+    CR --> REC
+    AO --> HIST[Target History API]
+
+    REC --> SP[Service-centric Projection]
+    REC --> BR[Blast Radius]
+    SP --> PC[Planner Context]
+    BR --> API8[v0.8 Awareness APIs]
+```
+
+Canonical entity identity is derived from `tenant + cluster + kind + namespace + name`. Relationship identity is derived from the scoped canonical endpoints plus relationship type. Re-saving the same incident is idempotent.
+
+### Reconciliation does not invent deletion
+
+```mermaid
+flowchart TD
+    LS[last_seen] --> CMP{Older than stale threshold?}
+    CMP -->|No| F[Fresh]
+    CMP -->|Yes| S[Stale]
+    S --> KEEP[Keep current record + history]
+    KEEP --> WAIT[Wait for authoritative inventory source]
+    WAIT -. future .-> T[Tombstone / deletion]
+```
+
+Incident observations are partial. A resource missing from a later RCA is therefore not treated as deleted.
+
+### Service projection
+
+```mermaid
+flowchart LR
+    SVC[Canonical Service] --> N1[Depth 1 Neighbors]
+    N1 --> N2[Depth 2 Neighbors]
+    N2 --> NX[Up to configured depth]
+
+    B1[Max depth] --> SVC
+    B2[Max nodes] --> SVC
+    B3[Max edges] --> SVC
+
+    SVC --> OUT[Bounded Service Topology]
+    N1 --> OUT
+    N2 --> OUT
+    NX --> OUT
+```
+
+The lookup is exact. If the same service name exists in multiple namespaces, a namespace is required rather than selecting an arbitrary node.
+
+### Causal blast radius
+
+Stored graph direction and impact direction are intentionally separate.
+
+```mermaid
+flowchart LR
+    FE[frontend] -->|calls| CO[checkout]
+    CO -->|calls| PG[(postgres)]
+    DEP[checkout Deployment] -->|serves| CO
+
+    PG -. impact: reverse calls .-> CO
+    CO -. impact: reverse calls .-> FE
+    DEP -. impact: forward serves .-> CO
+```
+
+Known relationship types are compiled through an explicit impact-direction allow-list. Unknown relationships are returned by topology APIs but never traversed for blast radius. Stale relationships are historical context only and are skipped during current-impact propagation.
+
+## Bounded Investigation Planner — v0.8
+
+The planner is deterministic and bounded. It uses incident identity, feature flags and a bounded service neighborhood to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
+
+```mermaid
+flowchart TD
+    INC[IncidentInput] --> PLAN[Deterministic Planner]
+    PAG[Persistent Awareness Graph] --> CTX[Bounded 1-hop Context]
+    CTX --> PLAN
+    CFG[Server Budgets + Feature Flags] --> PLAN
+
+    PLAN --> K[Kubernetes Task]
+    PLAN --> M[Metrics Task]
+    PLAN --> L[Logs Task]
+    PLAN --> T[Traces Task]
+    T --> DB[Database / Stateful Task]
+    PLAN --> CH[Changes Task]
+
+    K --> IP[InvestigationPlan]
+    M --> IP
+    L --> IP
+    T --> IP
+    DB --> IP
+    CH --> IP
+
+    IP -->|AGENTIC_EXECUTION_ENABLED=true| ORCH[Parallel Specialist Execution]
+    ORCH --> SR[Typed Specialist Results]
+    SR --> ENV[Shared Evidence Envelope]
+    ENV -. authority boundary .-> EV[Deterministic Evidence Evaluator]
+```
+
+Planner safety properties:
+
+- only six allow-listed specialist task kinds exist;
+- every task is read-only;
+- task count, graph context, parallelism and per-specialist query budget are server bounded;
+- database/stateful work depends on the trace task so dependency identity is typed before dependency telemetry is queried;
+- the planner cannot confirm hypotheses, attach evidence, invoke mutation or bypass the separate remediation plane;
+- the execution endpoint recompiles the plan server-side, so caller-authored task graphs are never executed;
+- specialist hypotheses are advisory-only and the shared execution response has no root-cause field;
+- local specialist budgets and the existing global query budget both apply;
+- evidence hashes are verified before evidence is accepted into the shared envelope;
+- agentic execution is disabled by default.
+
+Full details: [persistent-awareness-graph.md](persistent-awareness-graph.md) and [agentic-investigation.md](agentic-investigation.md).

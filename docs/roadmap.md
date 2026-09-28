@@ -1,4 +1,4 @@
-# Roadmap after v0.7
+# Roadmap — v0.8 in progress
 
 ## Completed in v0.2
 
@@ -133,3 +133,43 @@ Separate service and identity:
 - [ ] rollback proposal generation from failed verification
 - [ ] additional typed actions only when they can preserve the same narrow-credential model
 - [ ] external immutable remediation audit sink
+
+## v0.8 — persistent awareness and agentic foundation
+
+Persistent Awareness Graph:
+
+- [x] stable canonical entity identity across incidents
+- [x] stable canonical relationship identity
+- [x] tenant- and cluster-scoped graph persistence
+- [x] current entity/relationship state with first_seen and last_seen
+- [x] append-only per-incident temporal observations
+- [x] idempotent graph ingestion on incident re-save
+- [x] evidence references preserved on persistent relationships
+- [x] bounded graph and history query API
+- [x] PostgreSQL and in-memory repository parity
+- [x] regression tests for identity, temporal history and isolation
+- [x] freshness reconciliation from last_seen with no unsafe tombstone inference
+- [x] service-centric bounded neighborhood projections
+- [x] graph-backed blast-radius traversal with explicit impact direction
+- [x] unknown and stale relationship types/instances excluded from current impact traversal
+- [ ] authoritative tombstones from full inventory reconciliation
+- [ ] first-class deployment/change event nodes
+- [ ] persistent graph explorer UI
+
+Agentic investigation foundation:
+
+- [x] Investigation Planner with bounded task/context/query budgets
+- [x] typed specialist task contracts
+- [x] allow-listed Kubernetes, metrics, logs, traces, database and change task types
+- [x] database/stateful branch depends on typed trace identity
+- [x] planner context retrieval from bounded Awareness Graph neighborhoods
+- [x] deterministic hypothesis verification remains the root-cause authority
+- [x] opt-in parallel specialist execution in dependency-aware waves
+- [x] per-specialist read-only execution contracts and result envelopes
+- [x] local specialist query budgets plus the existing global query budget
+- [x] shared evidence envelope with SHA-256 integrity verification
+- [x] server-side plan recompilation before execution; caller-authored plans are never executed
+- [x] branch-local hypotheses are advisory-only and execution has no root-cause field
+- [ ] deterministic shared-envelope aggregation / evaluation stage
+- [ ] rejected-hypothesis explanation graph
+- [ ] optional model-assisted planning compiled through the specialist allow-list

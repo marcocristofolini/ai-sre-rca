@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.7.0
+# AI SRE RCA — v0.8.0 (em desenvolvimento)
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,38 @@
 Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernetes, traces distribuídos e dependências stateful, desenhado para que telemetria e verificações tipadas — e não um LLM — determinem a causa raiz.
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
+
+## v0.8 em desenvolvimento — awareness persistente + planejamento agentic bounded
+
+A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A branch de desenvolvimento agora inclui:
+
+- **Persistent Awareness Graph temporal** com identidade canônica de entidades e relações entre incidentes.
+- **Isolamento por tenant + cluster** na identidade, persistência e consultas.
+- **Estado atual + observações append-only** com ingestão idempotente.
+- **Reconciliação de topologia** que classifica registros atuais como `fresh` ou `stale` usando `last_seen`, sem inventar deleções/tombstones a partir de dados incompletos de incidentes.
+- **Projeções centradas em serviço** com budgets de profundidade, nós e arestas.
+- **Blast radius baseado no grafo** com direção causal explícita por tipo de relação. Relações desconhecidas ou stale continuam visíveis como contexto, mas nunca viram caminhos de impacto atual.
+- **Investigation Planner bounded** que emite somente tarefas read-only allow-listed: Kubernetes, métricas, logs, traces, database e mudanças.
+- **Dependências tipadas entre tarefas.** O ramo stateful/database só é planejado depois do ramo de traces que fornece identidade tipada da dependência.
+- **Contexto persistente do grafo para o planner**, com limites rígidos no servidor para contexto, quantidade de tarefas, paralelismo e queries por especialista.
+- **Execução paralela experimental de especialistas**, protegida por `AGENTIC_EXECUTION_ENABLED=false` por padrão. Ramos independentes rodam em paralelo; ramos dependentes só entram depois que os pré-requisitos concluem.
+- **Shared evidence envelope** com verificação da integridade das evidências. Hipóteses branch-local são advisory-only e a resposta de execução propositalmente não possui campo `root_cause`.
+
+APIs atuais da v0.8:
+
+```text
+GET  /api/v1/awareness/graph
+GET  /api/v1/awareness/history/{target_id}
+GET  /api/v1/awareness/topology
+GET  /api/v1/awareness/services/{service_name}
+GET  /api/v1/awareness/blast-radius/{target_id}
+POST /api/v1/planner/plan
+POST /api/v1/planner/execute
+```
+
+O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas está implementada como runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. O avaliador determinístico existente continua sendo a única autoridade que pode confirmar a causa raiz, e o LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
+
+Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md) · [Investigação Agentic](docs/agentic-investigation.pt-BR.md).
 
 ## O que mudou na v0.7
 
@@ -80,29 +112,35 @@ A v0.5.1 reforça a correção do RCA stateful após a revisão da v0.5: rotas i
 
 ```mermaid
 flowchart TD
-    A[Alertmanager / API] --> B[Normalizador de Incidente]
-    B --> C[Investigation Engine<br/>Playbooks Determinísticos]
+    A[Alertmanager / API] --> N[Normalizador de Incidente]
+    N --> P[Investigation Planner Bounded]
+    N --> E[Investigation Engine]
 
-    C --> K[Kubernetes<br/>Pod / ReplicaSet / Deployment / Node]
-    C --> O[Observabilidade<br/>Prometheus / Loki / OpenTelemetry]
-    C --> CH[Fontes de Mudança<br/>Argo CD / GitHub]
-    C --> KA[Karpenter<br/>NodeClaim / NodePool]
+    G[(Persistent Awareness Graph)] --> C[Contexto Bounded do Serviço]
+    C --> P
+    P --> T[Tarefas Allow-listed de Especialistas]
+    T -->|opt-in| X[Especialistas Paralelos Read-only]
+    X --> SE[Shared Evidence Envelope]
 
-    K --> G[Awareness Graph]
-    O --> G
-    CH --> G
-    KA --> G
+    E --> K[Kubernetes]
+    E --> O[Prometheus / Loki / Tempo]
+    E --> CH[Argo CD / GitHub / Karpenter]
+    K --> L[Grafo Local + Evidências]
+    O --> L
+    CH --> L
 
-    G --> E[Avaliador de Evidências]
-    E --> M[Memória de Incidentes<br/>PostgreSQL + pgvector]
-    E --> L[LLM Opcional<br/>Somente Propositor de Hipóteses]
+    L --> G
+    G --> R[Reconciliação Fresh / Stale]
+    G --> S[Projeções por Serviço]
+    G --> B[Blast Radius]
 
-    M --> R[RCA Baseado em Evidências]
-    L --> R
-    E --> R
-
-    R --> API[REST API]
-    R --> UI[UI Next.js]
+    L --> D[Avaliador Determinístico]
+    SE -. fronteira de autoridade .-> D
+    D --> M[Memória de Incidentes<br/>PostgreSQL + pgvector]
+    D --> H[Hipóteses Verificadas]
+    H --> RCA[RCA Baseado em Evidências]
+    RCA --> API[REST API]
+    RCA --> UI[UI Next.js]
 ```
 
 Mais diagramas estão disponíveis em [docs/architecture.pt-BR.md](docs/architecture.pt-BR.md).
@@ -125,6 +163,11 @@ Acesse:
 - Demo stateful Kafka: `http://localhost:3000/stateful/kafka`
 - Demo stateful Redis: `http://localhost:3000/stateful/redis`
 - UI de health/RBAC operacional: `http://localhost:3000/ops`
+- API de topologia reconciliada: `GET /api/v1/awareness/topology?cluster=<cluster>`
+- API de topologia por serviço: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
+- API de blast radius: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
+- Preview do Investigation Planner: `POST /api/v1/planner/plan`
+- Execução paralela experimental de especialistas: `POST /api/v1/planner/execute` (exige `AGENTIC_EXECUTION_ENABLED=true`)
 
 O stack do Docker Compose usa a imagem `pgvector/pgvector:pg17` e habilita automaticamente a extensão `vector`.
 

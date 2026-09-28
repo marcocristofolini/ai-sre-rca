@@ -2,7 +2,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +44,22 @@ class Settings(BaseSettings):
     query_budget_max_calls: int = 80
     query_budget_max_calls_per_source: int = 30
     query_budget_max_wall_seconds: float = 45.0
+
+    # Persistent Awareness Graph. Traversal is intentionally bounded so
+    # topology and blast-radius queries cannot expand without server limits.
+    awareness_stale_after_minutes: int = Field(default=1440, ge=1, le=10080)
+    awareness_max_traversal_depth: int = Field(default=4, ge=1, le=8)
+    awareness_max_traversal_nodes: int = Field(default=200, ge=10, le=2000)
+    awareness_max_traversal_edges: int = Field(default=800, ge=10, le=8000)
+
+    # Agentic investigation planning. The planner can only emit tasks from a
+    # fixed specialist allow-list and has no mutation or arbitrary tool path.
+    agentic_planner_enabled: bool = True
+    agentic_execution_enabled: bool = False
+    agentic_max_tasks: int = Field(default=6, ge=1, le=12)
+    agentic_max_parallel_tasks: int = Field(default=4, ge=1, le=8)
+    agentic_max_context_nodes: int = Field(default=50, ge=1, le=500)
+    agentic_specialist_max_queries: int = Field(default=12, ge=1, le=50)
 
     # Guarded remediation plane. Disabled by default and intentionally uses
     # a separate cluster credential registry from the read-only investigator.

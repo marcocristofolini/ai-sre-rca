@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI SRE RCA Remediator",
-    version="0.7.0",
+    version="0.8.0",
     description=(
         "Guarded remediation control plane with policy validation, Kubernetes "
         "server-side dry-run, explicit human approval, drift detection and rollback"
@@ -85,7 +85,7 @@ app.state.remediation_service = remediation_service
 async def healthz():
     return {
         "status": "ok",
-        "version": "0.7.0",
+        "version": "0.8.0",
         "service": "remediator",
         "enabled": settings.remediation_enabled,
         "separate_identity": True,

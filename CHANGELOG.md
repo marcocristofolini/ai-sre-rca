@@ -4,10 +4,48 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ## [Unreleased]
 
+### Added
+- v0.8 Persistent Awareness Graph foundation with stable canonical entity and relationship identities.
+- Tenant- and cluster-scoped current graph state plus append-only temporal observations.
+- Idempotent graph ingestion whenever an investigation is persisted.
+- Viewer APIs for graph snapshots, target history and reconciled topology.
+- Fresh/stale topology reconciliation from last_seen without inferring unsafe tombstones.
+- Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
+- Graph-backed blast radius with an allow-listed relationship impact-direction model.
+- Unknown or stale graph relationships remain visible as topology/history context but are excluded from current impact traversal.
+- Bounded Investigation Planner with allow-listed read-only specialist task types.
+- Planner budgets for maximum tasks, parallelism, graph context nodes and queries per specialist.
+- Explicit traces -> database/stateful task dependency so stateful checks require typed dependency identity.
+- Planner context retrieval from the Persistent Awareness Graph.
+- Planner audit events and investigator-role enforcement.
+- Experimental opt-in parallel specialist execution in dependency-aware waves.
+- Typed read-only specialist execution contracts for Kubernetes, metrics, logs, traces, stateful dependencies and changes.
+- Local specialist query budgets layered on top of the existing global query budget.
+- Shared evidence envelope with SHA-256 evidence-integrity verification.
+- Server-side plan recompilation immediately before execution; caller-authored task graphs are never executed.
+- Branch-local hypotheses marked advisory-only.
+- `POST /api/v1/planner/execute`, disabled by default through `AGENTIC_EXECUTION_ENABLED=false`.
+- PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
+- Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
+
+### Safety
+- The planner cannot confirm root cause, attach evidence IDs or request remediation.
+- Agentic execution is read-only, opt-in and disabled by default.
+- Agentic execution responses intentionally expose no `root_cause` field.
+- Specialist hypotheses are advisory-only; deterministic evaluation remains the root-cause authority.
+- Evidence with failed integrity verification is excluded from the shared envelope.
+- A specialist that exhausts its local budget becomes `budget_exhausted`; dependent branches are skipped.
+- The execution endpoint recompiles the plan server-side rather than accepting executable plans from callers.
+- Blast radius never traverses unknown or stale relationships.
+- Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
+- The investigator remains read-only and the remediator remains a separate runtime/identity.
+
 ### Planned
+- Deterministic shared-envelope aggregation/evaluation and rejected-hypothesis explanation graph.
+- Authoritative tombstones from full inventory reconciliation.
+- Persistent graph explorer UI and first-class deployment/change event nodes.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
-- Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
 
 ## [0.7.0] - 2026-09-28
 

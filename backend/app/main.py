@@ -5,7 +5,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.awareness import router as awareness_router
 from app.api.incidents import router as incidents_router
+from app.api.planner import router as planner_router
 from app.api.webhooks import router as webhooks_router
 from app.api.system import router as system_router
 from app.auth import AuthManager
@@ -41,8 +43,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.7.0",
-    description="Evidence-first, read-only SRE incident investigator with deterministic Kubernetes playbooks, trace-aware causal propagation, stateful dependency RCA, operational tenancy/audit controls, topology, change correlation and incident memory",
+    version="0.8.0",
+    description="Evidence-verified SRE investigation platform with deterministic RCA, persistent temporal awareness graph, trace-aware causality, stateful dependency analysis and guarded remediation",
     lifespan=lifespan,
 )
 @app.exception_handler(UnknownClusterError)
@@ -78,7 +80,7 @@ app.state.engine = InvestigationEngine(
 async def healthz():
     return {
         "status": "ok",
-        "version": "0.7.0",
+        "version": "0.8.0",
         "demo_mode": settings.demo_mode,
         "persistence": "postgres+pgvector" if settings.database_url else "memory",
         "llm_hypotheses": settings.llm_enabled,
@@ -87,10 +89,16 @@ async def healthz():
         "auth_enabled": settings.auth_enabled,
         "notifications_enabled": settings.notifications_enabled,
         "query_budget_enabled": settings.query_budget_enabled,
+        "persistent_awareness_graph": True,
+        "agentic_planner_enabled": settings.agentic_planner_enabled,
+        "agentic_execution_enabled": settings.agentic_execution_enabled,
+        "awareness_max_traversal_depth": settings.awareness_max_traversal_depth,
         "configured_clusters": sorted(settings.cluster_config),
     }
 
 
 app.include_router(incidents_router)
+app.include_router(awareness_router)
+app.include_router(planner_router)
 app.include_router(webhooks_router)
 app.include_router(system_router)

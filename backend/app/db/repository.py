@@ -3,10 +3,25 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from app.db.models import AuditEventRecord, Base, InvestigationRecord, RemediationPlanRecord
+from app.awareness.models import (
+    AwarenessEntity,
+    AwarenessGraphSnapshot,
+    AwarenessObservation,
+    AwarenessRelationship,
+    canonicalize_investigation,
+)
+from app.db.models import (
+    AuditEventRecord,
+    AwarenessEntityRecord,
+    AwarenessObservationRecord,
+    AwarenessRelationshipRecord,
+    Base,
+    InvestigationRecord,
+    RemediationPlanRecord,
+)
 from app.memory.embedding import cosine_similarity, hash_embedding
 from app.schemas import AuditEvent, IncidentInput, InvestigationResult, RemediationPlan, SimilarIncident
 
@@ -16,6 +31,45 @@ class InvestigationRepository(Protocol):
     async def save(self, result: InvestigationResult) -> None: ...
     async def get(self, incident_id: str, tenant_id: str | None = None) -> InvestigationResult | None: ...
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]: ...
+    async def get_awareness_graph(
+        self,
+        tenant_id: str,
+        cluster: str,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 500,
+    ) -> AwarenessGraphSnapshot: ...
+    async def get_awareness_history(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+        limit: int = 100,
+    ) -> list[AwarenessObservation]: ...
+    async def find_awareness_entities(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        name: str | None = None,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[AwarenessEntity]: ...
+    async def get_awareness_entity(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+    ) -> AwarenessEntity | None: ...
+    async def get_awareness_neighbors(
+        self,
+        entity_ids: set[str],
+        tenant_id: str,
+        cluster: str,
+        *,
+        limit: int,
+    ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]: ...
     async def save_remediation_plan(self, plan: RemediationPlan) -> None: ...
     async def get_remediation_plan(
         self,
@@ -64,12 +118,53 @@ class MemoryRepository:
         self._items: dict[str, InvestigationResult] = {}
         self._remediation: dict[str, RemediationPlan] = {}
         self._audit: list[AuditEvent] = []
+        self._awareness_entities: dict[str, AwarenessEntity] = {}
+        self._awareness_relationships: dict[str, AwarenessRelationship] = {}
+        self._awareness_observations: dict[str, AwarenessObservation] = {}
 
     async def initialize(self) -> None:
         return None
 
     async def save(self, result: InvestigationResult) -> None:
         self._items[result.incident_id] = result
+        self._ingest_awareness(result)
+
+    def _ingest_awareness(self, result: InvestigationResult) -> None:
+        entities, relationships, observations = canonicalize_investigation(result)
+        observation_by_target = {item.target_id: item for item in observations}
+
+        for entity in entities:
+            observation = observation_by_target[entity.id]
+            if observation.id in self._awareness_observations:
+                continue
+            current = self._awareness_entities.get(entity.id)
+            if current is None:
+                self._awareness_entities[entity.id] = entity.model_copy(deep=True)
+            else:
+                current.first_seen = min(current.first_seen, entity.first_seen)
+                if entity.last_seen >= current.last_seen:
+                    current.last_seen = entity.last_seen
+                    current.last_incident_id = entity.last_incident_id
+                    current.metadata = dict(entity.metadata)
+                current.observation_count += 1
+            self._awareness_observations[observation.id] = observation.model_copy(deep=True)
+
+        for relationship in relationships:
+            observation = observation_by_target[relationship.id]
+            if observation.id in self._awareness_observations:
+                continue
+            current = self._awareness_relationships.get(relationship.id)
+            if current is None:
+                self._awareness_relationships[relationship.id] = relationship.model_copy(deep=True)
+            else:
+                current.first_seen = min(current.first_seen, relationship.first_seen)
+                if relationship.last_seen >= current.last_seen:
+                    current.last_seen = relationship.last_seen
+                    current.last_incident_id = relationship.last_incident_id
+                    current.metadata = dict(relationship.metadata)
+                    current.evidence_ids = list(relationship.evidence_ids)
+                current.observation_count += 1
+            self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
     async def get(
         self,
@@ -105,6 +200,132 @@ class MemoryRepository:
             for score, result in ranked[:limit]
             if score > 0.05
         ]
+
+    async def get_awareness_graph(
+        self,
+        tenant_id: str,
+        cluster: str,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 500,
+    ) -> AwarenessGraphSnapshot:
+        max_items = max(1, min(limit, 2000))
+        entities = [
+            item.model_copy(deep=True)
+            for item in self._awareness_entities.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and (namespace is None or item.namespace == namespace)
+            and (kind is None or item.kind.lower() == kind.lower())
+        ]
+        entities.sort(key=lambda item: item.last_seen, reverse=True)
+        entities = entities[:max_items]
+        entity_ids = {item.id for item in entities}
+        relationships = [
+            item.model_copy(deep=True)
+            for item in self._awareness_relationships.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and item.source_id in entity_ids
+            and item.target_id in entity_ids
+        ]
+        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships = relationships[: max_items * 4]
+        return AwarenessGraphSnapshot(
+            tenant_id=tenant_id,
+            cluster=cluster,
+            entities=entities,
+            relationships=relationships,
+        )
+
+    async def get_awareness_history(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+        limit: int = 100,
+    ) -> list[AwarenessObservation]:
+        items = [
+            item.model_copy(deep=True)
+            for item in self._awareness_observations.values()
+            if item.target_id == target_id
+            and item.tenant_id == tenant_id
+            and item.cluster == cluster
+        ]
+        items.sort(key=lambda item: item.observed_at, reverse=True)
+        return items[:max(1, min(limit, 1000))]
+
+    async def find_awareness_entities(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        name: str | None = None,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[AwarenessEntity]:
+        items = [
+            item.model_copy(deep=True)
+            for item in self._awareness_entities.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and (name is None or item.name == name)
+            and (namespace is None or item.namespace == namespace)
+            and (kind is None or item.kind.lower() == kind.lower())
+        ]
+        items.sort(key=lambda item: item.last_seen, reverse=True)
+        return items[:max(1, min(limit, 100))]
+
+    async def get_awareness_entity(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+    ) -> AwarenessEntity | None:
+        item = self._awareness_entities.get(target_id)
+        if item is None:
+            return None
+        if item.tenant_id != tenant_id or item.cluster != cluster:
+            return None
+        return item.model_copy(deep=True)
+
+    async def get_awareness_neighbors(
+        self,
+        entity_ids: set[str],
+        tenant_id: str,
+        cluster: str,
+        *,
+        limit: int,
+    ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
+        if not entity_ids:
+            return [], []
+        bounded_limit = max(1, min(limit, 8001))
+        relationships = [
+            item.model_copy(deep=True)
+            for item in self._awareness_relationships.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and (
+                item.source_id in entity_ids
+                or item.target_id in entity_ids
+            )
+        ]
+        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships = relationships[:bounded_limit]
+        neighbor_ids = {
+            endpoint
+            for relationship in relationships
+            for endpoint in (relationship.source_id, relationship.target_id)
+        }
+        entities = [
+            item.model_copy(deep=True)
+            for item in self._awareness_entities.values()
+            if item.id in neighbor_ids
+            and item.tenant_id == tenant_id
+            and item.cluster == cluster
+        ]
+        return entities, relationships
 
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
         self._remediation[plan.id] = plan.model_copy(deep=True)
@@ -250,7 +471,88 @@ class SQLRepository:
                     embedding=embedding,
                     payload=payload,
                 ))
+            await self._ingest_awareness_session(session, result)
             await session.commit()
+
+    async def _ingest_awareness_session(self, session, result: InvestigationResult) -> None:
+        entities, relationships, observations = canonicalize_investigation(result)
+        observation_by_target = {item.target_id: item for item in observations}
+
+        for entity in entities:
+            observation = observation_by_target[entity.id]
+            if await session.get(AwarenessObservationRecord, observation.id):
+                continue
+            record = await session.get(AwarenessEntityRecord, entity.id)
+            if record is None:
+                session.add(AwarenessEntityRecord(
+                    id=entity.id,
+                    tenant_id=entity.tenant_id,
+                    cluster=entity.cluster,
+                    kind=entity.kind,
+                    name=entity.name,
+                    namespace=entity.namespace,
+                    metadata_json=entity.metadata,
+                    first_seen=entity.first_seen,
+                    last_seen=entity.last_seen,
+                    last_incident_id=entity.last_incident_id,
+                    observation_count=1,
+                ))
+            else:
+                record.first_seen = min(record.first_seen, entity.first_seen)
+                if entity.last_seen >= record.last_seen:
+                    record.last_seen = entity.last_seen
+                    record.last_incident_id = entity.last_incident_id
+                    record.metadata_json = dict(entity.metadata)
+                record.observation_count += 1
+            session.add(AwarenessObservationRecord(
+                id=observation.id,
+                tenant_id=observation.tenant_id,
+                cluster=observation.cluster,
+                incident_id=observation.incident_id,
+                target_type=observation.target_type,
+                target_id=observation.target_id,
+                observed_at=observation.observed_at,
+                payload=observation.payload,
+            ))
+
+        for relationship in relationships:
+            observation = observation_by_target[relationship.id]
+            if await session.get(AwarenessObservationRecord, observation.id):
+                continue
+            record = await session.get(AwarenessRelationshipRecord, relationship.id)
+            if record is None:
+                session.add(AwarenessRelationshipRecord(
+                    id=relationship.id,
+                    tenant_id=relationship.tenant_id,
+                    cluster=relationship.cluster,
+                    source_id=relationship.source_id,
+                    target_id=relationship.target_id,
+                    relationship=relationship.relationship,
+                    metadata_json=relationship.metadata,
+                    evidence_ids=relationship.evidence_ids,
+                    first_seen=relationship.first_seen,
+                    last_seen=relationship.last_seen,
+                    last_incident_id=relationship.last_incident_id,
+                    observation_count=1,
+                ))
+            else:
+                record.first_seen = min(record.first_seen, relationship.first_seen)
+                if relationship.last_seen >= record.last_seen:
+                    record.last_seen = relationship.last_seen
+                    record.last_incident_id = relationship.last_incident_id
+                    record.metadata_json = dict(relationship.metadata)
+                    record.evidence_ids = list(relationship.evidence_ids)
+                record.observation_count += 1
+            session.add(AwarenessObservationRecord(
+                id=observation.id,
+                tenant_id=observation.tenant_id,
+                cluster=observation.cluster,
+                incident_id=observation.incident_id,
+                target_type=observation.target_type,
+                target_id=observation.target_id,
+                observed_at=observation.observed_at,
+                payload=observation.payload,
+            ))
 
     async def get(
         self,
@@ -295,6 +597,283 @@ class SQLRepository:
                 namespace=record.namespace,
             ))
         return output
+
+    async def get_awareness_graph(
+        self,
+        tenant_id: str,
+        cluster: str,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 500,
+    ) -> AwarenessGraphSnapshot:
+        max_items = max(1, min(limit, 2000))
+        statement = (
+            select(AwarenessEntityRecord)
+            .where(
+                AwarenessEntityRecord.tenant_id == tenant_id,
+                AwarenessEntityRecord.cluster == cluster,
+            )
+            .order_by(AwarenessEntityRecord.last_seen.desc())
+            .limit(max_items)
+        )
+        if namespace is not None:
+            statement = statement.where(AwarenessEntityRecord.namespace == namespace)
+        if kind is not None:
+            statement = statement.where(
+                func.lower(AwarenessEntityRecord.kind) == kind.lower()
+            )
+
+        async with self.sessions() as session:
+            entity_rows = list((await session.scalars(statement)).all())
+            entity_ids = [row.id for row in entity_rows]
+            relationship_rows = []
+            if entity_ids:
+                rel_statement = (
+                    select(AwarenessRelationshipRecord)
+                    .where(
+                        AwarenessRelationshipRecord.tenant_id == tenant_id,
+                        AwarenessRelationshipRecord.cluster == cluster,
+                        AwarenessRelationshipRecord.source_id.in_(entity_ids),
+                        AwarenessRelationshipRecord.target_id.in_(entity_ids),
+                    )
+                    .order_by(AwarenessRelationshipRecord.last_seen.desc())
+                    .limit(max_items * 4)
+                )
+                relationship_rows = list(
+                    (await session.scalars(rel_statement)).all()
+                )
+
+        entities = [
+            AwarenessEntity(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                kind=row.kind,
+                name=row.name,
+                namespace=row.namespace,
+                metadata=row.metadata_json or {},
+                first_seen=row.first_seen,
+                last_seen=row.last_seen,
+                last_incident_id=row.last_incident_id,
+                observation_count=row.observation_count,
+            )
+            for row in entity_rows
+        ]
+        relationships = [
+            AwarenessRelationship(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                source_id=row.source_id,
+                target_id=row.target_id,
+                relationship=row.relationship,
+                metadata=row.metadata_json or {},
+                evidence_ids=row.evidence_ids or [],
+                first_seen=row.first_seen,
+                last_seen=row.last_seen,
+                last_incident_id=row.last_incident_id,
+                observation_count=row.observation_count,
+            )
+            for row in relationship_rows
+        ]
+        return AwarenessGraphSnapshot(
+            tenant_id=tenant_id,
+            cluster=cluster,
+            entities=entities,
+            relationships=relationships,
+        )
+
+    async def get_awareness_history(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+        limit: int = 100,
+    ) -> list[AwarenessObservation]:
+        statement = (
+            select(AwarenessObservationRecord)
+            .where(
+                AwarenessObservationRecord.target_id == target_id,
+                AwarenessObservationRecord.tenant_id == tenant_id,
+                AwarenessObservationRecord.cluster == cluster,
+            )
+            .order_by(AwarenessObservationRecord.observed_at.desc())
+            .limit(max(1, min(limit, 1000)))
+        )
+        async with self.sessions() as session:
+            rows = list((await session.scalars(statement)).all())
+        return [
+            AwarenessObservation(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                incident_id=row.incident_id,
+                target_type=row.target_type,
+                target_id=row.target_id,
+                observed_at=row.observed_at,
+                payload=row.payload or {},
+            )
+            for row in rows
+        ]
+
+    async def find_awareness_entities(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        name: str | None = None,
+        namespace: str | None = None,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[AwarenessEntity]:
+        statement = (
+            select(AwarenessEntityRecord)
+            .where(
+                AwarenessEntityRecord.tenant_id == tenant_id,
+                AwarenessEntityRecord.cluster == cluster,
+            )
+            .order_by(AwarenessEntityRecord.last_seen.desc())
+            .limit(max(1, min(limit, 100)))
+        )
+        if name is not None:
+            statement = statement.where(AwarenessEntityRecord.name == name)
+        if namespace is not None:
+            statement = statement.where(
+                AwarenessEntityRecord.namespace == namespace
+            )
+        if kind is not None:
+            statement = statement.where(
+                func.lower(AwarenessEntityRecord.kind) == kind.lower()
+            )
+        async with self.sessions() as session:
+            rows = list((await session.scalars(statement)).all())
+        return [
+            AwarenessEntity(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                kind=row.kind,
+                name=row.name,
+                namespace=row.namespace,
+                metadata=row.metadata_json or {},
+                first_seen=row.first_seen,
+                last_seen=row.last_seen,
+                last_incident_id=row.last_incident_id,
+                observation_count=row.observation_count,
+            )
+            for row in rows
+        ]
+
+    async def get_awareness_entity(
+        self,
+        target_id: str,
+        tenant_id: str,
+        cluster: str,
+    ) -> AwarenessEntity | None:
+        statement = select(AwarenessEntityRecord).where(
+            AwarenessEntityRecord.id == target_id,
+            AwarenessEntityRecord.tenant_id == tenant_id,
+            AwarenessEntityRecord.cluster == cluster,
+        )
+        async with self.sessions() as session:
+            row = await session.scalar(statement)
+        if row is None:
+            return None
+        return AwarenessEntity(
+            id=row.id,
+            tenant_id=row.tenant_id,
+            cluster=row.cluster,
+            kind=row.kind,
+            name=row.name,
+            namespace=row.namespace,
+            metadata=row.metadata_json or {},
+            first_seen=row.first_seen,
+            last_seen=row.last_seen,
+            last_incident_id=row.last_incident_id,
+            observation_count=row.observation_count,
+        )
+
+    async def get_awareness_neighbors(
+        self,
+        entity_ids: set[str],
+        tenant_id: str,
+        cluster: str,
+        *,
+        limit: int,
+    ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
+        if not entity_ids:
+            return [], []
+        bounded_limit = max(1, min(limit, 8001))
+        relationship_statement = (
+            select(AwarenessRelationshipRecord)
+            .where(
+                AwarenessRelationshipRecord.tenant_id == tenant_id,
+                AwarenessRelationshipRecord.cluster == cluster,
+                or_(
+                    AwarenessRelationshipRecord.source_id.in_(entity_ids),
+                    AwarenessRelationshipRecord.target_id.in_(entity_ids),
+                ),
+            )
+            .order_by(AwarenessRelationshipRecord.last_seen.desc())
+            .limit(bounded_limit)
+        )
+        async with self.sessions() as session:
+            relationship_rows = list(
+                (await session.scalars(relationship_statement)).all()
+            )
+            neighbor_ids = {
+                endpoint
+                for relationship in relationship_rows
+                for endpoint in (
+                    relationship.source_id,
+                    relationship.target_id,
+                )
+            }
+            entity_rows = []
+            if neighbor_ids:
+                entity_statement = select(AwarenessEntityRecord).where(
+                    AwarenessEntityRecord.tenant_id == tenant_id,
+                    AwarenessEntityRecord.cluster == cluster,
+                    AwarenessEntityRecord.id.in_(neighbor_ids),
+                )
+                entity_rows = list(
+                    (await session.scalars(entity_statement)).all()
+                )
+
+        entities = [
+            AwarenessEntity(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                kind=row.kind,
+                name=row.name,
+                namespace=row.namespace,
+                metadata=row.metadata_json or {},
+                first_seen=row.first_seen,
+                last_seen=row.last_seen,
+                last_incident_id=row.last_incident_id,
+                observation_count=row.observation_count,
+            )
+            for row in entity_rows
+        ]
+        relationships = [
+            AwarenessRelationship(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                source_id=row.source_id,
+                target_id=row.target_id,
+                relationship=row.relationship,
+                metadata=row.metadata_json or {},
+                evidence_ids=row.evidence_ids or [],
+                first_seen=row.first_seen,
+                last_seen=row.last_seen,
+                last_incident_id=row.last_incident_id,
+                observation_count=row.observation_count,
+            )
+            for row in relationship_rows
+        ]
+        return entities, relationships
 
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
         async with self.sessions() as session:
