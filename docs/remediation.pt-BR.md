@@ -38,7 +38,9 @@ Antes do dry-run, todos estes checks precisam passar:
 
 - remediação explicitamente habilitada;
 - incidente resolvido;
-- evidência da causa raiz medium ou strong;
+- evidência da causa raiz medium ou strong e com sinais de suporte;
+- hipótese raiz presente no incidente como hipótese determinística de playbook confirmada;
+- ID exato da hipótese raiz presente em REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST;
 - ação presente na allow-list;
 - namespace presente na allow-list e igual ao namespace do incidente;
 - Deployment alvo presente no Awareness Graph;
@@ -61,7 +63,7 @@ O PATCH real também envia o resourceVersion armazenado para o Kubernetes poder 
 
 ## Rollback
 
-Todo plano aceito guarda a quantidade anterior de réplicas antes da aprovação. O rollback é outra ação explícita do remediator e restaura somente esse valor usando o mesmo subresource deployments/scale.
+Todo plano aceito guarda a quantidade anterior de réplicas antes da aprovação. O rollback é outra ação explícita do remediator e restaura somente esse valor usando o mesmo subresource deployments/scale. O rollback também confere réplicas e resourceVersion deixados pela execução; se outro ator alterou o alvo depois, ele é bloqueado em vez de sobrescrever o estado mais novo.
 
 ## API
 
@@ -115,6 +117,7 @@ REMEDIATION_REQUIRE_DISTINCT_APPROVER=true
 REMEDIATION_PLAN_TTL_MINUTES=30
 REMEDIATION_ALLOWED_ACTIONS=scale_deployment
 REMEDIATION_ALLOWED_NAMESPACES=payments,checkout
+REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST=capacity-saturation
 REMEDIATION_MIN_REPLICAS=1
 REMEDIATION_MAX_REPLICAS=20
 REMEDIATION_MAX_REPLICA_DELTA=3
