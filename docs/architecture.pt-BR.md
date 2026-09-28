@@ -1,4 +1,4 @@
-# Arquitetura — v0.5
+# Arquitetura — v0.7
 
 **Português do Brasil** · [English](architecture.md)
 
@@ -279,12 +279,14 @@ O LLM não pode consultar Kubernetes diretamente, executar PromQL/LogQL por cont
 flowchart LR
     INV[ServiceAccount do Investigador<br/>somente GET / LIST / WATCH] --> SRC[Fontes de Evidência de Infra + Telemetria]
     SRC --> RCA[RCA Baseado em Evidências]
-    RCA --> REC[Remediação Recomendada]
-    REC --> AP{Aprovação Humana Explícita}
+    RCA --> PLAN[Plano de Remediação Proposto]
+    PLAN --> POL[Validação de Política / Allow-list]
+    POL --> DRY[Kubernetes dryRun=All]
+    DRY --> AP{Aprovação Humana Explícita}
     AP -->|Aprovado| RID[Identidade Separada de Remediação]
-    RID --> POL[Validação de Política / Allow-list]
-    POL --> DRY[Dry-run quando suportado]
-    DRY --> ACT[Executar Ação Restrita]
+    RID --> DRIFT{Estado do alvo permaneceu igual?}
+    DRIFT -->|Sim| ACT[Executar Ação Restrita]
+    DRIFT -->|Não| BLOCK[Bloquear e exigir novo plano]
     ACT --> AUDIT[Registro de Auditoria + Metadados de Rollback]
     AP -->|Rejeitado| STOP[Sem Ação]
 
@@ -300,7 +302,7 @@ flowchart LR
 - Timeouts, limites de janela e budgets de cardinalidade por fonte.
 - Isolamento por tenant e cluster.
 - Admission policy rejeitando verbos de escrita para o ServiceAccount do investigador.
-- Identidade separada e aprovação humana explícita para qualquer futuro executor de remediação.
+- Identidade separada do remediator, gates de política, dry-run e aprovação humana explícita para toda ação mutável.
 
 
 ## Plano operacional — v0.6
@@ -321,3 +323,12 @@ flowchart LR
 ```
 
 A v0.6 adiciona autenticação, isolamento de tenant/cluster, budgets, retenção, auditoria e entrega operacional sem alterar o boundary read-only do investigador. Detalhes completos: [operations.pt-BR.md](operations.pt-BR.md).
+
+
+## Plano de remediação guardada — v0.7
+
+A v0.7 implementa o boundary de remediação como outro runtime. O investigator não expõe rotas de remediação e continua usando identidade Kubernetes read-only. O remediator pode ser implantado separadamente e atualmente expõe apenas scale tipado de Deployment.
+
+O remediator usa registry separado de credenciais, Roles Helm por namespace com get/patch somente em deployments/scale, dry-run server-side, aprovação com papel remediator exato, regra de quatro olhos, expiração de plano, detecção de drift por resourceVersion e rollback explícito.
+
+Detalhes: [remediation.pt-BR.md](remediation.pt-BR.md).
