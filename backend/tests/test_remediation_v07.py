@@ -119,6 +119,7 @@ class FakeScaleExecutor:
 
 def settings(**overrides):
     values = {
+        "auth_enabled": True,
         "remediation_enabled": True,
         "remediation_allowed_actions": "scale_deployment",
         "remediation_allowed_namespaces": "payments",
@@ -590,3 +591,41 @@ async def test_scale_policy_rejects_unverified_or_llm_root_hypothesis():
         if item["check"] == "verified_deterministic_root_hypothesis"
     )
     assert verified["allowed"] is False
+
+
+
+@pytest.mark.asyncio
+async def test_remediation_policy_denies_when_authentication_is_disabled():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(
+        repo,
+        executor,
+        settings(auth_enabled=False),
+    )
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+
+    assert plan.status == RemediationPlanStatus.POLICY_DENIED
+    assert executor.inspect_calls == 0
+    auth_check = next(
+        item
+        for item in plan.policy_checks
+        if item["check"] == "authentication_enabled"
+    )
+    assert auth_check["allowed"] is False
+
+
+def test_remediator_runtime_requires_auth_and_shared_database():
+    from app.remediation.main import validate_remediator_runtime
+
+    with pytest.raises(RuntimeError, match="AUTH_ENABLED=true"):
+        validate_remediator_runtime(settings(auth_enabled=False))
+
+    with pytest.raises(RuntimeError, match="DATABASE_URL"):
+        validate_remediator_runtime(settings(database_url=None))
+
+    validate_remediator_runtime(
+        settings(database_url="postgresql+asyncpg://user:pass@db/remediation")
+    )
