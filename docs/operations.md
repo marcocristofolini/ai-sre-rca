@@ -194,7 +194,7 @@ networkPolicy:
   enabled: true
 ```
 
-Frontend-to-backend and DNS egress are generated automatically. Backend ingress allows the frontend. Backend egress is configurable because Kubernetes API, observability and Git endpoints differ between environments. When the v0.7 remediator is enabled, it receives its own NetworkPolicy using remediatorIngress and remediatorEgress. Replace unrestricted defaults with environment-specific peers before enabling a strict production policy.
+Frontend-to-backend and DNS egress are generated automatically. Backend ingress allows the frontend. Backend egress is configurable because Kubernetes API, observability and Git endpoints differ between environments. When the v0.7 remediator is enabled, it receives its own NetworkPolicy using remediatorIngress and remediatorEgress. Both lists default to empty, so the mutation plane is network-denied except for DNS until explicit peers are configured.
 
 ## Security boundary
 
