@@ -14,11 +14,16 @@ from app.schemas import AuditEvent, IncidentInput, InvestigationResult, SimilarI
 class InvestigationRepository(Protocol):
     async def initialize(self) -> None: ...
     async def save(self, result: InvestigationResult) -> None: ...
-    async def get(self, incident_id: str) -> InvestigationResult | None: ...
+    async def get(self, incident_id: str, tenant_id: str | None = None) -> InvestigationResult | None: ...
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]: ...
     async def append_audit(self, event: AuditEvent) -> None: ...
     async def list_audit(self, incident_id: str, tenant_id: str) -> list[AuditEvent]: ...
-    async def purge_expired(self, incident_days: int, audit_days: int) -> dict[str, int]: ...
+    async def purge_expired(
+        self,
+        incident_days: int,
+        audit_days: int,
+        tenant_id: str | None = None,
+    ) -> dict[str, int]: ...
     async def close(self) -> None: ...
 
 
@@ -48,8 +53,17 @@ class MemoryRepository:
     async def save(self, result: InvestigationResult) -> None:
         self._items[result.incident_id] = result
 
-    async def get(self, incident_id: str) -> InvestigationResult | None:
-        return self._items.get(incident_id)
+    async def get(
+        self,
+        incident_id: str,
+        tenant_id: str | None = None,
+    ) -> InvestigationResult | None:
+        result = self._items.get(incident_id)
+        if result is None:
+            return None
+        if tenant_id is not None and result.incident.tenant_id != tenant_id:
+            return None
+        return result
 
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]:
         query = hash_embedding(incident_fingerprint(incident))
@@ -84,7 +98,12 @@ class MemoryRepository:
             if event.incident_id == incident_id and event.tenant_id == tenant_id
         ]
 
-    async def purge_expired(self, incident_days: int, audit_days: int) -> dict[str, int]:
+    async def purge_expired(
+        self,
+        incident_days: int,
+        audit_days: int,
+        tenant_id: str | None = None,
+    ) -> dict[str, int]:
         now = datetime.now(timezone.utc)
         incident_cutoff = now - timedelta(days=max(0, incident_days))
         audit_cutoff = now - timedelta(days=max(0, audit_days))
@@ -93,15 +112,23 @@ class MemoryRepository:
             incident_id
             for incident_id, result in self._items.items()
             if result.created_at < incident_cutoff
+            and (tenant_id is None or result.incident.tenant_id == tenant_id)
         ]
         for incident_id in stale_incidents:
             self._items.pop(incident_id, None)
 
-        before_audit = len(self._audit)
-        self._audit = [event for event in self._audit if event.created_at >= audit_cutoff]
+        retained_audit = []
+        deleted_audit = 0
+        for event in self._audit:
+            in_scope = tenant_id is None or event.tenant_id == tenant_id
+            if in_scope and event.created_at < audit_cutoff:
+                deleted_audit += 1
+                continue
+            retained_audit.append(event)
+        self._audit = retained_audit
         return {
             "incidents": len(stale_incidents),
-            "audit_events": before_audit - len(self._audit),
+            "audit_events": deleted_audit,
         }
 
     async def close(self) -> None:
@@ -166,11 +193,18 @@ class SQLRepository:
                 ))
             await session.commit()
 
-    async def get(self, incident_id: str) -> InvestigationResult | None:
+    async def get(
+        self,
+        incident_id: str,
+        tenant_id: str | None = None,
+    ) -> InvestigationResult | None:
+        statement = select(InvestigationRecord).where(
+            InvestigationRecord.id == incident_id
+        )
+        if tenant_id is not None:
+            statement = statement.where(InvestigationRecord.tenant_id == tenant_id)
         async with self.sessions() as session:
-            record = await session.scalar(
-                select(InvestigationRecord).where(InvestigationRecord.id == incident_id)
-            )
+            record = await session.scalar(statement)
             if not record:
                 return None
             return InvestigationResult.model_validate(record.payload)
@@ -240,21 +274,33 @@ class SQLRepository:
             for row in rows
         ]
 
-    async def purge_expired(self, incident_days: int, audit_days: int) -> dict[str, int]:
+    async def purge_expired(
+        self,
+        incident_days: int,
+        audit_days: int,
+        tenant_id: str | None = None,
+    ) -> dict[str, int]:
         now = datetime.now(timezone.utc)
         incident_cutoff = now - timedelta(days=max(0, incident_days))
         audit_cutoff = now - timedelta(days=max(0, audit_days))
+
+        incident_delete = delete(InvestigationRecord).where(
+            InvestigationRecord.created_at < incident_cutoff
+        )
+        audit_delete = delete(AuditEventRecord).where(
+            AuditEventRecord.created_at < audit_cutoff
+        )
+        if tenant_id is not None:
+            incident_delete = incident_delete.where(
+                InvestigationRecord.tenant_id == tenant_id
+            )
+            audit_delete = audit_delete.where(
+                AuditEventRecord.tenant_id == tenant_id
+            )
+
         async with self.sessions() as session:
-            incidents_result = await session.execute(
-                delete(InvestigationRecord).where(
-                    InvestigationRecord.created_at < incident_cutoff
-                )
-            )
-            audit_result = await session.execute(
-                delete(AuditEventRecord).where(
-                    AuditEventRecord.created_at < audit_cutoff
-                )
-            )
+            incidents_result = await session.execute(incident_delete)
+            audit_result = await session.execute(audit_delete)
             await session.commit()
         return {
             "incidents": int(incidents_result.rowcount or 0),

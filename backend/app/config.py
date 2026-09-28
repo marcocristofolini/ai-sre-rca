@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -109,18 +110,26 @@ class Settings(BaseSettings):
     def oidc_algorithm_list(self) -> list[str]:
         return [v.strip() for v in self.oidc_algorithms.split(",") if v.strip()]
 
+    @field_validator("cluster_config_json")
+    @classmethod
+    def validate_cluster_config_json(cls, raw: str) -> str:
+        value = (raw or "{}").strip() or "{}"
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("CLUSTER_CONFIG_JSON must be valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("CLUSTER_CONFIG_JSON must be a JSON object")
+        if any(not isinstance(config, dict) for config in parsed.values()):
+            raise ValueError("each CLUSTER_CONFIG_JSON cluster entry must be a JSON object")
+        return value
+
     @property
     def cluster_config(self) -> dict[str, dict[str, Any]]:
-        try:
-            value = json.loads(self.cluster_config_json or "{}")
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(value, dict):
-            return {}
+        value = json.loads(self.cluster_config_json or "{}")
         return {
             str(name): dict(config)
             for name, config in value.items()
-            if isinstance(config, dict)
         }
 
 

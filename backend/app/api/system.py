@@ -51,16 +51,21 @@ async def purge_retention(
     principal: Principal = Depends(require_role("admin")),
 ):
     settings = request.app.state.settings
+    tenant_scope = None if principal.tenant_id == "*" else principal.tenant_id
     deleted = await request.app.state.repo.purge_expired(
         settings.incident_retention_days,
         settings.audit_retention_days,
+        tenant_id=tenant_scope,
     )
     await request.app.state.repo.append_audit(
         AuditEvent(
             tenant_id=principal.tenant_id,
             actor=principal.subject,
             action="retention.purge",
-            detail=deleted,
+            detail={
+                **deleted,
+                "scope": "all" if tenant_scope is None else tenant_scope,
+            },
         )
     )
     return {

@@ -1,4 +1,4 @@
-# Productização operacional — v0.6
+# Productização operacional — v0.6.1
 
 **Português do Brasil** · [English](operations.md)
 
@@ -89,6 +89,8 @@ Os endpoints das integrações por cluster usam `CLUSTER_CONFIG_JSON`:
 
 O cluster selecionado fica em `ContextVar`, impedindo vazamento de estado entre investigações concorrentes.
 
+`CLUSTER_CONFIG_JSON` é validado em modo fail-closed ao carregar as settings. JSON inválido, registry que não seja um objeto ou entrada de cluster que não seja um objeto impedem o carregamento da configuração, em vez de virar silenciosamente um registry vazio.
+
 ## Query budget
 
 Cada investigação possui budget independente:
@@ -147,6 +149,8 @@ A limpeza roda no startup e pode ser disparada por admin:
 POST /api/v1/system/retention/purge
 ```
 
+O purge manual respeita o tenant autenticado. Um admin de tenant remove somente incidentes e registros de auditoria expirados daquele tenant. O purge global só é permitido para um principal cujo claim de tenant seja explicitamente `*`.
+
 ## Health/capabilities por fonte
 
 ```text
@@ -194,4 +198,4 @@ Frontend→backend e DNS são gerados automaticamente. O ingress do backend perm
 
 ## Boundary de segurança
 
-A v0.6 **não** adiciona credenciais de remediação. O RBAC Kubernetes permanece GET/LIST/WATCH. Banco operacional, audit log e notificações são funções do plano de controle; eles não dão ao investigador privilégios de mutação sobre workloads.
+A v0.6.1 **não** adiciona credenciais de remediação. O RBAC Kubernetes permanece GET/LIST/WATCH. Banco operacional, audit log e notificações são funções do plano de controle; eles não dão ao investigador privilégios de mutação sobre workloads.

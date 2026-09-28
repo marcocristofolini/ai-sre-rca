@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pydantic import ValidationError
 from fastapi.testclient import TestClient
 
 from app.auth import AuthManager, Principal
@@ -23,7 +24,7 @@ from app.integrations.demo import DemoTools
 from app.integrations.http_tools import ReadOnlyHTTPTools
 from app.main import app
 from app.notifications import NotificationManager
-from app.schemas import Evidence, IncidentInput
+from app.schemas import AuditEvent, Evidence, IncidentInput
 
 
 def test_evidence_integrity_hash_detects_tampering():
@@ -95,6 +96,19 @@ def test_cluster_registry_fails_closed_for_unknown_cluster():
 
     with pytest.raises(ValueError, match="cluster is not configured"):
         tools.set_cluster("prod-b")
+
+
+@pytest.mark.parametrize(
+    "cluster_config_json",
+    [
+        "{",
+        '["prod-a"]',
+        '{"prod-a":"http://prom-a:9090"}',
+    ],
+)
+def test_cluster_registry_rejects_invalid_configuration(cluster_config_json):
+    with pytest.raises(ValidationError, match="cluster_config_json"):
+        Settings(cluster_config_json=cluster_config_json)
 
 
 @pytest.mark.asyncio
@@ -244,18 +258,43 @@ async def test_memory_repository_is_tenant_scoped_and_retention_works():
         node="ip-10-0-1-42",
         alert_name="KubePodEvicted",
     ))
+    second.created_at = datetime.now(timezone.utc) - timedelta(days=10)
     await repo.save(second)
+
+    old_audit_at = datetime.now(timezone.utc) - timedelta(days=10)
+    await repo.append_audit(AuditEvent(
+        incident_id=first.incident_id,
+        tenant_id="tenant-a",
+        actor="test",
+        action="test.audit",
+        created_at=old_audit_at,
+    ))
+    await repo.append_audit(AuditEvent(
+        incident_id=second.incident_id,
+        tenant_id="tenant-b",
+        actor="test",
+        action="test.audit",
+        created_at=old_audit_at,
+    ))
 
     similar = await repo.search_similar(
         IncidentInput(title="Tenant A incident", tenant_id="tenant-a", cluster="prod"),
         limit=10,
     )
     assert all(item.incident_id != second.incident_id for item in similar)
+    assert await repo.get(first.incident_id, tenant_id="tenant-b") is None
+    assert await repo.get(first.incident_id, tenant_id="tenant-a") is not None
 
-    deleted = await repo.purge_expired(incident_days=5, audit_days=90)
-    assert deleted["incidents"] == 1
+    deleted = await repo.purge_expired(
+        incident_days=5,
+        audit_days=5,
+        tenant_id="tenant-a",
+    )
+    assert deleted == {"incidents": 1, "audit_events": 1}
     assert await repo.get(first.incident_id) is None
-    assert await repo.get(second.incident_id) is not None
+    assert await repo.get(second.incident_id, tenant_id="tenant-b") is not None
+    assert await repo.list_audit(first.incident_id, "tenant-a") == []
+    assert len(await repo.list_audit(second.incident_id, "tenant-b")) == 1
 
 
 def test_demo_api_exposes_audit_export_budget_and_capabilities():

@@ -1,4 +1,4 @@
-# Operational productization — v0.6
+# Operational productization — v0.6.1
 
 [Português do Brasil](operations.pt-BR.md) · **English**
 
@@ -89,6 +89,8 @@ Cluster-specific integration endpoints are configured with `CLUSTER_CONFIG_JSON`
 
 The selected cluster is stored in a context variable, so concurrent investigations do not leak routing state into one another.
 
+`CLUSTER_CONFIG_JSON` is validated fail-closed at settings load. Invalid JSON, a non-object registry, or a cluster entry that is not an object prevents the service configuration from loading instead of silently falling back to an empty registry.
+
 ## Query budget
 
 Each investigation owns an independent budget:
@@ -147,6 +149,8 @@ Retention runs at startup and can be triggered by an admin through:
 POST /api/v1/system/retention/purge
 ```
 
+Manual purge follows the authenticated tenant boundary. A tenant admin purges only expired incidents and audit records from that tenant. Platform-wide purge is available only to a principal whose tenant claim is explicitly `*`.
+
 ## Source capabilities
 
 ```text
@@ -194,4 +198,4 @@ Frontend-to-backend and DNS egress are generated automatically. Backend ingress 
 
 ## Security boundary
 
-v0.6 does **not** add remediation credentials. Kubernetes RBAC remains GET/LIST/WATCH. The operational database, audit log and notification delivery are control-plane functions; they do not give the investigator mutation privileges over workloads.
+v0.6.1 does **not** add remediation credentials. Kubernetes RBAC remains GET/LIST/WATCH. The operational database, audit log and notification delivery are control-plane functions; they do not give the investigator mutation privileges over workloads.
