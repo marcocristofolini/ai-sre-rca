@@ -89,6 +89,8 @@ remediator:
     REMEDIATION_REQUIRE_DISTINCT_APPROVER: "true"
     REMEDIATION_PLAN_TTL_MINUTES: "30"
     REMEDIATION_ALLOWED_ACTIONS: "scale_deployment"
+    # Exact confirmed deterministic root-cause IDs allowed to justify scale.
+    REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST: ""
     REMEDIATION_MIN_REPLICAS: "1"
     REMEDIATION_MAX_REPLICAS: "20"
     REMEDIATION_MAX_REPLICA_DELTA: "3"
