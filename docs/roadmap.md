@@ -175,6 +175,7 @@ Agentic investigation foundation:
 - [x] fail-closed integrity gate for missing/tampered hypothesis evidence references
 - [x] deterministic trace/stateful causal gates reapplied after specialist execution
 - [x] Kubernetes direct-signal precedence gate blocks downstream promotion
+- [x] higher-precedence specialist completeness gate prevents absence-by-failure promotion
 - [x] composed `/planner/investigate` endpoint with deterministic verdict
 - [ ] Kubernetes specialist parity with the full infrastructure playbook engine
 - [ ] optional model-assisted planning compiled through the specialist allow-list
