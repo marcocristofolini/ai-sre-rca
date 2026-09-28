@@ -470,6 +470,7 @@ Planner safety properties:
 - trace-only selection still requires repeated origin across independent representative traces;
 - stateful selection still requires trace-origin identity plus dependency-specific current telemetry;
 - direct Kubernetes failure signals block downstream trace/stateful promotion;
+- a planned higher-precedence Kubernetes specialist must complete before downstream trace/stateful candidates can be selected;
 - `/execute` still returns no root cause; only `/investigate` can return a deterministic verdict;
 - agentic execution is disabled by default.
 
