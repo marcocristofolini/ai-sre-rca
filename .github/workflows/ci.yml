@@ -71,6 +71,15 @@ jobs:
           grep -q 'resources: \["deployments/scale"\]' /tmp/ai-sre-rca-hardened.yaml
           grep -q 'verbs: \["get", "patch"\]' /tmp/ai-sre-rca-hardened.yaml
 
+          if helm template ai-sre-rca helm/ai-sre-rca \
+            --set remediator.enabled=true \
+            --set remediator.serviceAccount.name=ai-sre-rca \
+            >/tmp/ai-sre-rca-invalid.yaml 2>/tmp/ai-sre-rca-invalid.err; then
+            echo "Expected Helm to reject shared investigator/remediator ServiceAccount" >&2
+            exit 1
+          fi
+          grep -q "must differ from the investigator" /tmp/ai-sre-rca-invalid.err
+
 
   smoke:
     needs: [backend, frontend]
