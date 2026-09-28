@@ -52,10 +52,16 @@ flowchart TD
     OUT -->|opt-in execute| ORCH[Parallel Specialist Orchestrator]
     ORCH --> SE[Specialist Results]
     SE --> EV[Shared Evidence Envelope]
-    EV -. separate authority boundary .-> DET[Deterministic Evaluator]
+    EV --> HASH{Integrity OK?}
+    HASH -->|No| FAIL[Inconclusive / Invalid Evidence]
+    HASH -->|Yes| SCORE[Re-score Playbook Hypotheses]
+    SCORE --> CAUSAL[Trace / Stateful Causal Gates]
+    CAUSAL --> PRE[Source Precedence Gate]
+    PRE --> DET[Deterministic Verdict]
+    DET --> EX[Rejected-hypothesis Explanation Graph]
 ~~~
 
-The executor recompiles the plan server-side immediately before execution. Clients cannot submit arbitrary task lists, budgets, dependencies or tool names. The shared evidence envelope intentionally has no `root_cause` field.
+The executor recompiles the plan server-side immediately before execution. Clients cannot submit arbitrary task lists, budgets, dependencies or tool names. The shared evidence envelope intentionally has no `root_cause` field. The separate evaluator can produce a verdict only after integrity, causal and precedence gates pass.
 ## Safety invariants
 
 - Planner output is restricted to a fixed specialist allow-list.
@@ -72,15 +78,21 @@ The executor recompiles the plan server-side immediately before execution. Clien
 - The global incident query budget remains active in addition to each specialist's logical budget.
 - The execution API recompiles the plan server-side; caller-authored plans are never executed.
 - The planner/executor cannot request remediation or bypass the separate remediator service.
+- The evaluator re-scores hypotheses from the shared envelope instead of trusting specialist-local status.
+- Any failed evidence-integrity check or missing support/contradiction reference blocks root-cause selection.
+- Trace-only RCA still requires repeated origin across independent representative traces.
+- Stateful promotion still requires trace-origin identity plus dependency-specific current telemetry.
+- Direct Kubernetes failure signals block downstream trace/stateful promotion until a higher-precedence playbook can be selected.
 
 ## API
 
 ~~~text
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
+POST /api/v1/planner/investigate
 ~~~
 
-Both endpoints require the investigator role and existing cluster authorization. Ordinary callers have their tenant overwritten by the authenticated principal. A global principal must still supply a concrete tenant. `/execute` returns 404 unless `AGENTIC_EXECUTION_ENABLED=true`.
+All three endpoints require the investigator role and existing cluster authorization. Ordinary callers have their tenant overwritten by the authenticated principal. A global principal must still supply a concrete tenant. `/execute` and `/investigate` return 404 unless `AGENTIC_EXECUTION_ENABLED=true`.
 
 Example logical result:
 
@@ -131,6 +143,23 @@ The current execution layer still preserves:
 - evidence hashes and source identity;
 - no root-cause output and no remediation action.
 
+## Deterministic shared-envelope evaluation
+
+`POST /api/v1/planner/investigate` composes the current three stages:
+
+1. build the bounded server-side plan;
+2. execute allow-listed read-only specialists in dependency-aware waves;
+3. evaluate the shared envelope deterministically.
+
+The evaluator does **not** trust specialist-local `confirmed` state. It filters to integrity-verified evidence, removes invalid references, recalculates the existing weighted score and then applies causal gates:
+
+- trace-only hypotheses need the same origin across at least two representative trace IDs;
+- stateful hypotheses need a typed stateful analysis with `causal_role=origin`, fresh trace-origin evidence and dependency-specific telemetry;
+- direct Kubernetes signals such as eviction, failed scheduling, node NotReady or active node pressure block downstream promotion;
+- stateful hypotheses outrank their less-specific trace-only parent when both are confirmed.
+
+The result includes a deterministic `root_cause` only when those gates pass. It also returns an explanation graph with hypothesis, evidence, gate and verdict nodes connected by `supports`, `contradicts`, `blocks`, `selected` and `considered` edges.
+
 ## Next phase
 
-The next step is to feed the shared evidence envelope into a dedicated deterministic aggregation/evaluation stage and build the rejected-hypothesis explanation graph. That stage will decide which branch-local hypotheses remain supported, ruled out or inconclusive without giving the planner or specialists root-cause authority.
+The next step is deeper Kubernetes specialist parity with the main playbook engine, first-class deployment/change event nodes and a UI explorer for both topology and explanation graphs.
