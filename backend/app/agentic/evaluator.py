@@ -399,31 +399,35 @@ def evaluate_shared_evidence(
             if item in evidence_by_id
         ]
 
-        if hypothesis.id == "trace-causal-propagation":
-            gate_ok, gate_reason = _trace_gate(support)
-            reasons.append(gate_reason)
-            if not gate_ok:
-                hypothesis.status = HypothesisStatus.TESTING
-                decision = "testing"
+        # Integrity is the highest-precedence gate. Once evidence is invalid,
+        # no later causal or source-precedence rule may reclassify the
+        # hypothesis into a selectable state.
+        if decision != "invalid_evidence":
+            if hypothesis.id == "trace-causal-propagation":
+                gate_ok, gate_reason = _trace_gate(support)
+                reasons.append(gate_reason)
+                if not gate_ok:
+                    hypothesis.status = HypothesisStatus.TESTING
+                    decision = "testing"
 
-        if specialist == "database":
-            gate_ok, gate_reasons = _stateful_gate(
-                hypothesis.id,
-                support,
-                execution,
-            )
-            reasons.extend(gate_reasons)
-            if not gate_ok:
-                hypothesis.status = HypothesisStatus.INCONCLUSIVE
-                decision = "inconclusive"
+            if specialist == "database":
+                gate_ok, gate_reasons = _stateful_gate(
+                    hypothesis.id,
+                    support,
+                    execution,
+                )
+                reasons.extend(gate_reasons)
+                if not gate_ok:
+                    hypothesis.status = HypothesisStatus.INCONCLUSIVE
+                    decision = "inconclusive"
 
-        if (
-            precedence_blockers
-            and specialist in {"traces", "database"}
-            and hypothesis.status == HypothesisStatus.CONFIRMED
-        ):
-            decision = "blocked_by_precedence"
-            reasons.extend(precedence_blockers)
+            if (
+                precedence_blockers
+                and specialist in {"traces", "database"}
+                and hypothesis.status == HypothesisStatus.CONFIRMED
+            ):
+                decision = "blocked_by_precedence"
+                reasons.extend(precedence_blockers)
 
         evaluated.append(
             EvaluatedHypothesis(
