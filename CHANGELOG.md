@@ -5,9 +5,38 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Planned
-- Guarded remediation plane with explicit human approval.
+- Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 - Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
+
+## [0.7.0] - 2026-09-28
+
+### Added
+- Separate FastAPI remediator service with its own Kubernetes ServiceAccount and API surface.
+- Typed remediation plans persisted alongside incident/audit state.
+- First allow-listed action: Deployment scaling through the Kubernetes deployments/scale subresource.
+- Static policy checks for incident state, evidence strength, action/namespace allow-lists, investigated Deployment identity, replica bounds and remediation cluster registry.
+- Runtime policy checks for no-op changes and bounded replica delta.
+- Kubernetes server-side dry-run before approval.
+- Exact OIDC remediator role and four-eyes requester/approver separation by default.
+- Explicit approve, reject, execute and rollback API transitions.
+- Plan TTL with automatic expiration.
+- resourceVersion and replica drift protection before execution.
+- Rollback metadata captured before approval and persisted execution/rollback results.
+- Separate REMEDIATION_CLUSTER_CONFIG_JSON credential registry.
+- Helm remediator Deployment/Service, separate ServiceAccount and namespace-scoped scale Roles.
+- Bilingual guarded-remediation documentation.
+
+### Changed
+- API, backend package, frontend and Helm chart versions are now 0.7.0.
+- CI now validates the investigator and remediator as separate runtime surfaces and production-container entrypoints.
+
+### Safety
+- The investigator remains read-only and does not expose remediation routes.
+- The remediator has no generic Kubernetes patch, shell, kubectl, pods/exec, create/delete, Argo sync or cloud mutation primitive.
+- Helm grants only get/patch on deployments/scale and only in explicitly listed namespaces.
+- Remediation is disabled by default; the default target namespace list is empty.
+- An RCA recommendation never executes automatically. Dry-run, explicit approval and explicit execution are separate steps.
 
 ## [0.6.1] - 2026-09-27
 
@@ -195,7 +224,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...v0.6.0
 [0.5.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.4.0...v0.5.0
