@@ -1,4 +1,7 @@
 {{- if .Values.remediator.enabled }}
+{{- if eq .Values.remediator.serviceAccount.name .Values.serviceAccount.name }}
+{{- fail "remediator.serviceAccount.name must differ from the investigator serviceAccount.name" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
