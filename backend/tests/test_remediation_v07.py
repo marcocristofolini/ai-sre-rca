@@ -20,6 +20,7 @@ from app.remediation.service import (
 )
 from app.schemas import (
     Entity,
+    Evidence,
     Hypothesis,
     HypothesisStatus,
     IncidentInput,
@@ -132,6 +133,7 @@ def settings(**overrides):
         "remediation_max_replicas": 10,
         "remediation_max_replica_delta": 3,
         "remediation_plan_ttl_minutes": 30,
+        "remediation_max_incident_age_minutes": 120,
         "remediation_require_distinct_approver": True,
     }
     values.update(overrides)
@@ -158,13 +160,23 @@ def resolved_incident() -> InvestigationResult:
                 namespace="payments",
             )
         ],
-        evidence=[],
+        evidence=[
+            Evidence(
+                id="ev-capacity",
+                source="prometheus",
+                category="capacity",
+                summary="Checkout capacity is saturated.",
+                facts={"utilization": 0.97},
+                strength="strong",
+            )
+        ],
         hypotheses=[
             Hypothesis(
                 id="capacity-saturation",
                 statement="Checkout deployment capacity is saturated.",
                 status=HypothesisStatus.CONFIRMED,
                 origin="playbook",
+                supporting_evidence=["ev-capacity"],
                 score=0.95,
                 rationale="Deterministic capacity evidence confirmed.",
             )
@@ -245,6 +257,62 @@ async def test_guarded_scale_requires_distinct_approval_and_supports_rollback():
     assert "remediation.approved" in actions
     assert "remediation.executed" in actions
     assert "remediation.rolled_back" in actions
+
+
+@pytest.mark.asyncio
+async def test_stale_incident_is_not_eligible_for_remediation():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    incident.incident.starts_at = datetime.now(timezone.utc) - timedelta(hours=3)
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+
+    assert plan.status == RemediationPlanStatus.POLICY_DENIED
+    assert executor.inspect_calls == 0
+    freshness = next(
+        item for item in plan.policy_checks
+        if item["check"] == "incident_freshness"
+    )
+    assert freshness["allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_tampered_supporting_evidence_blocks_remediation():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    incident.evidence[0].facts["utilization"] = 0.10
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+
+    assert plan.status == RemediationPlanStatus.POLICY_DENIED
+    assert executor.inspect_calls == 0
+    integrity = next(
+        item for item in plan.policy_checks
+        if item["check"] == "supporting_evidence_integrity"
+    )
+    assert integrity["allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_revalidated_after_approval_before_execution():
+    repo = MemoryRepository()
+    incident = resolved_incident()
+    executor = FakeScaleExecutor()
+    service = GuardedRemediationService(repo, executor, settings())
+
+    plan = await service.create_plan(request(), incident, actor="investigator-a")
+    plan = await service.approve(plan, actor="remediator-b", note=None)
+    incident.evidence[0].facts["utilization"] = 0.10
+
+    plan = await service.execute(plan, incident, actor="remediator-b")
+
+    assert plan.status == RemediationPlanStatus.EXECUTION_FAILED
+    assert plan.failure == "policy changed after approval"
+    assert executor.execute_calls == 0
 
 
 @pytest.mark.asyncio
