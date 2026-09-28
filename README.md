@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.6.0
+# AI SRE RCA — v0.6.1
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,16 @@
 Evidence-first, read-only SRE incident investigator for Kubernetes, distributed traces and stateful dependencies, designed so that telemetry and typed checks—not an LLM—decide the root cause.
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
+
+## v0.6.1 operational isolation hardening
+
+v0.6.1 closes isolation gaps found in the post-merge audit of v0.6.0 without changing the read-only investigation model:
+
+- **Tenant-scoped incident lookup at the repository boundary.** A caller outside the incident tenant receives the same not-found result as an unknown incident ID.
+- **Tenant-scoped retention purge.** Tenant admins can purge only their own expired incidents and audit events; an explicitly global principal with `tenant_id="*"` can perform platform-wide retention.
+- **Fail-closed multi-cluster configuration.** Malformed `CLUSTER_CONFIG_JSON`, non-object registries and non-object cluster entries now fail settings validation instead of silently becoming an empty registry.
+- Regression coverage locks these isolation and configuration behaviors in place.
+- No workload mutation method or remediation credential is introduced.
 
 ## What changed in v0.6
 
