@@ -306,22 +306,14 @@ async def test_remediation_plan_repository_is_tenant_scoped():
 def test_investigator_api_does_not_expose_remediation_routes():
     from app.main import app as investigator_app
 
-    paths = {
-        route.path
-        for route in investigator_app.routes
-        if hasattr(route, "path")
-    }
+    paths = set(investigator_app.openapi()["paths"])
     assert not any(path.startswith("/api/v1/remediation") for path in paths)
 
 
 def test_remediator_is_a_separate_fastapi_application():
     from app.remediation.main import app as remediator_app
 
-    paths = {
-        route.path
-        for route in remediator_app.routes
-        if hasattr(route, "path")
-    }
+    paths = set(remediator_app.openapi()["paths"])
     assert "/api/v1/remediation/plans" in paths
     assert "/api/v1/incidents/investigate" not in paths
     assert remediator_app.version == "0.7.0"
