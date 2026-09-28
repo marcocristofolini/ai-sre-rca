@@ -117,7 +117,8 @@ Completed in the current development branch:
 - freshness reconciliation without unsafe tombstone inference;
 - service-centric bounded graph projections;
 - causal-direction-aware blast-radius traversal;
-- bounded graph context for the Investigation Planner.
+- bounded graph context for the Investigation Planner;
+- deterministic shared-envelope evaluation and rejected-hypothesis explanation graph.
 
 Still planned:
 
@@ -125,4 +126,4 @@ Still planned:
 - change/deployment nodes as first-class temporal events;
 - graph health metrics and retention policy;
 - UI graph explorer;
-- deterministic aggregation/evaluation over the shared specialist evidence envelope.
+- richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
