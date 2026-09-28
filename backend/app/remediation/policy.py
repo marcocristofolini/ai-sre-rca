@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from app.config import Settings
+from app.core.integrity import verify_evidence_hash
 from app.schemas import (
     HypothesisStatus,
     InvestigationResult,
@@ -30,12 +32,44 @@ class RemediationPolicy:
         incident: InvestigationResult,
         request: ScaleDeploymentPlanRequest,
     ) -> PolicyDecision:
-        root_hypothesis_verified = any(
-            hypothesis.id == incident.root_cause.hypothesis_id
-            and hypothesis.origin == "playbook"
-            and hypothesis.status == HypothesisStatus.CONFIRMED
-            for hypothesis in incident.hypotheses
+        root_hypothesis = next(
+            (
+                hypothesis
+                for hypothesis in incident.hypotheses
+                if hypothesis.id == incident.root_cause.hypothesis_id
+            ),
+            None,
         )
+        root_hypothesis_verified = bool(
+            root_hypothesis
+            and root_hypothesis.origin == "playbook"
+            and root_hypothesis.status == HypothesisStatus.CONFIRMED
+        )
+        evidence_by_id = {item.id: item for item in incident.evidence}
+        support_ids = (
+            list(root_hypothesis.supporting_evidence)
+            if root_hypothesis is not None
+            else []
+        )
+        supporting_evidence_integrity = bool(support_ids) and all(
+            evidence_id in evidence_by_id
+            and verify_evidence_hash(evidence_by_id[evidence_id])
+            for evidence_id in support_ids
+        )
+
+        starts_at = incident.incident.starts_at
+        incident_age_minutes: float | None = None
+        incident_is_fresh = False
+        if starts_at.tzinfo is not None:
+            incident_age_minutes = (
+                datetime.now(timezone.utc) - starts_at.astimezone(timezone.utc)
+            ).total_seconds() / 60
+            incident_is_fresh = (
+                -5.0
+                <= incident_age_minutes
+                <= self.settings.remediation_max_incident_age_minutes
+            )
+
         deployment_matches = any(
             entity.kind.lower() == "deployment"
             and entity.name == request.deployment
@@ -59,6 +93,14 @@ class RemediationPolicy:
                 f"incident status is {incident.status}",
             ),
             self._check(
+                "incident_freshness",
+                incident_is_fresh,
+                (
+                    f"age_minutes={incident_age_minutes!r}; "
+                    f"max={self.settings.remediation_max_incident_age_minutes}"
+                ),
+            ),
+            self._check(
                 "evidence_strength",
                 incident.root_cause.evidence_strength in {"medium", "strong"}
                 and incident.root_cause.supporting_signals > 0,
@@ -71,6 +113,11 @@ class RemediationPolicy:
                 "verified_deterministic_root_hypothesis",
                 root_hypothesis_verified,
                 f"hypothesis_id={incident.root_cause.hypothesis_id!r}",
+            ),
+            self._check(
+                "supporting_evidence_integrity",
+                supporting_evidence_integrity,
+                f"supporting_evidence_ids={support_ids}",
             ),
             self._check(
                 "action_allowlist",
