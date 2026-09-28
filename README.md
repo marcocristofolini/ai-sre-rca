@@ -23,7 +23,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Persistent graph context for planning** with hard server-side limits on context size, task count, parallelism and per-specialist query budgets.
 - **Experimental parallel specialist execution** behind `AGENTIC_EXECUTION_ENABLED=false` by default. Independent branches run concurrently; dependency branches run only after prerequisites complete.
 - **Shared evidence envelope** with evidence-integrity verification. Branch-local hypotheses are advisory-only and the execution response intentionally has no `root_cause` field.
-- **Deterministic shared-envelope evaluator** that re-scores only integrity-verified evidence, reapplies trace/stateful causal gates, preserves Kubernetes precedence and emits a rejected-hypothesis explanation graph.
+- **Deterministic shared-envelope evaluator** that re-scores only integrity-verified evidence, reapplies trace/stateful causal gates, preserves Kubernetes precedence, fails closed when a required higher-precedence specialist did not complete, and emits a rejected-hypothesis explanation graph.
 - **Three distinct agentic surfaces:** `plan` compiles, `execute` collects read-only specialist evidence, and `investigate` runs both plus deterministic evaluation. Only `investigate` can return a root-cause verdict.
 
 Current v0.8 APIs include:
