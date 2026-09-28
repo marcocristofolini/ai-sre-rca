@@ -72,6 +72,29 @@ class GuardedRemediationService:
         await self.repo.save_remediation_plan(plan)
         return plan
 
+    async def _save_if_status(
+        self,
+        plan: RemediationPlan,
+        *,
+        expected_status: RemediationPlanStatus,
+    ) -> RemediationPlan:
+        candidate = plan.model_copy(deep=True)
+        candidate.updated_at = datetime.now(timezone.utc)
+        saved = await self.repo.save_remediation_plan_if_status(
+            candidate,
+            expected_status.value,
+        )
+        if saved:
+            return candidate
+        current = await self.repo.get_remediation_plan(
+            plan.id,
+            tenant_id=plan.tenant_id,
+        )
+        current_status = current.status.value if current else "missing"
+        raise RemediationPlanStateError(
+            f"plan state changed concurrently; current state is {current_status}"
+        )
+
     async def create_plan(
         self,
         request: ScaleDeploymentPlanRequest,
@@ -212,8 +235,22 @@ class GuardedRemediationService:
             }
             and datetime.now(timezone.utc) > plan.expires_at
         ):
-            plan.status = RemediationPlanStatus.EXPIRED
-            await self._save(plan)
+            expected = plan.status
+            candidate = plan.model_copy(deep=True)
+            candidate.status = RemediationPlanStatus.EXPIRED
+            try:
+                plan = await self._save_if_status(
+                    candidate,
+                    expected_status=expected,
+                )
+            except RemediationPlanStateError:
+                current = await self.repo.get_remediation_plan(
+                    plan.id,
+                    tenant_id=plan.tenant_id,
+                )
+                if current is None:
+                    raise
+                return current
             await self._audit(
                 plan,
                 actor="remediation-service",
@@ -240,11 +277,15 @@ class GuardedRemediationService:
             raise RemediationApprovalError(
                 "requester cannot approve their own remediation plan"
             )
-        plan.status = RemediationPlanStatus.APPROVED
-        plan.approved_by = actor
-        plan.approved_at = datetime.now(timezone.utc)
-        plan.approval_note = note
-        await self._save(plan)
+        candidate = plan.model_copy(deep=True)
+        candidate.status = RemediationPlanStatus.APPROVED
+        candidate.approved_by = actor
+        candidate.approved_at = datetime.now(timezone.utc)
+        candidate.approval_note = note
+        plan = await self._save_if_status(
+            candidate,
+            expected_status=RemediationPlanStatus.AWAITING_APPROVAL,
+        )
         await self._audit(
             plan,
             actor=actor,
@@ -268,11 +309,16 @@ class GuardedRemediationService:
             raise RemediationPlanStateError(
                 f"plan cannot be rejected from state {plan.status.value}"
             )
-        plan.status = RemediationPlanStatus.REJECTED
-        plan.rejected_by = actor
-        plan.rejected_at = datetime.now(timezone.utc)
-        plan.approval_note = note
-        await self._save(plan)
+        expected = plan.status
+        candidate = plan.model_copy(deep=True)
+        candidate.status = RemediationPlanStatus.REJECTED
+        candidate.rejected_by = actor
+        candidate.rejected_at = datetime.now(timezone.utc)
+        candidate.approval_note = note
+        plan = await self._save_if_status(
+            candidate,
+            expected_status=expected,
+        )
         await self._audit(
             plan,
             actor=actor,
