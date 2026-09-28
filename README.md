@@ -23,6 +23,8 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Persistent graph context for planning** with hard server-side limits on context size, task count, parallelism and per-specialist query budgets.
 - **Experimental parallel specialist execution** behind `AGENTIC_EXECUTION_ENABLED=false` by default. Independent branches run concurrently; dependency branches run only after prerequisites complete.
 - **Shared evidence envelope** with evidence-integrity verification. Branch-local hypotheses are advisory-only and the execution response intentionally has no `root_cause` field.
+- **Deterministic shared-envelope evaluator** that re-scores only integrity-verified evidence, reapplies trace/stateful causal gates, preserves Kubernetes precedence, fails closed when a required higher-precedence specialist did not complete, and emits a rejected-hypothesis explanation graph.
+- **Three distinct agentic surfaces:** `plan` compiles, `execute` collects read-only specialist evidence, and `investigate` runs both plus deterministic evaluation. Only `investigate` can return a root-cause verdict.
 
 Current v0.8 APIs include:
 
@@ -34,9 +36,10 @@ GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
+POST /api/v1/planner/investigate
 ```
 
-The planner remains a preview/compilation surface. Parallel specialist execution is implemented as an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. The existing deterministic evidence evaluator remains the only authority that can confirm root cause, and the LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
+The planner remains a preview/compilation surface. Parallel specialist execution is an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. The new `/investigate` path then revalidates the shared envelope, recalculates deterministic hypothesis scores, reapplies trace/stateful causal gates, enforces Kubernetes precedence and produces an explanation graph before a root-cause verdict is allowed. The LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.md) · [Agentic Investigation](docs/agentic-investigation.md).
 
@@ -121,6 +124,8 @@ flowchart TD
     P --> T[Allow-listed Specialist Tasks]
     T -->|opt-in| X[Parallel Read-only Specialists]
     X --> SE[Shared Evidence Envelope]
+    SE --> V[Deterministic Shared-envelope Evaluator]
+    V --> EG[Rejected-hypothesis Explanation Graph]
 
     E --> K[Kubernetes]
     E --> O[Prometheus / Loki / Tempo]
@@ -135,7 +140,7 @@ flowchart TD
     G --> B[Blast Radius]
 
     L --> D[Deterministic Evaluator]
-    SE -. authority boundary .-> D
+    V -. same authority rules .-> D
     D --> M[Incident Memory<br/>PostgreSQL + pgvector]
     D --> H[Verified Hypotheses]
     H --> RCA[Evidence-backed RCA]
@@ -168,6 +173,7 @@ Open:
 - Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
 - Investigation planner preview: `POST /api/v1/planner/plan`
 - Experimental parallel specialist execution: `POST /api/v1/planner/execute` (requires `AGENTIC_EXECUTION_ENABLED=true`)
+- Full agentic investigation with deterministic verdict + explanation graph: `POST /api/v1/planner/investigate` (same opt-in execution flag)
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 

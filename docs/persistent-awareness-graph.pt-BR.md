@@ -117,7 +117,8 @@ Concluído na branch atual:
 - reconciliação de freshness sem inferência insegura de tombstone;
 - projeções bounded centradas em serviço;
 - blast radius com direção causal explícita;
-- contexto bounded do grafo para o Investigation Planner.
+- contexto bounded do grafo para o Investigation Planner;
+- avaliação determinística do shared envelope e rejected-hypothesis explanation graph.
 
 Ainda planejado:
 
@@ -125,4 +126,4 @@ Ainda planejado:
 - mudanças/deploys como eventos temporais first-class;
 - métricas e política de retention do grafo;
 - UI de exploração do grafo;
-- agregação/avaliação determinística sobre o shared evidence envelope dos especialistas.
+- contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.

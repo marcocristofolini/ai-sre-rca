@@ -52,10 +52,16 @@ flowchart TD
     OUT -->|execute opt-in| ORCH[Orquestrador Paralelo de Especialistas]
     ORCH --> SE[Resultados dos Especialistas]
     SE --> EV[Shared Evidence Envelope]
-    EV -. fronteira separada de autoridade .-> DET[Avaliador Determinístico]
+    EV --> HASH{Integridade OK?}
+    HASH -->|Não| FAIL[Inconclusivo / Evidência Inválida]
+    HASH -->|Sim| SCORE[Recalcular Hipóteses Playbook]
+    SCORE --> CAUSAL[Gates Causais Trace / Stateful]
+    CAUSAL --> PRE[Gate de Precedência por Fonte]
+    PRE --> DET[Verdict Determinístico]
+    DET --> EX[Explanation Graph de Hipóteses Descartadas]
 ~~~
 
-O executor recompila o plano no servidor imediatamente antes da execução. O cliente não pode enviar listas arbitrárias de tarefas, budgets, dependências ou nomes de ferramentas. O envelope compartilhado de evidências propositalmente não possui campo `root_cause`.
+O executor recompila o plano no servidor imediatamente antes da execução. O cliente não pode enviar listas arbitrárias de tarefas, budgets, dependências ou nomes de ferramentas. O envelope compartilhado de evidências propositalmente não possui campo `root_cause`. O evaluator separado só pode produzir um verdict depois de passar pelos gates de integridade, causalidade e precedência.
 ## Invariantes de segurança
 
 - A saída do planner fica restrita a uma allow-list fixa de especialistas.
@@ -72,15 +78,22 @@ O executor recompila o plano no servidor imediatamente antes da execução. O cl
 - O query budget global do incidente continua ativo além do budget lógico de cada especialista.
 - A API de execução recompila o plano no servidor; planos escritos pelo caller nunca são executados.
 - Planner e executor não solicitam remediação nem podem contornar o remediator separado.
+- O evaluator recalcula as hipóteses a partir do shared envelope em vez de confiar no status local dos especialistas.
+- Qualquer falha de integridade ou referência de suporte/contradição ausente bloqueia a seleção de causa raiz.
+- RCA puramente trace-aware continua exigindo origem repetida em traces independentes representativos.
+- Promoção stateful continua exigindo identidade de origem no trace mais telemetria atual específica da dependência.
+- Sinais Kubernetes diretos bloqueiam promoção downstream de trace/stateful até que um playbook de maior precedência possa ser selecionado.
+- Se o specialist Kubernetes foi planejado mas falhou, foi pulado inesperadamente ou não concluiu seu contexto, a promoção downstream de trace/stateful é bloqueada; ausência de evidência de infraestrutura nunca é interpretada como infraestrutura saudável.
 
 ## API
 
 ~~~text
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
+POST /api/v1/planner/investigate
 ~~~
 
-Os dois endpoints exigem papel investigator e a autorização existente de cluster. Callers comuns têm o tenant substituído pelo tenant do principal autenticado. Um principal global ainda precisa informar um tenant concreto. `/execute` retorna 404 enquanto `AGENTIC_EXECUTION_ENABLED` não estiver habilitado.
+Os três endpoints exigem papel investigator e a autorização existente de cluster. Callers comuns têm o tenant substituído pelo tenant do principal autenticado. Um principal global ainda precisa informar um tenant concreto. `/execute` e `/investigate` retornam 404 enquanto `AGENTIC_EXECUTION_ENABLED` não estiver habilitado.
 
 Exemplo lógico:
 
@@ -131,6 +144,23 @@ A camada atual preserva:
 - hashes e identidade de origem das evidências;
 - sem saída de causa raiz e sem ação de remediação.
 
+## Avaliação determinística do shared envelope
+
+`POST /api/v1/planner/investigate` compõe as três etapas atuais:
+
+1. construir o plano bounded no servidor;
+2. executar especialistas read-only allow-listed em waves com dependências;
+3. avaliar deterministicamente o shared envelope.
+
+O evaluator **não** confia em `confirmed` produzido localmente pelo specialist. Ele filtra apenas evidências com integridade verificada, remove referências inválidas, recalcula o score ponderado existente e então aplica gates causais:
+
+- hipóteses puramente trace-aware precisam da mesma origem em pelo menos dois trace IDs representativos;
+- hipóteses stateful precisam de análise tipada com `causal_role=origin`, evidência atual da origem no trace e telemetria específica da dependência;
+- sinais Kubernetes diretos como eviction, FailedScheduling, node NotReady ou pressão ativa no node bloqueiam promoção downstream;
+- hipóteses stateful têm precedência sobre o pai trace-only menos específico quando ambas estão confirmadas.
+
+O resultado inclui `root_cause` determinística somente quando todos esses gates passam. Também retorna um explanation graph com nós de hipótese, evidência, gate e verdict conectados por `supports`, `contradicts`, `blocks`, `selected` e `considered`.
+
 ## Próxima fase
 
-O próximo passo é alimentar o envelope compartilhado em uma etapa dedicada de agregação/avaliação determinística e construir o rejected-hypothesis explanation graph. Essa etapa decidirá quais hipóteses branch-local continuam suportadas, ruled out ou inconclusivas sem entregar autoridade de causa raiz ao planner ou aos especialistas.
+O próximo passo é aproximar o specialist Kubernetes dos playbooks completos da engine principal, adicionar eventos first-class de deployment/change e uma UI para explorar tanto topologia quanto explanation graphs.

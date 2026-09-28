@@ -25,6 +25,12 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Server-side plan recompilation immediately before execution; caller-authored task graphs are never executed.
 - Branch-local hypotheses marked advisory-only.
 - `POST /api/v1/planner/execute`, disabled by default through `AGENTIC_EXECUTION_ENABLED=false`.
+- Deterministic shared-envelope evaluator that independently revalidates specialist hypotheses.
+- Fail-closed evidence-reference and SHA-256 integrity gates before any agentic root-cause selection.
+- Reapplied trace-only repetition and stateful origin+telemetry causal gates after parallel execution.
+- Direct Kubernetes failure-signal precedence that blocks downstream trace/stateful promotion.
+- Rejected-hypothesis explanation graph with evidence, hypothesis, gate and verdict nodes.
+- `POST /api/v1/planner/investigate` composing plan, read-only execution and deterministic evaluation.
 - PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
@@ -36,12 +42,16 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Evidence with failed integrity verification is excluded from the shared envelope.
 - A specialist that exhausts its local budget becomes `budget_exhausted`; dependent branches are skipped.
 - The execution endpoint recompiles the plan server-side rather than accepting executable plans from callers.
+- The evaluator does not trust specialist-local `confirmed` state; it recalculates score and causal eligibility from the integrity-verified envelope.
+- Missing support or contradiction references fail closed and prevent root-cause selection.
+- A planned higher-precedence Kubernetes specialist that does not complete blocks downstream trace/stateful promotion, preventing absence-by-failure from being treated as clean infrastructure evidence.
+- `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
-- Deterministic shared-envelope aggregation/evaluation and rejected-hypothesis explanation graph.
+- Kubernetes specialist parity with the full infrastructure playbook engine.
 - Authoritative tombstones from full inventory reconciliation.
 - Persistent graph explorer UI and first-class deployment/change event nodes.
 - Remediation policy bundles, post-action verification and signed approval evidence.

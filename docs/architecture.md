@@ -15,6 +15,8 @@ flowchart TD
     PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
     PT -->|opt-in| ORCH[Parallel Read-only Specialists]
     ORCH --> SE[Shared Evidence Envelope]
+    SE --> AE[Deterministic Agentic Evaluator]
+    AE --> XG[Explanation Graph]
 
     I --> K[Kubernetes Adapter]
     I --> P[Prometheus Adapter]
@@ -31,7 +33,7 @@ flowchart TD
     KA --> LG
 
     LG --> EV[Evidence Evaluator]
-    SE -. separate authority boundary .-> EV
+    AE -. same deterministic authority rules .-> EV
     LG --> PAG
     PAG --> REC[Fresh / Stale Reconciliation]
     PAG --> SV[Service Projections]
@@ -443,7 +445,13 @@ flowchart TD
     IP -->|AGENTIC_EXECUTION_ENABLED=true| ORCH[Parallel Specialist Execution]
     ORCH --> SR[Typed Specialist Results]
     SR --> ENV[Shared Evidence Envelope]
-    ENV -. authority boundary .-> EV[Deterministic Evidence Evaluator]
+    ENV --> HASH{Integrity verified?}
+    HASH -->|No| INC[Inconclusive]
+    HASH -->|Yes| SCORE[Re-score Playbook Hypotheses]
+    SCORE --> CAUSAL[Trace / Stateful Causal Gates]
+    CAUSAL --> PRE[Source Precedence]
+    PRE --> EV[Deterministic Verdict]
+    EV --> EX[Rejected-hypothesis Explanation Graph]
 ```
 
 Planner safety properties:
@@ -457,6 +465,44 @@ Planner safety properties:
 - specialist hypotheses are advisory-only and the shared execution response has no root-cause field;
 - local specialist budgets and the existing global query budget both apply;
 - evidence hashes are verified before evidence is accepted into the shared envelope;
+- the evaluator re-scores playbook hypotheses from integrity-verified evidence instead of trusting specialist-local status;
+- missing support or contradiction references fail closed and block root-cause selection;
+- trace-only selection still requires repeated origin across independent representative traces;
+- stateful selection still requires trace-origin identity plus dependency-specific current telemetry;
+- direct Kubernetes failure signals block downstream trace/stateful promotion;
+- a planned higher-precedence Kubernetes specialist must complete before downstream trace/stateful candidates can be selected;
+- `/execute` still returns no root cause; only `/investigate` can return a deterministic verdict;
 - agentic execution is disabled by default.
 
 Full details: [persistent-awareness-graph.md](persistent-awareness-graph.md) and [agentic-investigation.md](agentic-investigation.md).
+
+
+## Deterministic shared-envelope evaluator — v0.8
+
+The evaluator is a separate authority boundary after specialist execution.
+
+```mermaid
+flowchart TD
+    ENV[Shared Evidence Envelope] --> I{All evidence hashes valid?}
+    I -->|No| FAIL[Fail Closed: Inconclusive]
+    I -->|Yes| REF[Validate Hypothesis Evidence References]
+    REF --> SCORE[Recalculate Weighted Score]
+    SCORE --> TG{Trace-only Candidate?}
+    TG -->|Yes| TR[Require Repeated Origin Across 2+ Traces]
+    TG -->|No| SG{Stateful Candidate?}
+    SG -->|Yes| ST[Require causal_role=origin + Trace Evidence + Dependency Telemetry]
+    SG -->|No| PRE[Apply Source Precedence]
+    TR --> PRE
+    ST --> PRE
+    PRE --> K{Direct Kubernetes Failure Signal?}
+    K -->|Yes| BLOCK[Block Downstream Promotion]
+    K -->|No| PICK[Select Highest-precedence Confirmed Hypothesis]
+    PICK --> ROOT[Deterministic Root Cause]
+    BLOCK --> INC[Inconclusive Until Higher-precedence Playbook Exists]
+    ROOT --> EX[Explanation Graph]
+    INC --> EX
+```
+
+The explanation graph makes negative reasoning explicit. Evidence nodes connect to hypotheses with `supports` or `contradicts`; gates connect with `blocks`; hypotheses connect to the verdict with `selected` or `considered`.
+
+This stage remains read-only and cannot invoke remediation. It does not trust a specialist's local `confirmed` status. It independently recalculates score and gate eligibility from the integrity-verified shared envelope.

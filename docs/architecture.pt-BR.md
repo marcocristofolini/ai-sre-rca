@@ -15,6 +15,8 @@ flowchart TD
     PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
     PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
     ORCH --> SE[Shared Evidence Envelope]
+    SE --> AE[Avaliador Agentic Determinístico]
+    AE --> XG[Explanation Graph]
 
     I --> K[Adapter Kubernetes]
     I --> P[Adapter Prometheus]
@@ -31,7 +33,7 @@ flowchart TD
     KA --> LG
 
     LG --> EV[Avaliador de Evidências]
-    SE -. fronteira separada de autoridade .-> EV
+    AE -. mesmas regras determinísticas de autoridade .-> EV
     LG --> PAG
     PAG --> REC[Reconciliação Fresh / Stale]
     PAG --> SV[Projeções por Serviço]
@@ -443,7 +445,13 @@ flowchart TD
     IP -->|AGENTIC_EXECUTION_ENABLED=true| ORCH[Execução Paralela de Especialistas]
     ORCH --> SR[Resultados Tipados dos Especialistas]
     SR --> ENV[Shared Evidence Envelope]
-    ENV -. fronteira de autoridade .-> EV[Avaliador Determinístico]
+    ENV --> HASH{Integridade verificada?}
+    HASH -->|Não| INC[Inconclusivo]
+    HASH -->|Sim| SCORE[Recalcular Hipóteses Playbook]
+    SCORE --> CAUSAL[Gates Causais Trace / Stateful]
+    CAUSAL --> PRE[Precedência por Fonte]
+    PRE --> EV[Verdict Determinístico]
+    EV --> EX[Explanation Graph de Hipóteses Descartadas]
 ```
 
 Propriedades de segurança do planner:
@@ -457,6 +465,44 @@ Propriedades de segurança do planner:
 - hipóteses dos especialistas são advisory-only e a resposta compartilhada não possui campo de causa raiz;
 - budgets locais por especialista e o query budget global já existente continuam ativos;
 - hashes das evidências são verificados antes de entrar no shared envelope;
+- o evaluator recalcula hipóteses playbook usando apenas evidências verificadas, em vez de confiar no status local dos specialists;
+- referências de suporte ou contradição ausentes falham de forma fechada e bloqueiam seleção de causa raiz;
+- seleção puramente trace-aware continua exigindo origem repetida em traces independentes;
+- seleção stateful continua exigindo identidade de origem no trace mais telemetria atual específica da dependência;
+- sinais Kubernetes diretos bloqueiam promoção downstream de trace/stateful;
+- um specialist Kubernetes de maior precedência que foi planejado precisa concluir antes de qualquer candidato downstream de trace/stateful ser selecionado;
+- `/execute` continua sem causa raiz; somente `/investigate` pode retornar verdict determinístico;
 - a execução agentic fica desabilitada por padrão.
 
 Detalhes: [persistent-awareness-graph.pt-BR.md](persistent-awareness-graph.pt-BR.md) e [agentic-investigation.pt-BR.md](agentic-investigation.pt-BR.md).
+
+
+## Avaliador determinístico do shared envelope — v0.8
+
+O evaluator é uma fronteira de autoridade separada depois da execução dos especialistas.
+
+```mermaid
+flowchart TD
+    ENV[Shared Evidence Envelope] --> I{Todos os hashes são válidos?}
+    I -->|Não| FAIL[Fail Closed: Inconclusivo]
+    I -->|Sim| REF[Validar Referências de Evidência]
+    REF --> SCORE[Recalcular Score Ponderado]
+    SCORE --> TG{Candidato Trace-only?}
+    TG -->|Sim| TR[Exigir Origem Repetida em 2+ Traces]
+    TG -->|Não| SG{Candidato Stateful?}
+    SG -->|Sim| ST[Exigir causal_role=origin + Evidência de Trace + Telemetria da Dependência]
+    SG -->|Não| PRE[Aplicar Precedência por Fonte]
+    TR --> PRE
+    ST --> PRE
+    PRE --> K{Existe Sinal Kubernetes Direto?}
+    K -->|Sim| BLOCK[Bloquear Promoção Downstream]
+    K -->|Não| PICK[Selecionar Hipótese Confirmada de Maior Precedência]
+    PICK --> ROOT[Causa Raiz Determinística]
+    BLOCK --> INC[Inconclusivo até existir Playbook de Maior Precedência]
+    ROOT --> EX[Explanation Graph]
+    INC --> EX
+```
+
+O explanation graph torna explícito o raciocínio negativo. Nós de evidência se conectam às hipóteses com `supports` ou `contradicts`; gates usam `blocks`; hipóteses se conectam ao verdict com `selected` ou `considered`.
+
+Essa etapa permanece read-only e não pode invocar remediação. Ela não confia no `confirmed` local de um specialist. Score e elegibilidade causal são recalculados independentemente a partir do shared envelope com integridade verificada.

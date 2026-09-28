@@ -170,6 +170,12 @@ Agentic investigation foundation:
 - [x] shared evidence envelope with SHA-256 integrity verification
 - [x] server-side plan recompilation before execution; caller-authored plans are never executed
 - [x] branch-local hypotheses are advisory-only and execution has no root-cause field
-- [ ] deterministic shared-envelope aggregation / evaluation stage
-- [ ] rejected-hypothesis explanation graph
+- [x] deterministic shared-envelope aggregation / evaluation stage
+- [x] rejected-hypothesis explanation graph
+- [x] fail-closed integrity gate for missing/tampered hypothesis evidence references
+- [x] deterministic trace/stateful causal gates reapplied after specialist execution
+- [x] Kubernetes direct-signal precedence gate blocks downstream promotion
+- [x] higher-precedence specialist completeness gate prevents absence-by-failure promotion
+- [x] composed `/planner/investigate` endpoint with deterministic verdict
+- [ ] Kubernetes specialist parity with the full infrastructure playbook engine
 - [ ] optional model-assisted planning compiled through the specialist allow-list
