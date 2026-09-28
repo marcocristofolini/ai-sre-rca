@@ -76,7 +76,7 @@ remediator:
   # Empty by default: no namespace receives write RBAC until explicitly listed.
   targetNamespaces: []
   env:
-    AUTH_ENABLED: "false"
+    AUTH_ENABLED: "true"
     OIDC_ALGORITHMS: "RS256,ES256"
     OIDC_ROLES_CLAIM: "roles"
     OIDC_TENANT_CLAIM: "tenant"
