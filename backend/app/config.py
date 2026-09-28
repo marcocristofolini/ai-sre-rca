@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     remediation_plan_ttl_minutes: int = 30
     remediation_allowed_actions: str = "scale_deployment"
     remediation_allowed_namespaces: str = ""
+    # Exact deterministic hypothesis IDs allowed to justify Deployment scaling.
+    # Empty by default so enabling the remediator alone never authorizes scale.
+    remediation_scale_hypothesis_allowlist: str = ""
     remediation_min_replicas: int = 1
     remediation_max_replicas: int = 20
     remediation_max_replica_delta: int = 3
@@ -175,6 +178,14 @@ class Settings(BaseSettings):
         return frozenset(
             item.strip()
             for item in self.remediation_allowed_namespaces.split(",")
+            if item.strip()
+        )
+
+    @property
+    def remediation_scale_hypothesis_set(self) -> frozenset[str]:
+        return frozenset(
+            item.strip()
+            for item in self.remediation_scale_hypothesis_allowlist.split(",")
             if item.strip()
         )
 
