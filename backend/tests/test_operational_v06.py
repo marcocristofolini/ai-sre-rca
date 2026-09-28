@@ -24,7 +24,7 @@ from app.integrations.demo import DemoTools
 from app.integrations.http_tools import ReadOnlyHTTPTools
 from app.main import app
 from app.notifications import NotificationManager
-from app.schemas import Evidence, IncidentInput
+from app.schemas import AuditEvent, Evidence, IncidentInput
 
 
 def test_evidence_integrity_hash_detects_tampering():
@@ -261,6 +261,22 @@ async def test_memory_repository_is_tenant_scoped_and_retention_works():
     second.created_at = datetime.now(timezone.utc) - timedelta(days=10)
     await repo.save(second)
 
+    old_audit_at = datetime.now(timezone.utc) - timedelta(days=10)
+    await repo.append_audit(AuditEvent(
+        incident_id=first.incident_id,
+        tenant_id="tenant-a",
+        actor="test",
+        action="test.audit",
+        created_at=old_audit_at,
+    ))
+    await repo.append_audit(AuditEvent(
+        incident_id=second.incident_id,
+        tenant_id="tenant-b",
+        actor="test",
+        action="test.audit",
+        created_at=old_audit_at,
+    ))
+
     similar = await repo.search_similar(
         IncidentInput(title="Tenant A incident", tenant_id="tenant-a", cluster="prod"),
         limit=10,
@@ -271,12 +287,14 @@ async def test_memory_repository_is_tenant_scoped_and_retention_works():
 
     deleted = await repo.purge_expired(
         incident_days=5,
-        audit_days=90,
+        audit_days=5,
         tenant_id="tenant-a",
     )
-    assert deleted["incidents"] == 1
+    assert deleted == {"incidents": 1, "audit_events": 1}
     assert await repo.get(first.incident_id) is None
     assert await repo.get(second.incident_id, tenant_id="tenant-b") is not None
+    assert await repo.list_audit(first.incident_id, "tenant-a") == []
+    assert len(await repo.list_audit(second.incident_id, "tenant-b")) == 1
 
 
 def test_demo_api_exposes_audit_export_budget_and_capabilities():
