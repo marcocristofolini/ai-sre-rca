@@ -91,6 +91,7 @@ async def healthz():
         "query_budget_enabled": settings.query_budget_enabled,
         "persistent_awareness_graph": True,
         "agentic_planner_enabled": settings.agentic_planner_enabled,
+        "agentic_execution_enabled": settings.agentic_execution_enabled,
         "awareness_max_traversal_depth": settings.awareness_max_traversal_depth,
         "configured_clusters": sorted(settings.cluster_config),
     }

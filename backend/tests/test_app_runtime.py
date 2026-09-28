@@ -11,3 +11,4 @@ def test_application_imports_with_runtime_dependencies():
     assert "/api/v1/awareness/services/{service_name}" in paths
     assert "/api/v1/awareness/blast-radius/{target_id}" in paths
     assert "/api/v1/planner/plan" in paths
+    assert "/api/v1/planner/execute" in paths

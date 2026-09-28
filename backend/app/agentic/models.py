@@ -6,7 +6,15 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from app.schemas import IncidentInput
+from app.schemas import (
+    Entity,
+    Evidence,
+    GraphEdge,
+    Hypothesis,
+    IncidentInput,
+    StatefulDependencyAnalysis,
+    TraceAnalysis,
+)
 
 
 SpecialistKind = Literal[
@@ -52,3 +60,57 @@ class InvestigationPlan(BaseModel):
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+
+
+SpecialistExecutionStatus = Literal[
+    "completed",
+    "skipped",
+    "failed",
+    "budget_exhausted",
+]
+
+
+class SpecialistResult(BaseModel):
+    task_id: str
+    specialist: SpecialistKind
+    status: SpecialistExecutionStatus
+    evidence: list["Evidence"] = Field(default_factory=list)
+    entities: list["Entity"] = Field(default_factory=list)
+    graph_edges: list["GraphEdge"] = Field(default_factory=list)
+    trace_analyses: list["TraceAnalysis"] = Field(default_factory=list)
+    stateful_dependencies: list["StatefulDependencyAnalysis"] = Field(
+        default_factory=list
+    )
+    hypotheses: list["Hypothesis"] = Field(default_factory=list)
+    hypotheses_advisory_only: bool = True
+    query_count: int = 0
+    query_limit: int
+    integrity_ok: bool = True
+    reason: str = ""
+    error_type: str | None = None
+    started_at: datetime
+    finished_at: datetime
+
+
+class SharedEvidenceEnvelope(BaseModel):
+    plan_id: str
+    tenant_id: str
+    cluster: str
+    evidence: list["Evidence"] = Field(default_factory=list)
+    entities: list["Entity"] = Field(default_factory=list)
+    graph_edges: list["GraphEdge"] = Field(default_factory=list)
+    evidence_integrity_ok: bool = True
+    generated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+class AgenticExecutionResult(BaseModel):
+    schema_version: Literal["ai-sre-rca.agentic.v1"] = (
+        "ai-sre-rca.agentic.v1"
+    )
+    plan: InvestigationPlan
+    status: Literal["completed", "partial", "failed"]
+    specialist_results: list[SpecialistResult] = Field(default_factory=list)
+    shared_evidence: SharedEvidenceEnvelope
+    query_budget: dict[str, object] = Field(default_factory=dict)
+    started_at: datetime
+    finished_at: datetime

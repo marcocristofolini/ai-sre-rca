@@ -125,4 +125,4 @@ Still planned:
 - change/deployment nodes as first-class temporal events;
 - graph health metrics and retention policy;
 - UI graph explorer;
-- parallel specialist execution using bounded graph neighborhoods.
+- deterministic aggregation/evaluation over the shared specialist evidence envelope.

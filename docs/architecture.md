@@ -7,12 +7,14 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Incident Normalizer]
-    N --> PLAN[Bounded Investigation Planner<br/>plan-only in current v0.8]
+    N --> PLAN[Bounded Investigation Planner]
     N --> I[Investigation Engine]
 
     PAG[(Persistent Awareness Graph)] --> CTX[Bounded Service Context]
     CTX --> PLAN
     PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
+    PT -->|opt-in| ORCH[Parallel Read-only Specialists]
+    ORCH --> SE[Shared Evidence Envelope]
 
     I --> K[Kubernetes Adapter]
     I --> P[Prometheus Adapter]
@@ -29,6 +31,7 @@ flowchart TD
     KA --> LG
 
     LG --> EV[Evidence Evaluator]
+    SE -. separate authority boundary .-> EV
     LG --> PAG
     PAG --> REC[Fresh / Stale Reconciliation]
     PAG --> SV[Service Projections]
@@ -43,9 +46,6 @@ flowchart TD
     RC --> RCA[Structured RCA]
     RCA --> API[REST API]
     RCA --> UI[Next.js Investigation UI]
-
-    PT -. next phase .-> ORCH[Parallel Specialist Orchestrator]
-    ORCH -. next phase .-> EV
 ```
 
 ## Investigation lifecycle
@@ -417,7 +417,7 @@ Known relationship types are compiled through an explicit impact-direction allow
 
 ## Bounded Investigation Planner — v0.8
 
-The current planner is deterministic and plan-only. It uses incident identity, feature flags and a bounded service neighborhood to decide which typed specialist branches are relevant.
+The planner is deterministic and bounded. It uses incident identity, feature flags and a bounded service neighborhood to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
 
 ```mermaid
 flowchart TD
@@ -440,8 +440,10 @@ flowchart TD
     DB --> IP
     CH --> IP
 
-    IP -. not implemented yet .-> ORCH[Parallel Specialist Execution]
-    ORCH -. future evidence envelopes .-> EV[Deterministic Evidence Evaluator]
+    IP -->|AGENTIC_EXECUTION_ENABLED=true| ORCH[Parallel Specialist Execution]
+    ORCH --> SR[Typed Specialist Results]
+    SR --> ENV[Shared Evidence Envelope]
+    ENV -. authority boundary .-> EV[Deterministic Evidence Evaluator]
 ```
 
 Planner safety properties:
@@ -450,6 +452,11 @@ Planner safety properties:
 - every task is read-only;
 - task count, graph context, parallelism and per-specialist query budget are server bounded;
 - database/stateful work depends on the trace task so dependency identity is typed before dependency telemetry is queried;
-- the planner cannot confirm hypotheses, attach evidence, invoke mutation or bypass the separate remediation plane.
+- the planner cannot confirm hypotheses, attach evidence, invoke mutation or bypass the separate remediation plane;
+- the execution endpoint recompiles the plan server-side, so caller-authored task graphs are never executed;
+- specialist hypotheses are advisory-only and the shared execution response has no root-cause field;
+- local specialist budgets and the existing global query budget both apply;
+- evidence hashes are verified before evidence is accepted into the shared envelope;
+- agentic execution is disabled by default.
 
 Full details: [persistent-awareness-graph.md](persistent-awareness-graph.md) and [agentic-investigation.md](agentic-investigation.md).

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.agentic.models import InvestigationPlan
+from app.agentic.executor import execute_investigation_plan
+from app.agentic.models import AgenticExecutionResult, InvestigationPlan
 from app.agentic.planner import build_investigation_plan
 from app.auth import Principal, authorize_cluster, require_role
 from app.operations import append_audit
@@ -60,3 +61,67 @@ async def plan_investigation(
         },
     )
     return plan
+
+
+@router.post("/execute", response_model=AgenticExecutionResult)
+async def execute_agentic_investigation(
+    incident: IncidentInput,
+    request: Request,
+    principal: Principal = Depends(require_role("investigator")),
+):
+    settings = request.app.state.settings
+    if not settings.agentic_execution_enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="agentic execution is disabled",
+        )
+
+    tenant_id = (
+        incident.tenant_id
+        if principal.tenant_id == "*"
+        else principal.tenant_id
+    )
+    if tenant_id == "*":
+        raise HTTPException(
+            status_code=422,
+            detail="a concrete tenant_id is required for a global principal",
+        )
+    scoped_incident = incident.model_copy(
+        update={"tenant_id": tenant_id}
+    )
+    authorize_cluster(principal, scoped_incident.cluster)
+
+    # Recompile server-side immediately before execution. The caller cannot
+    # submit arbitrary tasks, budgets, tools or dependencies for execution.
+    plan = await build_investigation_plan(
+        request.app.state.repo,
+        incident=scoped_incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=request.app.state.tools,
+        settings=settings,
+    )
+
+    await append_audit(
+        request.app,
+        tenant_id=scoped_incident.tenant_id,
+        actor=principal.subject,
+        action="planner.execution_completed",
+        detail={
+            "plan_id": plan.id,
+            "cluster": plan.cluster,
+            "status": execution.status,
+            "specialists": {
+                result.specialist: result.status
+                for result in execution.specialist_results
+            },
+            "evidence_count": len(execution.shared_evidence.evidence),
+            "evidence_integrity_ok": (
+                execution.shared_evidence.evidence_integrity_ok
+            ),
+            "query_budget": execution.query_budget,
+        },
+    )
+    return execution

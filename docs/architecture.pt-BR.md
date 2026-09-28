@@ -7,12 +7,14 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Normalizador de Incidente]
-    N --> PLAN[Investigation Planner Bounded<br/>plan-only na v0.8 atual]
+    N --> PLAN[Investigation Planner Bounded]
     N --> I[Investigation Engine]
 
     PAG[(Persistent Awareness Graph)] --> CTX[Contexto Bounded do Serviço]
     CTX --> PLAN
     PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
+    PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
+    ORCH --> SE[Shared Evidence Envelope]
 
     I --> K[Adapter Kubernetes]
     I --> P[Adapter Prometheus]
@@ -29,6 +31,7 @@ flowchart TD
     KA --> LG
 
     LG --> EV[Avaliador de Evidências]
+    SE -. fronteira separada de autoridade .-> EV
     LG --> PAG
     PAG --> REC[Reconciliação Fresh / Stale]
     PAG --> SV[Projeções por Serviço]
@@ -43,9 +46,6 @@ flowchart TD
     RC --> RCA[RCA Estruturado]
     RCA --> API[REST API]
     RCA --> UI[UI Next.js]
-
-    PT -. próxima fase .-> ORCH[Orquestrador Paralelo de Especialistas]
-    ORCH -. próxima fase .-> EV
 ```
 
 ## Ciclo de investigação
@@ -417,7 +417,7 @@ Tipos de relação conhecidos passam por uma allow-list explícita de direção 
 
 ## Investigation Planner Bounded — v0.8
 
-O planner atual é determinístico e plan-only. Ele usa a identidade do incidente, feature flags e um neighborhood bounded do serviço para decidir quais ramos tipados de especialistas são relevantes.
+O planner é determinístico e bounded. Ele usa a identidade do incidente, feature flags e um neighborhood bounded do serviço para compilar ramos tipados de especialistas. A execução paralela está implementada como runtime read-only opt-in e fica desabilitada por padrão.
 
 ```mermaid
 flowchart TD
@@ -440,8 +440,10 @@ flowchart TD
     DB --> IP
     CH --> IP
 
-    IP -. ainda não implementado .-> ORCH[Execução Paralela de Especialistas]
-    ORCH -. futuros envelopes de evidência .-> EV[Avaliador Determinístico]
+    IP -->|AGENTIC_EXECUTION_ENABLED=true| ORCH[Execução Paralela de Especialistas]
+    ORCH --> SR[Resultados Tipados dos Especialistas]
+    SR --> ENV[Shared Evidence Envelope]
+    ENV -. fronteira de autoridade .-> EV[Avaliador Determinístico]
 ```
 
 Propriedades de segurança do planner:
@@ -450,6 +452,11 @@ Propriedades de segurança do planner:
 - toda tarefa é read-only;
 - quantidade de tarefas, contexto do grafo, paralelismo e budget de queries por especialista têm limites no servidor;
 - database/stateful depende da tarefa de traces para que a identidade da dependência seja tipada antes de consultar telemetria específica;
-- o planner não confirma hipóteses, não anexa evidências, não executa mutações e não contorna o plano de remediação separado.
+- o planner não confirma hipóteses, não anexa evidências, não executa mutações e não contorna o plano de remediação separado;
+- o endpoint de execução recompila o plano no servidor, então grafos de tarefas escritos pelo caller nunca são executados;
+- hipóteses dos especialistas são advisory-only e a resposta compartilhada não possui campo de causa raiz;
+- budgets locais por especialista e o query budget global já existente continuam ativos;
+- hashes das evidências são verificados antes de entrar no shared envelope;
+- a execução agentic fica desabilitada por padrão.
 
 Detalhes: [persistent-awareness-graph.pt-BR.md](persistent-awareness-graph.pt-BR.md) e [agentic-investigation.pt-BR.md](agentic-investigation.pt-BR.md).

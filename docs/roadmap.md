@@ -164,7 +164,12 @@ Agentic investigation foundation:
 - [x] database/stateful branch depends on typed trace identity
 - [x] planner context retrieval from bounded Awareness Graph neighborhoods
 - [x] deterministic hypothesis verification remains the root-cause authority
-- [ ] parallel specialist execution with shared evidence IDs
-- [ ] per-specialist execution contracts and result envelopes
+- [x] opt-in parallel specialist execution in dependency-aware waves
+- [x] per-specialist read-only execution contracts and result envelopes
+- [x] local specialist query budgets plus the existing global query budget
+- [x] shared evidence envelope with SHA-256 integrity verification
+- [x] server-side plan recompilation before execution; caller-authored plans are never executed
+- [x] branch-local hypotheses are advisory-only and execution has no root-cause field
+- [ ] deterministic shared-envelope aggregation / evaluation stage
 - [ ] rejected-hypothesis explanation graph
 - [ ] optional model-assisted planning compiled through the specialist allow-list

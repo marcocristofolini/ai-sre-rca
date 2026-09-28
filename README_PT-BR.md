@@ -21,6 +21,8 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Investigation Planner bounded** que emite somente tarefas read-only allow-listed: Kubernetes, métricas, logs, traces, database e mudanças.
 - **Dependências tipadas entre tarefas.** O ramo stateful/database só é planejado depois do ramo de traces que fornece identidade tipada da dependência.
 - **Contexto persistente do grafo para o planner**, com limites rígidos no servidor para contexto, quantidade de tarefas, paralelismo e queries por especialista.
+- **Execução paralela experimental de especialistas**, protegida por `AGENTIC_EXECUTION_ENABLED=false` por padrão. Ramos independentes rodam em paralelo; ramos dependentes só entram depois que os pré-requisitos concluem.
+- **Shared evidence envelope** com verificação da integridade das evidências. Hipóteses branch-local são advisory-only e a resposta de execução propositalmente não possui campo `root_cause`.
 
 APIs atuais da v0.8:
 
@@ -31,9 +33,10 @@ GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 POST /api/v1/planner/plan
+POST /api/v1/planner/execute
 ```
 
-O planner está propositalmente em modo **plan-only** nesta etapa. Ele escolhe ramos bounded de investigação, mas ainda não executa specialist agents em paralelo. O avaliador determinístico existente continua sendo a única autoridade que pode confirmar a causa raiz, e o LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
+O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas está implementada como runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. O avaliador determinístico existente continua sendo a única autoridade que pode confirmar a causa raiz, e o LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md) · [Investigação Agentic](docs/agentic-investigation.pt-BR.md).
 
@@ -110,12 +113,14 @@ A v0.5.1 reforça a correção do RCA stateful após a revisão da v0.5: rotas i
 ```mermaid
 flowchart TD
     A[Alertmanager / API] --> N[Normalizador de Incidente]
-    N --> P[Investigation Planner Bounded<br/>plan-only]
+    N --> P[Investigation Planner Bounded]
     N --> E[Investigation Engine]
 
     G[(Persistent Awareness Graph)] --> C[Contexto Bounded do Serviço]
     C --> P
     P --> T[Tarefas Allow-listed de Especialistas]
+    T -->|opt-in| X[Especialistas Paralelos Read-only]
+    X --> SE[Shared Evidence Envelope]
 
     E --> K[Kubernetes]
     E --> O[Prometheus / Loki / Tempo]
@@ -130,14 +135,12 @@ flowchart TD
     G --> B[Blast Radius]
 
     L --> D[Avaliador Determinístico]
+    SE -. fronteira de autoridade .-> D
     D --> M[Memória de Incidentes<br/>PostgreSQL + pgvector]
     D --> H[Hipóteses Verificadas]
     H --> RCA[RCA Baseado em Evidências]
     RCA --> API[REST API]
     RCA --> UI[UI Next.js]
-
-    T -. próxima fase .-> X[Execução Paralela de Especialistas]
-    X -. evidência compartilhada .-> D
 ```
 
 Mais diagramas estão disponíveis em [docs/architecture.pt-BR.md](docs/architecture.pt-BR.md).
@@ -163,7 +166,8 @@ Acesse:
 - API de topologia reconciliada: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - API de topologia por serviço: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - API de blast radius: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
-- Investigation Planner: `POST /api/v1/planner/plan`
+- Preview do Investigation Planner: `POST /api/v1/planner/plan`
+- Execução paralela experimental de especialistas: `POST /api/v1/planner/execute` (exige `AGENTIC_EXECUTION_ENABLED=true`)
 
 O stack do Docker Compose usa a imagem `pgvector/pgvector:pg17` e habilita automaticamente a extensão `vector`.
 

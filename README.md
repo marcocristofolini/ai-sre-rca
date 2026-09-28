@@ -21,6 +21,8 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
 - **Typed task dependencies.** Stateful/database investigation is planned only after the trace branch that provides typed dependency identity.
 - **Persistent graph context for planning** with hard server-side limits on context size, task count, parallelism and per-specialist query budgets.
+- **Experimental parallel specialist execution** behind `AGENTIC_EXECUTION_ENABLED=false` by default. Independent branches run concurrently; dependency branches run only after prerequisites complete.
+- **Shared evidence envelope** with evidence-integrity verification. Branch-local hypotheses are advisory-only and the execution response intentionally has no `root_cause` field.
 
 Current v0.8 APIs include:
 
@@ -31,9 +33,10 @@ GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 POST /api/v1/planner/plan
+POST /api/v1/planner/execute
 ```
 
-The planner is intentionally **plan-only** at this stage. It chooses bounded investigation branches but does not yet execute specialist agents in parallel. The existing deterministic evidence evaluator remains the only authority that can confirm root cause, and the LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
+The planner remains a preview/compilation surface. Parallel specialist execution is implemented as an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. The existing deterministic evidence evaluator remains the only authority that can confirm root cause, and the LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.md) · [Agentic Investigation](docs/agentic-investigation.md).
 
@@ -110,12 +113,14 @@ v0.5.1 tightens stateful RCA correctness after the v0.5 review: invalid stateful
 ```mermaid
 flowchart TD
     A[Alertmanager / API] --> N[Incident Normalizer]
-    N --> P[Bounded Investigation Planner<br/>plan-only]
+    N --> P[Bounded Investigation Planner]
     N --> E[Investigation Engine]
 
     G[(Persistent Awareness Graph)] --> C[Bounded Service Context]
     C --> P
     P --> T[Allow-listed Specialist Tasks]
+    T -->|opt-in| X[Parallel Read-only Specialists]
+    X --> SE[Shared Evidence Envelope]
 
     E --> K[Kubernetes]
     E --> O[Prometheus / Loki / Tempo]
@@ -130,14 +135,12 @@ flowchart TD
     G --> B[Blast Radius]
 
     L --> D[Deterministic Evaluator]
+    SE -. authority boundary .-> D
     D --> M[Incident Memory<br/>PostgreSQL + pgvector]
     D --> H[Verified Hypotheses]
     H --> RCA[Evidence-backed RCA]
     RCA --> API[REST API]
     RCA --> UI[Next.js UI]
-
-    T -. next phase .-> X[Parallel Specialist Execution]
-    X -. shared evidence .-> D
 ```
 
 More diagrams are available in [docs/architecture.md](docs/architecture.md).
@@ -163,7 +166,8 @@ Open:
 - Reconciled topology API: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - Service topology API: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
-- Investigation planner: `POST /api/v1/planner/plan`
+- Investigation planner preview: `POST /api/v1/planner/plan`
+- Experimental parallel specialist execution: `POST /api/v1/planner/execute` (requires `AGENTIC_EXECUTION_ENABLED=true`)
 
 The Docker Compose stack uses the `pgvector/pgvector:pg17` image and automatically enables the `vector` extension.
 

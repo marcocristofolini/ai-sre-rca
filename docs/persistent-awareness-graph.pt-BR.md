@@ -125,4 +125,4 @@ Ainda planejado:
 - mudanças/deploys como eventos temporais first-class;
 - métricas e política de retention do grafo;
 - UI de exploração do grafo;
-- execução paralela de especialistas usando neighborhoods bounded.
+- agregação/avaliação determinística sobre o shared evidence envelope dos especialistas.
