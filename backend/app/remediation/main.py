@@ -20,8 +20,22 @@ executor = KubernetesScaleExecutor(settings)
 remediation_service = GuardedRemediationService(repo, executor, settings)
 
 
+def validate_remediator_runtime(settings) -> None:
+    if not settings.remediation_enabled:
+        return
+    if not settings.auth_enabled:
+        raise RuntimeError(
+            "remediation requires AUTH_ENABLED=true"
+        )
+    if not settings.database_url:
+        raise RuntimeError(
+            "remediation requires shared persistent DATABASE_URL"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_remediator_runtime(settings)
     await repo.initialize()
     yield
     await repo.close()
