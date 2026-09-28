@@ -372,11 +372,18 @@ class GuardedRemediationService:
             )
         previous_replicas = int(plan.rollback["previous_replicas"])
         try:
+            execution_resource_version = plan.execution.get("resource_version")
+            if not execution_resource_version:
+                raise RemediationExecutionError(
+                    "execution resourceVersion is unavailable; rollback is blocked"
+                )
             result = await self.executor.rollback_scale(
                 plan.cluster,
                 plan.namespace,
                 plan.deployment,
                 previous_replicas,
+                expected_replicas=plan.desired_replicas,
+                expected_resource_version=str(execution_resource_version),
             )
         except RemediationExecutionError as exc:
             plan.status = RemediationPlanStatus.ROLLBACK_FAILED
