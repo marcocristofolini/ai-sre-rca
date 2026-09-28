@@ -53,13 +53,13 @@ Depois o serviço lê as réplicas atuais. A mudança não pode ser no-op e o de
 
 Planos aprovados pela política e pelo dry-run entram em **awaiting_approval**. A aprovação exige exatamente o papel OIDC remediator configurado. Por padrão REMEDIATION_REQUIRE_DISTINCT_APPROVER=true, então quem solicitou o plano não pode aprová-lo.
 
-Aprovar ainda não executa nada. A execução exige outra chamada explícita da API por um remediator.
+Aprovar ainda não executa nada. A execução exige outra chamada explícita da API por um remediator. Aprovação, claim de execução e claim de rollback usam transições atômicas compare-and-save, impedindo que requisições concorrentes antigas sobrescrevam um estado mais novo do plano.
 
 ## Proteção contra drift
 
 O preflight guarda a quantidade atual de réplicas e o resourceVersion do Kubernetes. Na execução, o Scale subresource é lido novamente. Se qualquer um mudou depois do dry-run e da aprovação, a execução é bloqueada e um novo plano precisa ser criado.
 
-O PATCH real também envia o resourceVersion armazenado para o Kubernetes poder rejeitar mudanças concorrentes.
+Imediatamente antes da mutação real, o remediator repete o dry-run server-side contra o alvo ainda inalterado. O PATCH real envia o resourceVersion armazenado para o Kubernetes rejeitar uma mudança concorrente que aconteça entre esse dry-run e a execução.
 
 ## Rollback
 
@@ -139,10 +139,12 @@ stateDiagram-v2
     awaiting_approval --> expired
     approved --> rejected
     approved --> expired
-    approved --> executed
-    approved --> execution_failed
-    executed --> rolled_back
-    executed --> rollback_failed
+    approved --> executing
+    executing --> executed
+    executing --> execution_failed
+    executed --> rolling_back
+    rolling_back --> rolled_back
+    rolling_back --> rollback_failed
 ~~~
 
 A v0.7 não adiciona execução autônoma. Uma recomendação do RCA, sozinha, nunca pode alterar infraestrutura.
