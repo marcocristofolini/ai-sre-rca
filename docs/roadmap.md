@@ -1,4 +1,4 @@
-# Roadmap after v0.7
+# Roadmap — v0.8 in progress
 
 ## Completed in v0.2
 
@@ -133,3 +133,33 @@ Separate service and identity:
 - [ ] rollback proposal generation from failed verification
 - [ ] additional typed actions only when they can preserve the same narrow-credential model
 - [ ] external immutable remediation audit sink
+
+## v0.8 — persistent awareness and agentic foundation
+
+Persistent Awareness Graph:
+
+- [x] stable canonical entity identity across incidents
+- [x] stable canonical relationship identity
+- [x] tenant- and cluster-scoped graph persistence
+- [x] current entity/relationship state with first_seen and last_seen
+- [x] append-only per-incident temporal observations
+- [x] idempotent graph ingestion on incident re-save
+- [x] evidence references preserved on persistent relationships
+- [x] bounded graph and history query API
+- [x] PostgreSQL and in-memory repository parity
+- [x] regression tests for identity, temporal history and isolation
+- [ ] topology reconciliation and stale/tombstone semantics
+- [ ] service-centric neighborhood projections
+- [ ] graph-backed blast-radius traversal
+- [ ] first-class deployment/change event nodes
+- [ ] persistent graph explorer UI
+
+Agentic investigation foundation:
+
+- [ ] Investigation Planner with bounded planning budget
+- [ ] typed specialist-agent contracts
+- [ ] Kubernetes, metrics, logs, traces, database and change specialists
+- [ ] parallel branch execution with shared evidence IDs
+- [ ] deterministic hypothesis verification remains the root-cause authority
+- [ ] rejected-hypothesis explanation graph
+- [ ] planner context retrieval from bounded Awareness Graph neighborhoods

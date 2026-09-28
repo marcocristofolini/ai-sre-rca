@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.7.0
+# AI SRE RCA — v0.8.0 (em desenvolvimento)
 
 [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -7,6 +7,21 @@
 Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernetes, traces distribuídos e dependências stateful, desenhado para que telemetria e verificações tipadas — e não um LLM — determinem a causa raiz.
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
+
+## v0.8 em desenvolvimento — fundação do Persistent Awareness Graph
+
+A v0.8 inicia a transição de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A primeira fundação é um **Awareness Graph temporal e persistente**:
+
+- identidades canônicas estáveis para entidades e relações entre incidentes independentes;
+- persistência isolada por tenant e cluster;
+- estado atual do grafo mais observações temporais append-only;
+- referências às evidências preservadas nas relações persistentes;
+- ingestão idempotente ao persistir novamente o mesmo incidente;
+- APIs bounded de grafo e histórico para futuras camadas de blast radius, memória e planejamento agentic.
+
+O LLM continua sem poder criar fatos persistentes no grafo ou confirmar causa raiz. O futuro planejamento agentic consumirá contexto limitado do grafo, enquanto a verificação determinística por evidência continua sendo a autoridade final.
+
+Design: [docs/persistent-awareness-graph.pt-BR.md](docs/persistent-awareness-graph.pt-BR.md).
 
 ## O que mudou na v0.7
 

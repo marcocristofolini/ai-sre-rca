@@ -4,10 +4,20 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ## [Unreleased]
 
+### Added
+- v0.8 Persistent Awareness Graph foundation with stable canonical entity and relationship identities.
+- Tenant- and cluster-scoped current graph state plus append-only temporal observations.
+- Idempotent graph ingestion whenever an investigation is persisted.
+- Persistent relationship evidence references and first/last-seen history.
+- Viewer API for bounded graph snapshots and target history.
+- PostgreSQL and in-memory persistence parity with regression tests for identity, history and isolation.
+- Bilingual Persistent Awareness Graph architecture documentation.
+
 ### Planned
+- Topology reconciliation, stale/tombstone semantics and service-centric graph projections.
+- Graph-backed blast radius and the bounded Investigation Planner / specialist-agent runtime.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
-- Remaining Kubernetes depth: ImagePullBackOff, PDB and runtime-volume analysis.
 
 ## [0.7.0] - 2026-09-28
 
