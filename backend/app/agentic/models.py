@@ -114,6 +114,7 @@ EvaluationDecision = Literal[
     "ruled_out",
     "inconclusive",
     "blocked_by_precedence",
+    "blocked_by_incomplete_context",
     "invalid_evidence",
 ]
 
