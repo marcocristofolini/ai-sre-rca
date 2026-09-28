@@ -23,7 +23,7 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Contexto persistente do grafo para o planner**, com limites rígidos no servidor para contexto, quantidade de tarefas, paralelismo e queries por especialista.
 - **Execução paralela experimental de especialistas**, protegida por `AGENTIC_EXECUTION_ENABLED=false` por padrão. Ramos independentes rodam em paralelo; ramos dependentes só entram depois que os pré-requisitos concluem.
 - **Shared evidence envelope** com verificação da integridade das evidências. Hipóteses branch-local são advisory-only e a resposta de execução propositalmente não possui campo `root_cause`.
-- **Avaliador determinístico do shared envelope** que recalcula scores apenas com evidências verificadas, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph das hipóteses descartadas.
+- **Avaliador determinístico do shared envelope** que recalcula scores apenas com evidências verificadas, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes, falha de forma fechada quando um specialist de maior precedência não conclui e gera um explanation graph das hipóteses descartadas.
 - **Três superfícies agentic distintas:** `plan` compila, `execute` apenas coleta evidências read-only dos especialistas e `investigate` executa ambos mais a avaliação determinística. Somente `investigate` pode retornar um verdict de causa raiz.
 
 APIs atuais da v0.8:
