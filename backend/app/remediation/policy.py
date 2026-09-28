@@ -49,6 +49,11 @@ class RemediationPolicy:
                 "guarded remediation plane is enabled",
             ),
             self._check(
+                "authentication_enabled",
+                self.settings.auth_enabled,
+                "interactive OIDC authentication is enabled",
+            ),
+            self._check(
                 "incident_resolved",
                 incident.status == "resolved",
                 f"incident status is {incident.status}",
