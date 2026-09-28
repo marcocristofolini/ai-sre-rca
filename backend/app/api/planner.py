@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from app.agentic.evaluator import evaluate_shared_evidence
 from app.agentic.executor import execute_investigation_plan
-from app.agentic.models import AgenticExecutionResult, InvestigationPlan
+from app.agentic.models import (
+    AgenticExecutionResult,
+    AgenticInvestigationResult,
+    InvestigationPlan,
+)
 from app.agentic.planner import build_investigation_plan
 from app.auth import Principal, authorize_cluster, require_role
 from app.operations import append_audit
@@ -70,7 +75,10 @@ async def execute_agentic_investigation(
     principal: Principal = Depends(require_role("investigator")),
 ):
     settings = request.app.state.settings
-    if not settings.agentic_execution_enabled:
+    if (
+        not settings.agentic_planner_enabled
+        or not settings.agentic_execution_enabled
+    ):
         raise HTTPException(
             status_code=404,
             detail="agentic execution is disabled",
@@ -125,3 +133,79 @@ async def execute_agentic_investigation(
         },
     )
     return execution
+
+
+@router.post("/investigate", response_model=AgenticInvestigationResult)
+async def investigate_agentically(
+    incident: IncidentInput,
+    request: Request,
+    principal: Principal = Depends(require_role("investigator")),
+):
+    settings = request.app.state.settings
+    if (
+        not settings.agentic_planner_enabled
+        or not settings.agentic_execution_enabled
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="agentic investigation is disabled",
+        )
+
+    tenant_id = (
+        incident.tenant_id
+        if principal.tenant_id == "*"
+        else principal.tenant_id
+    )
+    if tenant_id == "*":
+        raise HTTPException(
+            status_code=422,
+            detail="a concrete tenant_id is required for a global principal",
+        )
+    scoped_incident = incident.model_copy(
+        update={"tenant_id": tenant_id}
+    )
+    authorize_cluster(principal, scoped_incident.cluster)
+
+    plan = await build_investigation_plan(
+        request.app.state.repo,
+        incident=scoped_incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=request.app.state.tools,
+        settings=settings,
+    )
+    evaluation = evaluate_shared_evidence(execution)
+
+    await append_audit(
+        request.app,
+        tenant_id=scoped_incident.tenant_id,
+        actor=principal.subject,
+        action="planner.investigation_evaluated",
+        detail={
+            "plan_id": plan.id,
+            "cluster": plan.cluster,
+            "execution_status": execution.status,
+            "evaluation_status": evaluation.status,
+            "root_hypothesis_id": (
+                evaluation.root_cause.hypothesis_id
+                if evaluation.root_cause
+                else None
+            ),
+            "evaluated_hypotheses": len(
+                evaluation.evaluated_hypotheses
+            ),
+            "explanation_nodes": len(
+                evaluation.explanation_graph.nodes
+            ),
+            "evidence_integrity_ok": (
+                execution.shared_evidence.evidence_integrity_ok
+            ),
+        },
+    )
+
+    return AgenticInvestigationResult(
+        execution=execution,
+        evaluation=evaluation,
+    )
