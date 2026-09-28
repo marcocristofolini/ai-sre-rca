@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -47,12 +48,17 @@ class KubernetesScaleExecutor:
         return config
 
     def _api_url(self, cluster: str) -> str:
-        return str(
+        value = str(
             self._cluster(cluster).get(
                 "kubernetes_api_url",
                 self.settings.kubernetes_api_url,
             )
         )
+        if urlparse(value).scheme != "https":
+            raise RemediationClusterError(
+                "remediation Kubernetes API must use HTTPS"
+            )
+        return value
 
     def _token_file(self, cluster: str) -> Path:
         return Path(
@@ -80,15 +86,24 @@ class KubernetesScaleExecutor:
             raise RemediationExecutionError(
                 f"remediation service-account token is unavailable: {token_file}"
             )
+        token = token_file.read_text().strip()
+        if not token:
+            raise RemediationExecutionError(
+                f"remediation service-account token is empty: {token_file}"
+            )
         return {
-            "Authorization": f"Bearer {token_file.read_text().strip()}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/merge-patch+json",
             "Accept": "application/json",
         }
 
-    def _verify(self, cluster: str) -> str | bool:
+    def _verify(self, cluster: str) -> str:
         ca_file = self._ca_file(cluster)
-        return str(ca_file) if ca_file.exists() else True
+        if not ca_file.exists():
+            raise RemediationExecutionError(
+                f"remediation Kubernetes CA is unavailable: {ca_file}"
+            )
+        return str(ca_file)
 
     @staticmethod
     def _path(namespace: str, deployment: str) -> str:
