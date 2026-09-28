@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     remediation_enabled: bool = False
     remediation_require_distinct_approver: bool = True
     remediation_plan_ttl_minutes: int = 30
+    remediation_max_incident_age_minutes: int = 120
     remediation_allowed_actions: str = "scale_deployment"
     remediation_allowed_namespaces: str = ""
     # Exact deterministic hypothesis IDs allowed to justify Deployment scaling.
