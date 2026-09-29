@@ -158,6 +158,13 @@ class MemoryRepository:
                     current.last_seen = entity.last_seen
                     current.last_incident_id = entity.last_incident_id
                     current.metadata = dict(entity.metadata)
+                    if (
+                        current.tombstoned_at is not None
+                        and entity.last_seen >= current.tombstoned_at
+                    ):
+                        current.tombstoned_at = None
+                        current.tombstone_snapshot_id = None
+                        current.tombstone_source = None
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -175,6 +182,13 @@ class MemoryRepository:
                     current.last_incident_id = relationship.last_incident_id
                     current.metadata = dict(relationship.metadata)
                     current.evidence_ids = list(relationship.evidence_ids)
+                    if (
+                        current.tombstoned_at is not None
+                        and relationship.last_seen >= current.tombstoned_at
+                    ):
+                        current.tombstoned_at = None
+                        current.tombstone_snapshot_id = None
+                        current.tombstone_source = None
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -285,6 +299,7 @@ class MemoryRepository:
             and (name is None or item.name == name)
             and (namespace is None or item.namespace == namespace)
             and (kind is None or item.kind.lower() == kind.lower())
+            and item.tombstoned_at is None
         ]
         items.sort(key=lambda item: item.last_seen, reverse=True)
         return items[:max(1, min(limit, 500))]
