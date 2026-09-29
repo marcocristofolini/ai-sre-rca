@@ -72,14 +72,15 @@ flowchart LR
     CRON[CronJob<br/>Sem sobreposição] --> LIST[LIST Kubernetes paginado]
     LIST --> OK{Todas as listas configuradas completas?}
     OK -->|Não| FAIL[Sair com erro<br/>Nenhum snapshot aplicado]
-    OK -->|Sim| REL[Derivar relações explícitas]
+    OK -->|Sim| UID[Validar UID do controller ownerReference]
+    UID --> REL[Derivar relações explícitas]
     REL --> SNAP[Snapshot autoritativo]
     SNAP --> LOCK[Reconciliação PostgreSQL serializada]
     LOCK --> GRAPH[(Persistent Awareness Graph)]
     LOCK --> AUDIT[(Eventos de auditoria)]
 ```
 
-O collector nunca infere ownership por convenção de nomes. Ele aceita `ownerReferences` controladores, `Pod.spec.nodeName` e selectors exatos de Service quando a cadeia de ownership do Pod resolve para um workload estável. Execuções limitadas por namespace separam o inventário de Nodes dos recursos namespaced para que um escopo parcial não afirme deleções Pod-to-Node como autoritativas.
+O collector nunca infere ownership por convenção de nomes. Uma aresta `owned_by` só é emitida quando existe um único `ownerReference` controlador e seu UID corresponde ao objeto owner observado no snapshot. Scheduling usa `Pod.spec.nodeName`. O roteamento de Service usa selectors exatos contra os labels do Pod template do workload, preservando a topologia mesmo com o workload escalado para zero. Execuções limitadas por namespace separam o inventário de Nodes dos recursos namespaced para que um escopo parcial não afirme deleções Pod-to-Node como autoritativas.
 
 ## Compilador de planejamento assistido por modelo — v0.8
 
