@@ -14,7 +14,11 @@ O planner recebe:
 
 - o incidente normalizado;
 - configurações e feature flags do servidor;
-- uma projeção bounded de um salto do Persistent Awareness Graph quando existe identidade de serviço.
+- um neighborhood bounded do serviço no Persistent Awareness Graph;
+- estado reconciliado current, stale, historical e tombstoned;
+- histórico append-only bounded dos alvos selecionados do grafo;
+- ChangeEvents recentes do serviço na janela do incidente;
+- contagens de Graph Health e freshness das fontes autoritativas de inventário.
 
 Ele pode emitir somente estes tipos de tarefa:
 
@@ -27,13 +31,40 @@ Ele pode emitir somente estes tipos de tarefa:
 
 Não existe no schema do plano nome genérico de ferramenta, comando, shell, URL arbitrária ou ação de mutação.
 
+## Operational Context Snapshot congelado
+
+O planner congela o contexto persistente dentro do `InvestigationPlan` antes da execução. O executor entrega o mesmo snapshot para todos os especialistas e o copia para o Shared Evidence Envelope, impedindo que uma investigação troque silenciosamente de visão do grafo no meio da execução.
+
+~~~mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> TOPO[Topologia bounded<br/>fresh / stale / historical / tombstoned]
+    PAG --> HIST[Histórico bounded por alvo]
+    PAG --> CH[ChangeEvents recentes]
+    GH[Graph Health + freshness de inventário] --> SNAP[Operational Context Snapshot congelado]
+    TOPO --> SNAP
+    HIST --> SNAP
+    CH --> SNAP
+    SNAP --> PLAN[InvestigationPlan]
+    PLAN --> K[Kubernetes]
+    PLAN --> M[Métricas]
+    PLAN --> L[Logs]
+    PLAN --> T[Traces]
+    PLAN --> D[Database]
+    PLAN --> C[Mudanças]
+    SNAP --> ENV[Shared Evidence Envelope]
+~~~
+
+O snapshot é contexto, não autoridade de causa raiz. Entidades tombstoned permanecem visíveis para explicação, porém ficam fora de `required_entity_ids`. ChangeEvents persistidos entram como evidência `context_only` quando consumidos pelo specialist de mudanças. Evidência context-only é removida explicitamente do scoring de hipóteses, portanto deploy histórico, tombstone ou fato stale do grafo não pode confirmar causalidade sozinho.
+
+O snapshot é bounded por `AGENTIC_MAX_CONTEXT_NODES`, `AGENTIC_CONTEXT_DEPTH`, `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS`, `AGENTIC_CONTEXT_HISTORY_PER_TARGET` e `AGENTIC_CONTEXT_CHANGE_LIMIT`.
+
 ## Compilação opcional assistida por modelo
 
 O modelo nunca cria um `SpecialistTask`. Primeiro, o planner determinístico constrói o conjunto completo de tarefas elegíveis a partir da identidade do incidente, feature flags e contexto do grafo. O modelo recebe apenas contexto sanitizado mais as descrições desses especialistas elegíveis e pode retornar nomes de especialistas com justificativas curtas.
 
 ~~~mermaid
 flowchart LR
-    I[Incidente + Contexto Bounded do Grafo] --> EL[Conjunto Determinístico Elegível]
+    I[Incidente + Operational Context Congelado] --> EL[Conjunto Determinístico Elegível]
     EL --> ADV{Model Planner Habilitado?}
     ADV -->|Não| DP[Plano Determinístico]
     ADV -->|Sim| LLM[LLM Advisory<br/>somente nomes de especialistas]
@@ -57,7 +88,7 @@ Nomes desconhecidos ou inelegíveis são rejeitados. Texto produzido pelo modelo
 ~~~mermaid
 flowchart TD
     I[IncidentInput] --> P[Investigation Planner Bounded]
-    G[Persistent Awareness Graph] --> C[Contexto Bounded do Serviço]
+    G[Persistent Awareness Graph] --> C[Operational Context Congelado]
     C --> P
     S[Budgets no Servidor] --> P
 
