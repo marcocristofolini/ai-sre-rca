@@ -74,6 +74,27 @@ spec:
 {{ toYaml . | indent 4 }}
 {{- end }}
 {{- end }}
+{{- if .Values.awarenessRetention.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-awareness-retention
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}-awareness-retention
+  policyTypes: ["Egress"]
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- with .Values.networkPolicy.awarenessRetentionEgress }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- end }}
 {{- if .Values.remediator.enabled }}
 ---
 apiVersion: networking.k8s.io/v1

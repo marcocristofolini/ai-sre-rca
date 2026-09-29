@@ -63,6 +63,8 @@ class Settings(BaseSettings):
         ge=1,
         le=3650,
     )
+    awareness_retention_tenant_id: str = "default"
+    awareness_retention_clusters: str = ""
     awareness_authoritative_inventory_sources: str = "kubernetes"
     awareness_inventory_tenant_id: str = "default"
     awareness_inventory_clusters: str = ""
@@ -224,6 +226,14 @@ class Settings(BaseSettings):
             for item in self.awareness_authoritative_inventory_sources.split(",")
             if item.strip()
         )
+
+    @property
+    def awareness_retention_cluster_list(self) -> list[str]:
+        return list(dict.fromkeys(
+            item.strip()
+            for item in self.awareness_retention_clusters.split(",")
+            if item.strip()
+        ))
 
     @property
     def awareness_inventory_cluster_list(self) -> list[str]:

@@ -105,6 +105,7 @@ Retention is explicit, admin-only and dry-run by default. It never removes autho
 
 ```mermaid
 flowchart LR
+    CRON[Optional retention CronJob<br/>no ServiceAccount token] --> OLD
     ADMIN[Admin request] --> PREVIEW{dry_run?}
     PREVIEW -->|Yes| COUNT[Count eligible rows only]
     PREVIEW -->|No| OLD[Old redundant observations]
@@ -117,7 +118,7 @@ flowchart LR
     ENT --> AUDIT[Transactional purge audit]
 ```
 
-`AWARENESS_OBSERVATION_RETENTION_DAYS` defaults to 90 and `AWARENESS_TOMBSTONE_RETENTION_DAYS` defaults to 30. The retention endpoint is scoped by the same tenant/cluster authorization boundary as the graph APIs.
+`AWARENESS_OBSERVATION_RETENTION_DAYS` defaults to 90 and `AWARENESS_TOMBSTONE_RETENTION_DAYS` defaults to 30. The retention endpoint is scoped by the same tenant/cluster authorization boundary as the graph APIs. The optional scheduler calls the same repository contract directly with explicit tenant/cluster scope, a dedicated database Secret and `automountServiceAccountToken: false`.
 
 ## Model-assisted planning compiler — v0.8
 

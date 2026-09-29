@@ -105,6 +105,7 @@ A retention é explícita, admin-only e roda em dry-run por padrão. Nesta fase 
 
 ```mermaid
 flowchart LR
+    CRON[CronJob opcional de retention<br/>sem token de ServiceAccount] --> OLD
     ADMIN[Requisição admin] --> PREVIEW{dry_run?}
     PREVIEW -->|Sim| COUNT[Somente contar elegíveis]
     PREVIEW -->|Não| OLD[Observações antigas redundantes]
@@ -117,7 +118,7 @@ flowchart LR
     ENT --> AUDIT[Auditoria transacional do purge]
 ```
 
-`AWARENESS_OBSERVATION_RETENTION_DAYS` tem padrão 90 e `AWARENESS_TOMBSTONE_RETENTION_DAYS` tem padrão 30. O endpoint usa a mesma fronteira de autorização por tenant/cluster das APIs do grafo.
+`AWARENESS_OBSERVATION_RETENTION_DAYS` tem padrão 90 e `AWARENESS_TOMBSTONE_RETENTION_DAYS` tem padrão 30. O endpoint usa a mesma fronteira de autorização por tenant/cluster das APIs do grafo. O scheduler opcional chama o mesmo contrato do repositório diretamente com escopo explícito de tenant/cluster, Secret dedicado de banco e `automountServiceAccountToken: false`.
 
 ## Compilador de planejamento assistido por modelo — v0.8
 

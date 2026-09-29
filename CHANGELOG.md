@@ -24,6 +24,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Viewer-scoped Awareness Graph Health API with factual current/stale/historical/tombstoned counts, awareness observation volume and per-authoritative-source inventory freshness.
 - Independent `AWARENESS_INVENTORY_MAX_AGE_MINUTES` threshold for authoritative snapshot freshness, separate from graph-fact stale semantics.
 - Admin-only Awareness Graph retention endpoint with dry-run by default, separate observation/tombstone windows and PostgreSQL/in-memory parity.
+- Optional scheduled Awareness retention CronJob with explicit tenant/cluster scope, overlap protection, dedicated database Secret and no mounted Kubernetes ServiceAccount token.
 - Explanation-safe retention preserves every authoritative inventory snapshot receipt and at least the latest observation for each entity/relationship target.
 - Deterministic Kubernetes inventory relationships from controller ownerReferences, Pod scheduling identity and exact Service selectors.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
@@ -96,7 +97,6 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
-- Scheduled Awareness Graph retention execution independent from API startup.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 

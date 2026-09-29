@@ -79,6 +79,17 @@ backend:
     AGENTIC_KUBERNETES_MAX_QUERIES: "30"
     CLUSTER_CONFIG_JSON: "{}"
 
+awarenessRetention:
+  enabled: false
+  schedule: "17 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 1
+  existingSecret: ""
+  tenantId: "default"
+  clusters: []
+
 inventoryCollector:
   enabled: false
   schedule: "*/5 * * * *"
@@ -165,6 +176,9 @@ resources:
   inventoryCollector:
     requests: { cpu: 50m, memory: 96Mi }
     limits: { cpu: 500m, memory: 256Mi }
+  awarenessRetention:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 192Mi }
 
 
 networkPolicy:
@@ -182,6 +196,9 @@ networkPolicy:
   # Inventory collector is read-only but still needs Kubernetes API + PostgreSQL egress.
   # Replace the empty object with explicit peers in locked-down installations.
   inventoryCollectorEgress:
+    - {}
+  # Retention only needs PostgreSQL/DNS. Replace this with explicit DB peers.
+  awarenessRetentionEgress:
     - {}
   # Empty object means unrestricted backend egress once the policy is enabled.
   # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
