@@ -223,3 +223,137 @@ export async function fetchCapabilities(cluster: string): Promise<CapabilityRepo
   if (!res.ok) throw new Error(`API returned ${res.status}`);
   return res.json();
 }
+
+export type AwarenessFreshness = 'fresh' | 'stale' | 'historical';
+
+export type AwarenessEntity = {
+  id: string;
+  tenant_id: string;
+  cluster: string;
+  kind: string;
+  name: string;
+  namespace?: string | null;
+  metadata: Record<string, unknown>;
+  first_seen: string;
+  last_seen: string;
+  last_incident_id: string;
+  observation_count: number;
+  freshness: AwarenessFreshness;
+  age_seconds: number;
+  stale_since?: string | null;
+  depth?: number | null;
+};
+
+export type AwarenessRelationship = {
+  id: string;
+  tenant_id: string;
+  cluster: string;
+  source_id: string;
+  target_id: string;
+  relationship: string;
+  metadata: Record<string, unknown>;
+  evidence_ids: string[];
+  first_seen: string;
+  last_seen: string;
+  last_incident_id: string;
+  observation_count: number;
+  freshness: AwarenessFreshness;
+  age_seconds: number;
+  stale_since?: string | null;
+};
+
+export type AwarenessTopology = {
+  tenant_id: string;
+  cluster: string;
+  entities: AwarenessEntity[];
+  relationships: AwarenessRelationship[];
+  stale_after_minutes?: number;
+  generated_at: string;
+  service_name?: string;
+  namespace?: string | null;
+  root?: AwarenessEntity;
+  requested_depth?: number;
+  effective_depth?: number;
+  max_nodes?: number;
+  max_edges?: number;
+  truncated?: boolean;
+};
+
+export type AwarenessChangeEvent = {
+  entity_id: string;
+  tenant_id: string;
+  cluster: string;
+  namespace?: string | null;
+  application: string;
+  revision?: string | null;
+  repository?: string | null;
+  service_name?: string | null;
+  workload_kind?: string | null;
+  workload_name?: string | null;
+  change_type: string;
+  occurred_at: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  observation_count: number;
+  last_incident_id: string;
+  evidence_ids: string[];
+  metadata: Record<string, unknown>;
+};
+
+export type AwarenessQuery = {
+  cluster: string;
+  namespace?: string;
+  service?: string;
+  tenantId?: string;
+  depth?: number;
+  limit?: number;
+};
+
+function awarenessQueryParams(query: AwarenessQuery): URLSearchParams {
+  const params = new URLSearchParams({ cluster: query.cluster });
+  if (query.namespace) params.set('namespace', query.namespace);
+  if (query.tenantId) params.set('tenant_id', query.tenantId);
+  return params;
+}
+
+export async function fetchAwarenessTopology(
+  query: AwarenessQuery,
+): Promise<AwarenessTopology> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const params = awarenessQueryParams(query);
+  let path = '/api/v1/awareness/topology';
+
+  if (query.service) {
+    path = `/api/v1/awareness/services/${encodeURIComponent(query.service)}`;
+    params.set('depth', String(query.depth ?? 2));
+  } else {
+    params.set('limit', String(query.limit ?? 500));
+  }
+
+  const res = await fetch(`${base}${path}?${params.toString()}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(`Awareness API returned ${res.status}`);
+  return res.json();
+}
+
+export async function fetchAwarenessChanges(
+  query: AwarenessQuery,
+): Promise<AwarenessChangeEvent[]> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const params = awarenessQueryParams(query);
+  if (query.service) params.set('service', query.service);
+  params.set('limit', String(Math.min(query.limit ?? 100, 200)));
+
+  const res = await fetch(
+    `${base}/api/v1/awareness/changes?${params.toString()}`,
+    {
+      cache: 'no-store',
+      headers: await forwardedAuthHeaders(),
+    },
+  );
+  if (!res.ok) throw new Error(`Awareness changes API returned ${res.status}`);
+  return res.json();
+}
+
