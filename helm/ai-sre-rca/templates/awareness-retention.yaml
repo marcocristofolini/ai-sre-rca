@@ -1,0 +1,49 @@
+{{- if .Values.awarenessRetention.enabled }}
+{{- if eq (len .Values.awarenessRetention.clusters) 0 }}
+{{- fail "awarenessRetention.clusters must contain at least one logical cluster when awarenessRetention.enabled=true" }}
+{{- end }}
+{{- if not .Values.awarenessRetention.existingSecret }}
+{{- fail "awarenessRetention.existingSecret is required and should contain DATABASE_URL" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-awareness-retention
+spec:
+  schedule: {{ .Values.awarenessRetention.schedule | quote }}
+  concurrencyPolicy: {{ .Values.awarenessRetention.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.awarenessRetention.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.awarenessRetention.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.awarenessRetention.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-awareness-retention
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          containers:
+            - name: awareness-retention
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - -m
+                - app.awareness.retention_worker
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.awarenessRetention.existingSecret | quote }}
+              env:
+                - name: AWARENESS_RETENTION_TENANT_ID
+                  value: {{ .Values.awarenessRetention.tenantId | quote }}
+                - name: AWARENESS_RETENTION_CLUSTERS
+                  value: {{ join "," .Values.awarenessRetention.clusters | quote }}
+                - name: AWARENESS_OBSERVATION_RETENTION_DAYS
+                  value: {{ .Values.backend.env.AWARENESS_OBSERVATION_RETENTION_DAYS | quote }}
+                - name: AWARENESS_TOMBSTONE_RETENTION_DAYS
+                  value: {{ .Values.backend.env.AWARENESS_TOMBSTONE_RETENTION_DAYS | quote }}
+              resources:
+{{ toYaml .Values.resources.awarenessRetention | indent 16 }}
+{{- end }}
