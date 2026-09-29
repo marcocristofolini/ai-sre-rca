@@ -42,6 +42,7 @@ class AwarenessTopologyRepository(Protocol):
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]: ...
 
 
@@ -337,6 +338,7 @@ async def _bounded_neighborhood(
             tenant_id,
             cluster,
             limit=remaining_edges + 1,
+            include_tombstoned=include_tombstoned,
         )
         if len(adjacent) > remaining_edges:
             truncated = True
