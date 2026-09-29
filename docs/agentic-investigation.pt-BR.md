@@ -58,6 +58,26 @@ O snapshot é contexto, não autoridade de causa raiz. Entidades tombstoned perm
 
 O snapshot é bounded por `AGENTIC_MAX_CONTEXT_NODES`, `AGENTIC_CONTEXT_DEPTH`, `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS`, `AGENTIC_CONTEXT_HISTORY_PER_TARGET` e `AGENTIC_CONTEXT_CHANGE_LIMIT`.
 
+## Scoping determinístico dos especialistas
+
+Um especialista só pode herdar identidade de consulta ausente do contexto congelado do grafo sob regras determinísticas. A identidade explícita do incidente sempre tem precedência. Um Pod ou uma aplicação Argo CD derivados do grafo só são aceitos quando existe exatamente uma entidade correspondente `fresh` e a projeção de topologia não foi truncada.
+
+~~~mermaid
+flowchart TD
+    INC[Identidade explícita do incidente] --> HAS{Alvo já conhecido?}
+    HAS -->|Sim| SCOPE[SpecialistScope tipado]
+    HAS -->|Não| GRAPH[Candidatos fresh do grafo]
+    GRAPH --> COMPLETE{Topologia completa dentro do budget?}
+    COMPLETE -->|Não| BLOCK[Marcar ambiguidade / não inferir]
+    COMPLETE -->|Sim| UNIQUE{Exatamente um candidato?}
+    UNIQUE -->|Não| BLOCK
+    UNIQUE -->|Sim| SCOPE
+    SCOPE --> LIVE[Verificação na fonte live<br/>Kubernetes / Loki / Argo CD]
+    LIVE --> EVIDENCE[Evidência atual tipada]
+~~~
+
+O valor derivado do grafo apenas restringe a consulta, não vira evidência. Kubernetes ainda lê o Pod resolvido na fonte live, Logs ainda consulta o Loki para aquele Pod exato e Changes ainda verifica a aplicação resolvida no Argo CD. Se existirem múltiplos Pods/aplicações fresh ou se o neighborhood tiver sido truncado, o resolver registra ambiguidade e não faz escolha arbitrária.
+
 ## Compilação opcional assistida por modelo
 
 O modelo nunca cria um `SpecialistTask`. Primeiro, o planner determinístico constrói o conjunto completo de tarefas elegíveis a partir da identidade do incidente, feature flags e contexto do grafo. O modelo recebe apenas contexto sanitizado mais as descrições desses especialistas elegíveis e pode retornar nomes de especialistas com justificativas curtas.
@@ -187,7 +207,7 @@ Defaults atuais no servidor:
 | `AGENTIC_MAX_TASKS` | 6 |
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
-| `AGENTIC_CONTEXT_DEPTH` | 2 |
+| `AGENTIC_CONTEXT_DEPTH` | 3 |
 | `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS` | 12 |
 | `AGENTIC_CONTEXT_HISTORY_PER_TARGET` | 2 |
 | `AGENTIC_CONTEXT_CHANGE_LIMIT` | 20 |
