@@ -109,7 +109,7 @@ async def build_investigation_plan(
             rationale=(
                 "The incident identifies Kubernetes-scoped runtime resources."
             ),
-            max_queries=min(12, settings.agentic_specialist_max_queries),
+            max_queries=settings.agentic_kubernetes_max_queries,
             required_entity_ids=context_ids,
         )
 
