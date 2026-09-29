@@ -13,7 +13,7 @@ The service receives an incident, resolves Kubernetes ownership and runtime topo
 v0.8 is evolving the project from an incident-local RCA engine into an autonomous, evidence-verified SRE platform. The current development branch now includes:
 
 - **Persistent temporal Awareness Graph** with canonical entity/relationship identity across incidents.
-- **First-class ChangeEvent nodes** derived from Argo CD deployment evidence and matching Git revision evidence, with stable identity across repeated observations.
+- **First-class ChangeEvent nodes** derived from Argo CD deployment evidence and matching Git revision evidence, with stable identity across repeated observations. Materialization requires application, revision and an authoritative operation timestamp; workload/service/repository links are emitted only when the existing graph resolves them unambiguously.
 - **Tenant + cluster isolation** at identity, persistence and query boundaries.
 - **Current state + append-only observations** with idempotent ingestion.
 - **Topology reconciliation** that classifies current records as `fresh` or `stale` from `last_seen` without inventing deletion/tombstones from incomplete incident data.
@@ -39,6 +39,7 @@ GET  /api/v1/awareness/history/{target_id}
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
+GET  /api/v1/awareness/changes
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
