@@ -96,6 +96,15 @@ class AwarenessEntityRecord(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_incident_id: Mapped[str] = mapped_column(String(64), index=True)
     observation_count: Mapped[int] = mapped_column(Integer, default=1)
+    tombstoned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    tombstone_snapshot_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    tombstone_source: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
 
 
 class AwarenessRelationshipRecord(Base):
@@ -128,6 +137,15 @@ class AwarenessRelationshipRecord(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     last_incident_id: Mapped[str] = mapped_column(String(64), index=True)
     observation_count: Mapped[int] = mapped_column(Integer, default=1)
+    tombstoned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    tombstone_snapshot_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    tombstone_source: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
 
 
 class AwarenessObservationRecord(Base):
