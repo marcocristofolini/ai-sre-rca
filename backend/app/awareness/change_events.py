@@ -56,7 +56,7 @@ def _parse_authoritative_datetime(value: object) -> datetime | None:
     else:
         return None
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
+        return None
     return parsed.astimezone(timezone.utc)
 
 
