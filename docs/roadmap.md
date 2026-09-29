@@ -153,6 +153,8 @@ Persistent Awareness Graph:
 - [x] graph-backed blast-radius traversal with explicit impact direction
 - [x] unknown and stale relationship types/instances excluded from current impact traversal
 - [x] authoritative tombstones from complete allow-listed inventory reconciliation
+- [x] automatic read-only Kubernetes inventory collector with complete paginated snapshots
+- [x] singleton Helm CronJob execution with overlap protection and explicit cluster scope
 - [x] first-class deployment/change event nodes
 - [x] stable deployment-event identity across repeated incidents
 - [x] historical event semantics distinct from fresh/stale topology
