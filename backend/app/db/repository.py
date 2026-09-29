@@ -10,6 +10,7 @@ from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
     InventoryReconciliationResult,
     InventorySnapshotConflictError,
+    inventory_incident_id,
     inventory_observation_id,
     inventory_snapshot_fingerprint,
     inventory_snapshot_receipt_id,
@@ -389,7 +390,7 @@ class MemoryRepository:
 
         entities = materialize_inventory_entities(snapshot)
         relationships = materialize_inventory_relationships(snapshot)
-        origin = f"inventory:{snapshot.snapshot_id}"
+        origin = inventory_incident_id(snapshot)
         result = InventoryReconciliationResult(
             snapshot_id=snapshot.snapshot_id,
             source=snapshot.source,
@@ -1202,7 +1203,7 @@ class SQLRepository:
     ) -> InventoryReconciliationResult:
         entities = materialize_inventory_entities(snapshot)
         relationships = materialize_inventory_relationships(snapshot)
-        origin = f"inventory:{snapshot.snapshot_id}"
+        origin = inventory_incident_id(snapshot)
         result = InventoryReconciliationResult(
             snapshot_id=snapshot.snapshot_id,
             source=snapshot.source,
