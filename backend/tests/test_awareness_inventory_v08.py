@@ -14,6 +14,7 @@ from app.awareness.inventory import (
 )
 from app.awareness.topology import (
     AwarenessEntityNotFoundError,
+    build_service_topology,
     calculate_blast_radius,
     reconcile_snapshot,
 )
@@ -525,3 +526,57 @@ async def test_long_snapshot_identity_stays_within_sql_incident_id_boundary():
     assert len(inventory_observation.incident_id) <= 64
     assert service.last_incident_id == inventory_observation.incident_id
     assert inventory_observation.payload["snapshot_id"] == snapshot_id
+
+
+
+@pytest.mark.asyncio
+async def test_current_service_projection_excludes_authoritative_tombstones():
+    repo = MemoryRepository()
+    now = datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc)
+    await repo.save(make_result("inc-initial", created_at=now))
+    await repo.reconcile_authoritative_inventory(
+        authoritative_snapshot(
+            "snap-delete-deployment",
+            observed_at=now + timedelta(minutes=10),
+            include_deployment=False,
+        )
+    )
+
+    historical = await build_service_topology(
+        repo,
+        tenant_id="tenant-a",
+        cluster="prod",
+        service_name="checkout",
+        namespace="payments",
+        requested_depth=1,
+        max_depth=4,
+        max_nodes=20,
+        max_edges=40,
+        stale_after_minutes=60,
+        include_tombstoned=True,
+        as_of=now + timedelta(minutes=10),
+    )
+    current = await build_service_topology(
+        repo,
+        tenant_id="tenant-a",
+        cluster="prod",
+        service_name="checkout",
+        namespace="payments",
+        requested_depth=1,
+        max_depth=4,
+        max_nodes=20,
+        max_edges=40,
+        stale_after_minutes=60,
+        include_tombstoned=False,
+        as_of=now + timedelta(minutes=10),
+    )
+
+    assert any(
+        item.kind == "Deployment" and item.freshness == "tombstoned"
+        for item in historical.entities
+    )
+    assert not any(item.kind == "Deployment" for item in current.entities)
+    assert not any(
+        item.relationship == "serves"
+        for item in current.relationships
+    )
