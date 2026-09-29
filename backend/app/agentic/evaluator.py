@@ -12,6 +12,7 @@ from app.agentic.models import (
     HypothesisExplanationGraph,
 )
 from app.core.integrity import verify_evidence_hash
+from app.core.playbooks import kubernetes_hypothesis_priority
 from app.core.scoring import score_hypothesis
 from app.schemas import Evidence, HypothesisStatus, RootCause
 
@@ -130,6 +131,16 @@ def _specialist_context_blockers(
         result.specialist: result
         for result in execution.specialist_results
     }
+
+    source_result = results.get(specialist)
+    if source_result is None or source_result.status != "completed":
+        source_status = (
+            source_result.status if source_result is not None else "missing"
+        )
+        blockers.append(
+            f"source specialist status={source_status}; partial or missing "
+            "specialist evidence cannot authorize root-cause promotion"
+        )
 
     if specialist in {"traces", "database"} and "kubernetes" in planned:
         kubernetes = results.get("kubernetes")
@@ -570,6 +581,11 @@ def evaluate_shared_evidence(
     selectable.sort(
         key=lambda item: (
             item.precedence_rank,
+            (
+                kubernetes_hypothesis_priority(item.id)
+                if item.specialist == "kubernetes"
+                else 0
+            ),
             -item.score,
             -len(item.supporting_evidence),
             item.id,
