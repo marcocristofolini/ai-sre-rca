@@ -357,6 +357,7 @@ async def test_missing_argocd_finished_at_does_not_create_temporal_event():
     )
     assert events == []
 
+
 @pytest.mark.asyncio
 async def test_missing_revision_does_not_create_temporal_event():
     repo = MemoryRepository()
