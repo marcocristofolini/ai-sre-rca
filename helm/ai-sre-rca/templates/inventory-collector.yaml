@@ -2,9 +2,8 @@
 {{- if eq (len .Values.inventoryCollector.clusters) 0 }}
 {{- fail "inventoryCollector.clusters must contain at least one logical cluster when inventoryCollector.enabled=true" }}
 {{- end }}
-{{- $secretName := .Values.inventoryCollector.existingSecret | default .Values.backend.existingSecret }}
-{{- if not $secretName }}
-{{- fail "inventoryCollector requires inventoryCollector.existingSecret or backend.existingSecret with DATABASE_URL" }}
+{{- if not .Values.inventoryCollector.existingSecret }}
+{{- fail "inventoryCollector.existingSecret is required and should contain only the collector credentials such as DATABASE_URL" }}
 {{- end }}
 apiVersion: batch/v1
 kind: CronJob
@@ -35,7 +34,7 @@ spec:
                 - app.inventory.worker
               envFrom:
                 - secretRef:
-                    name: {{ $secretName | quote }}
+                    name: {{ .Values.inventoryCollector.existingSecret | quote }}
               env:
                 - name: AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES
                   value: {{ .Values.backend.env.AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES | quote }}
