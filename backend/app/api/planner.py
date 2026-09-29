@@ -78,7 +78,24 @@ async def plan_investigation(
                 task.specialist for task in plan.tasks
             ],
             "graph_context_nodes": len(plan.graph_context.entity_ids),
+            "graph_context_tombstones": sum(
+                item.freshness == "tombstoned"
+                for item in plan.graph_context.entities
+            ),
+            "graph_context_changes": len(
+                plan.graph_context.recent_changes
+            ),
+            "graph_context_observations": len(
+                plan.graph_context.observations
+            ),
+            "graph_context_inventory_sources": {
+                item.source: item.freshness
+                for item in plan.graph_context.inventory_sources
+            },
             "graph_context_truncated": plan.graph_context.truncated,
+            "graph_context_history_truncated": (
+                plan.graph_context.history_truncated
+            ),
         },
     )
     return plan
@@ -148,6 +165,12 @@ async def execute_agentic_investigation(
                 for result in execution.specialist_results
             },
             "evidence_count": len(execution.shared_evidence.evidence),
+            "operational_context": {
+                "entities": len(plan.graph_context.entities),
+                "relationships": len(plan.graph_context.relationships),
+                "observations": len(plan.graph_context.observations),
+                "recent_changes": len(plan.graph_context.recent_changes),
+            },
             "evidence_integrity_ok": (
                 execution.shared_evidence.evidence_integrity_ok
             ),
@@ -227,6 +250,12 @@ async def investigate_agentically(
             "explanation_nodes": len(
                 evaluation.explanation_graph.nodes
             ),
+            "operational_context": {
+                "entities": len(plan.graph_context.entities),
+                "relationships": len(plan.graph_context.relationships),
+                "observations": len(plan.graph_context.observations),
+                "recent_changes": len(plan.graph_context.recent_changes),
+            },
             "evidence_integrity_ok": (
                 execution.shared_evidence.evidence_integrity_ok
             ),
