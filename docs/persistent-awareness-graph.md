@@ -30,7 +30,7 @@ The graph stores three record families:
 
 - `awareness_entities`: current logical entity state, first/last seen timestamps and observation count;
 - `awareness_relationships`: current relationship state, evidence references from the latest observation, first/last seen and observation count;
-- `awareness_observations`: immutable per-incident observations for entity or relationship history.
+- `awareness_observations`: immutable entity/relationship history plus inventory-snapshot receipts used to enforce replay identity.
 
 Incident observation IDs are deterministic from `incident + target`. Authoritative inventory observations use `source + snapshot + target + action`. Replaying the same evidence is therefore idempotent and cannot inflate observation counts. Older metadata and evidence references remain in `awareness_observations`; the current entity/relationship record reflects the newest valid observation. Entity and relationship records also carry explicit tombstone timestamp, source and snapshot identity when a complete authoritative inventory proves that a previously known fact is no longer current.
 
