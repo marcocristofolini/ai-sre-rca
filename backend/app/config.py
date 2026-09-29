@@ -56,6 +56,17 @@ class Settings(BaseSettings):
     # fixed specialist allow-list and has no mutation or arbitrary tool path.
     agentic_planner_enabled: bool = True
     agentic_execution_enabled: bool = False
+    agentic_model_planner_enabled: bool = False
+    agentic_model_planner_timeout_seconds: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=30.0,
+    )
+    agentic_model_planner_max_specialists: int = Field(
+        default=6,
+        ge=1,
+        le=6,
+    )
     agentic_max_tasks: int = Field(default=6, ge=1, le=12)
     agentic_max_parallel_tasks: int = Field(default=4, ge=1, le=8)
     agentic_max_context_nodes: int = Field(default=50, ge=1, le=500)
