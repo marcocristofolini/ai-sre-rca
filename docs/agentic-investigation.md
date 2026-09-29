@@ -68,6 +68,8 @@ The executor recompiles the plan server-side immediately before execution. Clien
 - Every task is marked `read_only=true`.
 - The server limits task count, parallelism, graph context size and per-specialist query budget.
 - The Kubernetes specialist delegates to the same deterministic Kubernetes stage used by the core engine; it does not maintain a second simplified RCA implementation.
+- Kubernetes root-cause specificity priority is shared with the classic playbook selector, so mechanism hypotheses cannot outrank a more specific confirmed cause only because they have a higher raw score.
+- Any hypothesis emitted by a specialist whose final status is not `completed` is blocked by the specialist-context gate; partial evidence from `failed`, `skipped` or `budget_exhausted` branches is never selectable.
 - Kubernetes planning is selected only when the incident has Kubernetes runtime identity.
 - Logs require scoped namespace plus pod/service identity.
 - Traces require a service identity and enabled trace analysis.
