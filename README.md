@@ -28,12 +28,14 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Deterministic shared-envelope evaluator** that re-scores only integrity-verified evidence, reapplies trace/stateful causal gates, preserves Kubernetes precedence, fails closed when a required higher-precedence specialist did not complete, and emits a rejected-hypothesis explanation graph.
 - **Three distinct agentic surfaces:** `plan` compiles, `execute` collects read-only specialist evidence, and `investigate` runs both plus deterministic evaluation. Only `investigate` can return a root-cause verdict.
 - **Optional model-assisted planning**, disabled by default. The LLM may suggest only specialist names and rationale; the server intersects that advice with the existing allow-list, deterministic eligibility gates, mandatory baseline branches and server-owned budgets/dependencies before any task exists.
+- **First-class temporal deployment/change events** compiled from integrity-verified Argo CD and GitHub evidence. Events are immutable operational history, deduplicated across incidents, linked to canonical service/workload entities and exposed to the planner as bounded recent-change context. They never become blast-radius edges or causal proof by themselves.
 
 Current v0.8 APIs include:
 
 ```text
 GET  /api/v1/awareness/graph
 GET  /api/v1/awareness/history/{target_id}
+GET  /api/v1/awareness/changes
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
