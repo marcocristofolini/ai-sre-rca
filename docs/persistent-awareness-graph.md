@@ -51,7 +51,7 @@ Graph ingestion happens inside the repository save boundary. With PostgreSQL, th
 
 ## Topology reconciliation
 
-v0.8 now classifies persistent entities and relationships as `fresh` or `stale` from `last_seen` and a server-controlled threshold.
+v0.8 classifies persistent topology entities/relationships as `fresh` or `stale` from `last_seen` and a server-controlled threshold. Immutable temporal facts such as `ChangeEvent` nodes reconcile as `historical` instead.
 
 ~~~mermaid
 flowchart LR
@@ -123,7 +123,31 @@ Completed in the current development branch:
 Still planned:
 
 - authoritative tombstones from full inventory reconciliation;
-- change/deployment nodes as first-class temporal events;
+- authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
 - graph health metrics and retention policy;
 - UI graph explorer;
 - richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
+
+
+## First-class change events
+
+Collected Argo CD deployment evidence is projected into stable `ChangeEvent` graph nodes. The same event is identified by application, revision and event time, so repeated observation across incidents increments history rather than duplicating the event.
+
+Event metadata includes occurrence time, application, revision, repository, target service/workload and supporting evidence IDs. Matching GitHub source evidence adds commit SHA/message/author/link.
+
+Event edges are intentionally contextual:
+
+- `observed_on` → ArgoCDApplication
+- `targets` → Deployment
+- `targets_service` → Service
+- `revision_from` → GitRepository
+
+These relationships are not present in the blast-radius impact-direction allow-list. A recent deployment remains correlation/context until runtime evidence satisfies a deterministic causal hypothesis.
+
+Temporal lookup:
+
+```text
+GET /api/v1/awareness/changes
+```
+
+Filters: `cluster` (required), `service`, `namespace`, `since`, `until`, `tenant_id` for a global principal, and bounded `limit`.
