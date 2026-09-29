@@ -198,4 +198,4 @@ The result includes a deterministic `root_cause` only when those gates pass. It 
 
 ## Next phase
 
-First-class deployment/change events and the read-only Persistent Awareness Graph explorer are now part of v0.8. The remaining graph-foundation gap is authoritative full-inventory reconciliation/tombstones. The next agentic generation can use the richer temporal events and persistent graph projections as bounded planning context without treating UI-visible correlation as causal proof.
+First-class deployment/change events, the read-only Persistent Awareness Graph explorer, and authoritative complete-inventory reconciliation with tombstones are now part of v0.8. Incident-local absence still has no deletion semantics; only an admin-authorized snapshot from an allow-listed source can tombstone covered facts, and older snapshots cannot delete newer observations. The next agentic generation can use current, historical and explicitly tombstoned graph state as bounded planning context without treating UI-visible correlation or historical absence as causal proof.
