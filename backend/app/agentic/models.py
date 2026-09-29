@@ -47,15 +47,31 @@ class SpecialistTask(BaseModel):
     read_only: bool = True
 
 
+PlannerSuggestionDecision = Literal[
+    "compiled",
+    "already_planned",
+    "rejected",
+]
+
+
+class PlannerSuggestion(BaseModel):
+    requested_specialist: str
+    specialist: SpecialistKind | None = None
+    decision: PlannerSuggestionDecision
+    rationale: str = ""
+    reason: str = ""
+
+
 class InvestigationPlan(BaseModel):
     id: str = Field(default_factory=lambda: f"plan-{uuid4().hex[:12]}")
     tenant_id: str
     cluster: str
     incident: IncidentInput
-    planner_origin: Literal["deterministic"] = "deterministic"
+    planner_origin: Literal["deterministic", "model_assisted"] = "deterministic"
     graph_context: PlannerGraphContext = Field(
         default_factory=PlannerGraphContext
     )
+    model_suggestions: list[PlannerSuggestion] = Field(default_factory=list)
     tasks: list[SpecialistTask] = Field(default_factory=list)
     max_parallel_tasks: int = Field(ge=1, le=16)
     max_tasks: int = Field(ge=1, le=32)
