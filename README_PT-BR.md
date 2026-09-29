@@ -20,6 +20,7 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Blast radius baseado no grafo** com direção causal explícita por tipo de relação. Relações desconhecidas ou stale continuam visíveis como contexto, mas nunca viram caminhos de impacto atual.
 - **Investigation Planner bounded** que emite somente tarefas read-only allow-listed: Kubernetes, métricas, logs, traces, database e mudanças.
 - **Paridade do specialist Kubernetes com o core engine.** O ramo agentic Kubernetes agora delega para a mesma etapa determinística usada pelo RCA clássico, cobrindo eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/capacidade do Karpenter, HPA, KEDA e NodeNotReady com as mesmas hipóteses e regras de evidência.
+- **Política compartilhada de prioridade Kubernetes + fail-closed para ramos parciais.** Os caminhos clássico e agentic usam a mesma ordem de especificidade, e hipóteses de um specialist que não concluiu nunca podem ser selecionadas.
 - **Dependências tipadas entre tarefas.** O ramo stateful/database só é planejado depois do ramo de traces que fornece identidade tipada da dependência.
 - **Contexto persistente do grafo para o planner**, com limites rígidos no servidor para contexto, quantidade de tarefas, paralelismo e queries por especialista.
 - **Execução paralela experimental de especialistas**, protegida por `AGENTIC_EXECUTION_ENABLED=false` por padrão. Ramos independentes rodam em paralelo; ramos dependentes só entram depois que os pré-requisitos concluem.
