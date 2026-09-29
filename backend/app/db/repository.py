@@ -7,14 +7,17 @@ from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.awareness.models import (
+    AwarenessChangeEvent,
     AwarenessEntity,
     AwarenessGraphSnapshot,
     AwarenessObservation,
     AwarenessRelationship,
     canonicalize_investigation,
+    extract_change_events,
 )
 from app.db.models import (
     AuditEventRecord,
+    AwarenessChangeEventRecord,
     AwarenessEntityRecord,
     AwarenessObservationRecord,
     AwarenessRelationshipRecord,
@@ -46,6 +49,47 @@ class InvestigationRepository(Protocol):
         cluster: str,
         limit: int = 100,
     ) -> list[AwarenessObservation]: ...
+    async def list_awareness_change_events(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        namespace: str | None = None,
+        event_type: str | None = None,
+        subject_entity_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[AwarenessChangeEvent]: ...
+    async def list_awareness_change_events(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        namespace: str | None = None,
+        event_type: str | None = None,
+        subject_entity_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[AwarenessChangeEvent]:
+        items = [
+            item.model_copy(deep=True)
+            for item in self._awareness_change_events.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and (namespace is None or item.namespace == namespace)
+            and (event_type is None or item.event_type == event_type)
+            and (
+                subject_entity_id is None
+                or subject_entity_id in item.subject_entity_ids
+            )
+            and (since is None or item.occurred_at >= since)
+            and (until is None or item.occurred_at <= until)
+        ]
+        items.sort(key=lambda item: item.occurred_at, reverse=True)
+        return items[:max(1, min(limit, 1000))]
+
     async def find_awareness_entities(
         self,
         tenant_id: str,
@@ -121,6 +165,7 @@ class MemoryRepository:
         self._awareness_entities: dict[str, AwarenessEntity] = {}
         self._awareness_relationships: dict[str, AwarenessRelationship] = {}
         self._awareness_observations: dict[str, AwarenessObservation] = {}
+        self._awareness_change_events: dict[str, AwarenessChangeEvent] = {}
 
     async def initialize(self) -> None:
         return None
@@ -131,6 +176,7 @@ class MemoryRepository:
 
     def _ingest_awareness(self, result: InvestigationResult) -> None:
         entities, relationships, observations = canonicalize_investigation(result)
+        change_events = extract_change_events(result)
         observation_by_target = {item.target_id: item for item in observations}
 
         for entity in entities:
@@ -165,6 +211,32 @@ class MemoryRepository:
                     current.evidence_ids = list(relationship.evidence_ids)
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
+
+        for event in change_events:
+            current = self._awareness_change_events.get(event.id)
+            if current is None:
+                self._awareness_change_events[event.id] = event.model_copy(deep=True)
+                continue
+            if result.incident_id in current.incident_ids:
+                continue
+            current.subject_entity_ids = sorted(set(
+                current.subject_entity_ids + event.subject_entity_ids
+            ))
+            current.evidence_ids = sorted(set(
+                current.evidence_ids + event.evidence_ids
+            ))
+            current.incident_ids = sorted(set(
+                current.incident_ids + event.incident_ids
+            ))
+            current.observation_count += 1
+            current.first_observed_at = min(
+                current.first_observed_at,
+                event.first_observed_at,
+            )
+            current.last_observed_at = max(
+                current.last_observed_at,
+                event.last_observed_at,
+            )
 
     async def get(
         self,
@@ -476,6 +548,7 @@ class SQLRepository:
 
     async def _ingest_awareness_session(self, session, result: InvestigationResult) -> None:
         entities, relationships, observations = canonicalize_investigation(result)
+        change_events = extract_change_events(result)
         observation_by_target = {item.target_id: item for item in observations}
 
         for entity in entities:
@@ -553,6 +626,52 @@ class SQLRepository:
                 observed_at=observation.observed_at,
                 payload=observation.payload,
             ))
+
+        for event in change_events:
+            record = await session.get(AwarenessChangeEventRecord, event.id)
+            if record is None:
+                session.add(AwarenessChangeEventRecord(
+                    id=event.id,
+                    tenant_id=event.tenant_id,
+                    cluster=event.cluster,
+                    event_type=event.event_type,
+                    source=event.source,
+                    occurred_at=event.occurred_at,
+                    namespace=event.namespace,
+                    revision=event.revision,
+                    subject_entity_ids=event.subject_entity_ids,
+                    evidence_ids=event.evidence_ids,
+                    incident_ids=event.incident_ids,
+                    metadata_json=event.metadata,
+                    observation_count=1,
+                    first_observed_at=event.first_observed_at,
+                    last_observed_at=event.last_observed_at,
+                ))
+                continue
+
+            incident_ids = list(record.incident_ids or [])
+            if result.incident_id in incident_ids:
+                continue
+            record.subject_entity_ids = sorted(set(
+                list(record.subject_entity_ids or [])
+                + event.subject_entity_ids
+            ))
+            record.evidence_ids = sorted(set(
+                list(record.evidence_ids or [])
+                + event.evidence_ids
+            ))
+            record.incident_ids = sorted(set(
+                incident_ids + event.incident_ids
+            ))
+            record.observation_count += 1
+            record.first_observed_at = min(
+                record.first_observed_at,
+                event.first_observed_at,
+            )
+            record.last_observed_at = max(
+                record.last_observed_at,
+                event.last_observed_at,
+            )
 
     async def get(
         self,
@@ -715,6 +834,77 @@ class SQLRepository:
             )
             for row in rows
         ]
+
+    async def list_awareness_change_events(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        namespace: str | None = None,
+        event_type: str | None = None,
+        subject_entity_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[AwarenessChangeEvent]:
+        max_items = max(1, min(limit, 1000))
+        statement = (
+            select(AwarenessChangeEventRecord)
+            .where(
+                AwarenessChangeEventRecord.tenant_id == tenant_id,
+                AwarenessChangeEventRecord.cluster == cluster,
+            )
+            .order_by(AwarenessChangeEventRecord.occurred_at.desc())
+            .limit(min(max_items * 10, 5000))
+        )
+        if namespace is not None:
+            statement = statement.where(
+                AwarenessChangeEventRecord.namespace == namespace
+            )
+        if event_type is not None:
+            statement = statement.where(
+                AwarenessChangeEventRecord.event_type == event_type
+            )
+        if since is not None:
+            statement = statement.where(
+                AwarenessChangeEventRecord.occurred_at >= since
+            )
+        if until is not None:
+            statement = statement.where(
+                AwarenessChangeEventRecord.occurred_at <= until
+            )
+
+        async with self.sessions() as session:
+            rows = list((await session.scalars(statement)).all())
+
+        output: list[AwarenessChangeEvent] = []
+        for row in rows:
+            subject_ids = list(row.subject_entity_ids or [])
+            if (
+                subject_entity_id is not None
+                and subject_entity_id not in subject_ids
+            ):
+                continue
+            output.append(AwarenessChangeEvent(
+                id=row.id,
+                tenant_id=row.tenant_id,
+                cluster=row.cluster,
+                event_type=row.event_type,
+                source=row.source,
+                occurred_at=row.occurred_at,
+                namespace=row.namespace,
+                revision=row.revision,
+                subject_entity_ids=subject_ids,
+                evidence_ids=list(row.evidence_ids or []),
+                incident_ids=list(row.incident_ids or []),
+                metadata=row.metadata_json or {},
+                observation_count=row.observation_count,
+                first_observed_at=row.first_observed_at,
+                last_observed_at=row.last_observed_at,
+            ))
+            if len(output) >= max_items:
+                break
+        return output
 
     async def find_awareness_entities(
         self,
