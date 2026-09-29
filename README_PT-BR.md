@@ -28,12 +28,14 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Avaliador determinístico do shared envelope** que recalcula scores apenas com evidências verificadas, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes, falha de forma fechada quando um specialist de maior precedência não conclui e gera um explanation graph das hipóteses descartadas.
 - **Três superfícies agentic distintas:** `plan` compila, `execute` apenas coleta evidências read-only dos especialistas e `investigate` executa ambos mais a avaliação determinística. Somente `investigate` pode retornar um verdict de causa raiz.
 - **Planejamento assistido por modelo opcional**, desabilitado por padrão. O LLM pode sugerir somente nomes de especialistas e justificativas; o servidor intersecta essa sugestão com a allow-list existente, gates determinísticos de elegibilidade, ramos obrigatórios de baseline e budgets/dependências controlados pelo servidor antes de qualquer tarefa existir.
+- **Eventos temporais first-class de deploy/change** compilados a partir de evidências Argo CD e GitHub com integridade verificada. Os eventos são histórico operacional imutável, deduplicado entre incidentes, ligado a entidades canônicas de serviço/workload e fornecido ao planner como contexto bounded de mudanças recentes. Eles nunca viram arestas de blast radius nem prova causal por si só.
 
 APIs atuais da v0.8:
 
 ```text
 GET  /api/v1/awareness/graph
 GET  /api/v1/awareness/history/{target_id}
+GET  /api/v1/awareness/changes
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
