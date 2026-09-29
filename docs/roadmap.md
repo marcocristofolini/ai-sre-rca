@@ -157,7 +157,8 @@ Persistent Awareness Graph:
 - [x] singleton Helm CronJob execution with overlap protection and explicit cluster scope
 - [x] tenant/cluster Graph Health API with current/stale/historical/tombstoned aggregate counts
 - [x] authoritative inventory-source freshness with configurable maximum age
-- [ ] awareness observation/tombstone retention policy with explanation-safe minimums
+- [x] awareness observation/tombstone retention policy with explanation-safe minimums
+- [ ] scheduled awareness-retention execution independent from API startup
 - [x] first-class deployment/change event nodes
 - [x] stable deployment-event identity across repeated incidents
 - [x] historical event semantics distinct from fresh/stale topology
