@@ -6,6 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import Principal, authorize_cluster, authorize_tenant, require_role
 from app.awareness.change_events import AwarenessChangeEvent, query_change_events
+from app.awareness.inventory import (
+    AuthoritativeInventoryRequest,
+    AuthoritativeInventorySnapshot,
+    InventoryReconciliationResult,
+)
 from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
 from app.awareness.topology import (
     AmbiguousServiceError,
@@ -33,6 +38,41 @@ def _tenant_scope(principal: Principal, requested_tenant: str | None) -> str:
     if requested_tenant:
         authorize_tenant(principal, requested_tenant)
     return principal.tenant_id
+
+
+@router.post(
+    "/inventory/reconcile",
+    response_model=InventoryReconciliationResult,
+)
+async def reconcile_authoritative_inventory(
+    payload: AuthoritativeInventoryRequest,
+    cluster: str,
+    request: Request,
+    tenant_id: str | None = None,
+    principal: Principal = Depends(require_role("admin")),
+):
+    authorize_cluster(principal, cluster)
+    tenant = _tenant_scope(principal, tenant_id)
+    allowed_sources = (
+        request.app.state.settings.awareness_authoritative_inventory_source_set
+    )
+    if payload.source not in allowed_sources:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "inventory source is not configured as authoritative: "
+                f"{payload.source}"
+            ),
+        )
+
+    snapshot = AuthoritativeInventorySnapshot(
+        **payload.model_dump(),
+        tenant_id=tenant,
+        cluster=cluster,
+    )
+    return await request.app.state.repo.reconcile_authoritative_inventory(
+        snapshot
+    )
 
 
 @router.get("/graph", response_model=AwarenessGraphSnapshot)
