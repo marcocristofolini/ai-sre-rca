@@ -328,3 +328,31 @@ async def test_change_event_edges_never_become_blast_radius_paths():
         "targets_service",
         "revision_from",
     }.issubset(set(blast.ignored_relationship_types))
+
+
+@pytest.mark.asyncio
+async def test_missing_argocd_finished_at_does_not_create_temporal_event():
+    repo = MemoryRepository()
+    occurred_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+    result = make_change_result(
+        "inc-no-finished-at",
+        revision="abcdef1234567890",
+        occurred_at=occurred_at,
+        created_at=occurred_at + timedelta(minutes=5),
+    )
+    argocd = next(
+        item
+        for item in result.evidence
+        if item.source == "argocd"
+    )
+    argocd.facts["finished_at"] = None
+
+    await repo.save(result)
+
+    events = await repo.find_awareness_entities(
+        "tenant-a",
+        "prod",
+        kind="ChangeEvent",
+        limit=20,
+    )
+    assert events == []
