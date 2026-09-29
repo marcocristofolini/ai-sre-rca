@@ -38,7 +38,6 @@ Before a dry-run is attempted, all of these checks must pass:
 
 - remediation is explicitly enabled;
 - the incident is resolved and no older than `REMEDIATION_MAX_INCIDENT_AGE_MINUTES`;
-
 - root-cause evidence is medium or strong and has supporting signals;
 - the selected root hypothesis exists in the incident as a confirmed deterministic playbook hypothesis;
 - the exact root hypothesis ID is present in REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST;
