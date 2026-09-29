@@ -232,10 +232,16 @@ def _compile_model_advice(
     settings: Settings,
 ) -> tuple[list[SpecialistTask], PlannerAdvisoryTrace, bool]:
     by_kind = {task.specialist: task for task in eligible_tasks}
-    requested = [
+    all_requested = [
         str(item).strip().lower()
         for item in advice.requested_specialists
         if str(item).strip()
+    ]
+    requested = all_requested[
+        : settings.agentic_model_planner_max_specialists
+    ]
+    overflow_requested = all_requested[
+        settings.agentic_model_planner_max_specialists :
     ]
 
     forced: list[SpecialistKind] = [
@@ -244,8 +250,27 @@ def _compile_model_advice(
         if kind in by_kind
     ]
     accepted: list[SpecialistKind] = []
-    rejected: list[str] = []
+    rejected: list[str] = list(overflow_requested)
     seen: set[str] = set()
+
+    if len(forced) > settings.agentic_max_tasks:
+        return (
+            _normalize_dependencies(
+                eligible_tasks[: settings.agentic_max_tasks]
+            ),
+            PlannerAdvisoryTrace(
+                requested_specialists=requested,
+                accepted_specialists=[],
+                rejected_specialists=sorted(set(rejected)),
+                forced_specialists=[],
+                rationale=advice.rationale,
+                fallback_reason=(
+                    "server task budget is smaller than the mandatory "
+                    "model-assisted baseline; deterministic plan preserved"
+                ),
+            ),
+            False,
+        )
 
     for raw in requested:
         if raw in seen:
