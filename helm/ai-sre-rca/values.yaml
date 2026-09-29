@@ -102,6 +102,7 @@ remediator:
     REMEDIATION_ENABLED: "true"
     REMEDIATION_REQUIRE_DISTINCT_APPROVER: "true"
     REMEDIATION_PLAN_TTL_MINUTES: "30"
+    REMEDIATION_MAX_INCIDENT_AGE_MINUTES: "120"
     REMEDIATION_ALLOWED_ACTIONS: "scale_deployment"
     # Exact confirmed deterministic root-cause IDs allowed to justify scale.
     REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST: ""

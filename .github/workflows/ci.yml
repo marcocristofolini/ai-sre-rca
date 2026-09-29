@@ -263,9 +263,29 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Build production images
+        shell: bash
         run: |
-          docker build -t ai-sre-rca-backend:ci ./backend
-          docker build -t ai-sre-rca-frontend:ci ./frontend
+          set -euo pipefail
+
+          docker_build_with_retry() {
+            local image="$1"
+            local context="$2"
+            local attempt
+            for attempt in 1 2 3; do
+              if docker build -t "$image" "$context"; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Docker build failed after $attempt attempts: $image" >&2
+                return 1
+              fi
+              echo "Docker build attempt $attempt failed; retrying after $((attempt * 5))s..." >&2
+              sleep $((attempt * 5))
+            done
+          }
+
+          docker_build_with_retry ai-sre-rca-backend:ci ./backend
+          docker_build_with_retry ai-sre-rca-frontend:ci ./frontend
 
       - name: Run production images
         shell: bash
@@ -335,7 +355,11 @@ jobs:
 
       - name: Print container logs on failure
         if: failure()
+        shell: bash
         run: |
-          docker logs ai-sre-rca-backend || true
-          docker logs ai-sre-rca-remediator || true
-          docker logs ai-sre-rca-frontend || true
+          for container in ai-sre-rca-backend ai-sre-rca-remediator ai-sre-rca-frontend; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+              echo "=== $container ==="
+              docker logs "$container" || true
+            fi
+          done

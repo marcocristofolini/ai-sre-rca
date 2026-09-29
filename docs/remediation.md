@@ -37,7 +37,7 @@ The executor can only call the Deployment scale subresource with GET and PATCH. 
 Before a dry-run is attempted, all of these checks must pass:
 
 - remediation is explicitly enabled;
-- the incident is resolved;
+- the incident is resolved and no older than `REMEDIATION_MAX_INCIDENT_AGE_MINUTES`;
 - root-cause evidence is medium or strong and has supporting signals;
 - the selected root hypothesis exists in the incident as a confirmed deterministic playbook hypothesis;
 - the exact root hypothesis ID is present in REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST;
@@ -115,6 +115,7 @@ verbs: ["get", "patch"]
 REMEDIATION_ENABLED=true
 REMEDIATION_REQUIRE_DISTINCT_APPROVER=true
 REMEDIATION_PLAN_TTL_MINUTES=30
+REMEDIATION_MAX_INCIDENT_AGE_MINUTES=120
 REMEDIATION_ALLOWED_ACTIONS=scale_deployment
 REMEDIATION_ALLOWED_NAMESPACES=payments,checkout
 REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST=capacity-saturation
