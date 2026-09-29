@@ -13,7 +13,7 @@ from app.awareness.models import (
 )
 
 
-Freshness = Literal["fresh", "stale", "historical"]
+Freshness = Literal["fresh", "stale", "historical", "tombstoned"]
 
 
 class AwarenessTopologyRepository(Protocol):
@@ -115,6 +115,8 @@ class BlastRadiusResult(BaseModel):
     traversed_relationship_types: list[str] = Field(default_factory=list)
     ignored_relationship_types: list[str] = Field(default_factory=list)
     skipped_stale_relationship_ids: list[str] = Field(default_factory=list)
+    skipped_tombstoned_relationship_ids: list[str] = Field(default_factory=list)
+    skipped_tombstoned_entity_ids: list[str] = Field(default_factory=list)
     generated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -204,7 +206,14 @@ def reconcile_entity(
     stale_after_minutes: int,
     depth: int | None = None,
 ) -> ReconciledEntity:
-    if entity.metadata.get("temporal_role") == "event":
+    if entity.tombstoned_at is not None:
+        freshness: Freshness = "tombstoned"
+        age_seconds = max(
+            0.0,
+            (_utc(as_of) - _utc(entity.tombstoned_at)).total_seconds(),
+        )
+        stale_since = None
+    elif entity.metadata.get("temporal_role") == "event":
         freshness: Freshness = "historical"
         age_seconds = _historical_age_seconds(
             entity.metadata,
@@ -233,7 +242,14 @@ def reconcile_relationship(
     as_of: datetime,
     stale_after_minutes: int,
 ) -> ReconciledRelationship:
-    if relationship.metadata.get("temporal_role") == "event":
+    if relationship.tombstoned_at is not None:
+        freshness: Freshness = "tombstoned"
+        age_seconds = max(
+            0.0,
+            (_utc(as_of) - _utc(relationship.tombstoned_at)).total_seconds(),
+        )
+        stale_since = None
+    elif relationship.metadata.get("temporal_role") == "event":
         freshness: Freshness = "historical"
         age_seconds = _historical_age_seconds(
             relationship.metadata,
@@ -483,9 +499,9 @@ async def calculate_blast_radius(
         tenant_id,
         cluster,
     )
-    if source is None:
+    if source is None or source.tombstoned_at is not None:
         raise AwarenessEntityNotFoundError(
-            f"awareness entity not found: {source_id}"
+            f"current awareness entity not found: {source_id}"
         )
 
     effective_depth = min(requested_depth, max_depth)
@@ -497,6 +513,8 @@ async def calculate_blast_radius(
     traversed_relationships: set[str] = set()
     ignored_relationships: set[str] = set()
     skipped_stale_relationship_ids: set[str] = set()
+    skipped_tombstoned_relationship_ids: set[str] = set()
+    skipped_tombstoned_entity_ids: set[str] = set()
     examined_edges: set[str] = set()
     truncated = requested_depth > max_depth
     traversal_as_of = as_of or datetime.now(timezone.utc)
@@ -523,6 +541,12 @@ async def calculate_blast_radius(
         neighbor_map = {item.id: item for item in neighbors}
 
         for relationship in adjacent:
+            if relationship.tombstoned_at is not None:
+                if relationship.id not in examined_edges:
+                    examined_edges.add(relationship.id)
+                    skipped_tombstoned_relationship_ids.add(relationship.id)
+                continue
+
             relationship_freshness, _, _ = _freshness(
                 relationship.last_seen,
                 as_of=traversal_as_of,
@@ -559,6 +583,9 @@ async def calculate_blast_radius(
             target = neighbor_map.get(target_id)
             if target is None:
                 truncated = True
+                continue
+            if target.tombstoned_at is not None:
+                skipped_tombstoned_entity_ids.add(target_id)
                 continue
 
             visited.add(target_id)
@@ -614,6 +641,12 @@ async def calculate_blast_radius(
         ignored_relationship_types=sorted(ignored_relationships),
         skipped_stale_relationship_ids=sorted(
             skipped_stale_relationship_ids
+        ),
+        skipped_tombstoned_relationship_ids=sorted(
+            skipped_tombstoned_relationship_ids
+        ),
+        skipped_tombstoned_entity_ids=sorted(
+            skipped_tombstoned_entity_ids
         ),
         generated_at=now,
     )
