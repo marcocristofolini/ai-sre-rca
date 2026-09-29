@@ -356,3 +356,187 @@ async def test_missing_argocd_finished_at_does_not_create_temporal_event():
         limit=20,
     )
     assert events == []
+
+@pytest.mark.asyncio
+async def test_missing_revision_does_not_create_temporal_event():
+    repo = MemoryRepository()
+    occurred_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+    result = make_change_result(
+        "inc-no-revision",
+        revision="abcdef1234567890",
+        occurred_at=occurred_at,
+        created_at=occurred_at + timedelta(minutes=5),
+    )
+    argocd = next(
+        item
+        for item in result.evidence
+        if item.source == "argocd"
+    )
+    argocd.facts["revision"] = ""
+
+    await repo.save(result)
+
+    events = await repo.find_awareness_entities(
+        "tenant-a",
+        "prod",
+        kind="ChangeEvent",
+        limit=20,
+    )
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_malformed_finished_at_does_not_use_observation_time():
+    repo = MemoryRepository()
+    occurred_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+    result = make_change_result(
+        "inc-invalid-finished-at",
+        revision="abcdef1234567890",
+        occurred_at=occurred_at,
+        created_at=occurred_at + timedelta(minutes=5),
+    )
+    argocd = next(
+        item
+        for item in result.evidence
+        if item.source == "argocd"
+    )
+    argocd.facts["finished_at"] = "not-a-timestamp"
+
+    await repo.save(result)
+
+    events = await repo.find_awareness_entities(
+        "tenant-a",
+        "prod",
+        kind="ChangeEvent",
+        limit=20,
+    )
+    assert events == []
+
+
+@pytest.mark.asyncio
+async def test_change_event_uses_explicit_managed_deployment():
+    repo = MemoryRepository()
+    occurred_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+    result = make_change_result(
+        "inc-multi-workload",
+        revision="abcdef1234567890",
+        occurred_at=occurred_at,
+        created_at=occurred_at + timedelta(minutes=5),
+    )
+    result.entities.insert(
+        0,
+        Entity(
+            id="deployment:unrelated",
+            kind="Deployment",
+            name="unrelated",
+            namespace="payments",
+        ),
+    )
+    result.entities.insert(
+        1,
+        Entity(
+            id="service:unrelated",
+            kind="Service",
+            name="unrelated",
+            namespace="payments",
+        ),
+    )
+    result.graph_edges.insert(
+        0,
+        GraphEdge(
+            source="deployment:unrelated",
+            target="service:unrelated",
+            relationship="serves",
+        ),
+    )
+
+    await repo.save(result)
+
+    event = (
+        await repo.find_awareness_entities(
+            "tenant-a",
+            "prod",
+            kind="ChangeEvent",
+            limit=20,
+        )
+    )[0]
+    neighbors, relationships = await repo.get_awareness_neighbors(
+        {event.id},
+        "tenant-a",
+        "prod",
+        limit=30,
+    )
+    target_ids = {
+        item.target_id
+        for item in relationships
+        if item.relationship == "targets"
+    }
+    target_names = {
+        item.name
+        for item in neighbors
+        if item.id in target_ids
+    }
+
+    assert event.metadata["workload_name"] == "checkout"
+    assert target_names == {"checkout"}
+
+
+@pytest.mark.asyncio
+async def test_change_event_resolves_repository_from_explicit_sync_edge():
+    repo = MemoryRepository()
+    occurred_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
+    result = make_change_result(
+        "inc-multi-repo",
+        revision="abcdef1234567890",
+        occurred_at=occurred_at,
+        created_at=occurred_at + timedelta(minutes=5),
+    )
+    result.entities.insert(
+        0,
+        Entity(
+            id="git-repo:unrelated",
+            kind="GitRepository",
+            name="https://github.com/example/unrelated.git",
+        ),
+    )
+    argocd = next(
+        item
+        for item in result.evidence
+        if item.source == "argocd"
+    )
+    argocd.facts["repo_url"] = ""
+
+    await repo.save(result)
+
+    event = (
+        await repo.find_awareness_entities(
+            "tenant-a",
+            "prod",
+            kind="ChangeEvent",
+            limit=20,
+        )
+    )[0]
+    neighbors, relationships = await repo.get_awareness_neighbors(
+        {event.id},
+        "tenant-a",
+        "prod",
+        limit=30,
+    )
+    repository_ids = {
+        item.target_id
+        for item in relationships
+        if item.relationship == "revision_from"
+    }
+    repository_names = {
+        item.name
+        for item in neighbors
+        if item.id in repository_ids
+    }
+
+    assert event.metadata["repository"] == (
+        "https://github.com/example/checkout.git"
+    )
+    assert repository_names == {
+        "https://github.com/example/checkout.git"
+    }
+
