@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.awareness.models import (
     AwarenessEntity,
@@ -46,6 +46,9 @@ class InventoryCoverage(BaseModel):
         ]
         if len(set(relationship_types)) != len(relationship_types):
             raise ValueError("inventory relationship types must be unique")
+        self.kinds = kinds
+        self.namespaces = namespaces if self.namespaces is not None else None
+        self.relationship_types = relationship_types
         return self
 
 
@@ -76,6 +79,23 @@ class AuthoritativeInventoryRequest(BaseModel):
     coverage: InventoryCoverage
     resources: list[InventoryResource] = Field(default_factory=list)
     relationships: list[InventoryRelationship] = Field(default_factory=list)
+
+    @field_validator("snapshot_id", "source")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("inventory identifier cannot be blank")
+        return normalized
+
+    @field_validator("observed_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(
+                "authoritative inventory observed_at must include a timezone"
+            )
+        return value.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def validate_authoritative_snapshot(self):
@@ -194,7 +214,7 @@ def materialize_inventory_entities(
     snapshot: AuthoritativeInventorySnapshot,
 ) -> dict[str, AwarenessEntity]:
     output: dict[str, AwarenessEntity] = {}
-    origin = f"inventory:{snapshot.snapshot_id}"
+    origin = inventory_incident_id(snapshot)
     for resource in snapshot.resources:
         entity_id = inventory_entity_id(snapshot, resource)
         output[entity_id] = AwarenessEntity(
@@ -216,7 +236,7 @@ def materialize_inventory_relationships(
     snapshot: AuthoritativeInventorySnapshot,
 ) -> dict[str, AwarenessRelationship]:
     output: dict[str, AwarenessRelationship] = {}
-    origin = f"inventory:{snapshot.snapshot_id}"
+    origin = inventory_incident_id(snapshot)
     for item in snapshot.relationships:
         source_id = inventory_entity_id(snapshot, item.source)
         target_id = inventory_entity_id(snapshot, item.target)
@@ -247,6 +267,21 @@ def materialize_inventory_relationships(
 
 class InventorySnapshotConflictError(ValueError):
     pass
+
+
+def inventory_incident_id(
+    snapshot: AuthoritativeInventorySnapshot,
+) -> str:
+    # Awareness DB incident references are VARCHAR(64). Keep the human-readable
+    # snapshot identity in observation payload/tombstone fields and use a stable
+    # bounded synthetic incident identifier at the persistence boundary.
+    return _stable_inventory_id(
+        "inv",
+        snapshot.tenant_id,
+        snapshot.cluster,
+        snapshot.source,
+        snapshot.snapshot_id,
+    )
 
 
 def inventory_snapshot_receipt_id(
