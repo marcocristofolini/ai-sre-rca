@@ -320,3 +320,119 @@ async def test_change_event_save_is_idempotent_for_same_incident():
     assert len(events) == 2
     assert all(event.observation_count == 1 for event in events)
     assert all(event.incident_ids == ["inc-repeat"] for event in events)
+
+
+@pytest.mark.asyncio
+async def test_same_revision_at_different_sync_times_is_distinct_deployment_event():
+    repo = MemoryRepository()
+    first = make_change_result(
+        "inc-first",
+        created_at=OCCURRED + timedelta(minutes=10),
+    )
+    second = make_change_result(
+        "inc-second",
+        created_at=OCCURRED + timedelta(hours=2),
+    )
+    second.evidence[0] = Evidence(
+        id="ev-argo-inc-second",
+        source="argocd",
+        category="change-correlation",
+        summary="Later Argo CD sync completed.",
+        observed_at=OCCURRED + timedelta(hours=1),
+        facts={
+            "application": "checkout",
+            "revision": "abc123",
+            "repo_url": "https://github.com/acme/checkout",
+            "sync_status": "Synced",
+            "health": "Healthy",
+            "operation_phase": "Succeeded",
+            "delta_minutes": 5.0,
+        },
+        raw_reference="argocd://application/checkout",
+        strength="medium",
+    )
+
+    await repo.save(first)
+    await repo.save(second)
+
+    events = await repo.list_awareness_change_events(
+        "tenant-a",
+        "prod",
+        event_type="deployment_sync",
+    )
+    assert len(events) == 2
+    assert {event.occurred_at for event in events} == {
+        OCCURRED,
+        OCCURRED + timedelta(hours=1),
+    }
+
+
+@pytest.mark.asyncio
+async def test_planner_context_includes_recent_service_change_events():
+    from app.agentic.planner import build_investigation_plan
+    from app.config import Settings
+
+    repo = MemoryRepository()
+    await repo.save(make_change_result(
+        "inc-history",
+        created_at=OCCURRED + timedelta(minutes=10),
+    ))
+
+    plan = await build_investigation_plan(
+        repo,
+        incident=IncidentInput(
+            title="New checkout latency",
+            tenant_id="tenant-a",
+            cluster="prod",
+            namespace="payments",
+            pod="checkout-new",
+            service="checkout",
+            starts_at=OCCURRED + timedelta(minutes=15),
+        ),
+        settings=Settings(
+            change_correlation_window_minutes=180,
+        ),
+    )
+
+    assert plan.graph_context.root_entity_id is not None
+    assert {
+        item.event_type
+        for item in plan.graph_context.recent_changes
+    } == {"deployment_sync", "source_commit"}
+    assert all(
+        item.revision == "abc123"
+        for item in plan.graph_context.recent_changes
+    )
+
+
+@pytest.mark.asyncio
+async def test_changes_api_rejects_naive_time_filters():
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from app.api.awareness import list_change_events
+    from app.auth import Principal
+
+    repo = MemoryRepository()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(repo=repo)
+        )
+    )
+    principal = Principal(
+        subject="viewer-a",
+        tenant_id="tenant-a",
+        roles=frozenset({"viewer"}),
+        clusters=frozenset({"prod"}),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await list_change_events(
+            cluster="prod",
+            request=request,
+            since=datetime(2026, 9, 28, 20, 0),
+            principal=principal,
+        )
+    assert exc.value.status_code == 422
+    assert "timezone" in str(exc.value.detail)
