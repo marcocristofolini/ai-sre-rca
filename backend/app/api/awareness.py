@@ -192,11 +192,11 @@ async def get_change_events(
     try:
         return await query_change_events(
             request.app.state.repo,
-        tenant_id=tenant,
-        cluster=cluster,
-        service_name=service,
-        namespace=namespace,
-        since=since,
+            tenant_id=tenant,
+            cluster=cluster,
+            service_name=service,
+            namespace=namespace,
+            since=since,
             until=until,
             limit=limit,
         )
