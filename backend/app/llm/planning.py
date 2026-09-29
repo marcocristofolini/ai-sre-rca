@@ -132,6 +132,7 @@ class OpenAICompatiblePlanningAdvisor:
                     "objective": task.objective,
                     "rationale": task.rationale,
                     "depends_on": task.depends_on,
+                    "scope": task.scope.model_dump(mode="json"),
                 }
                 for task in eligible_tasks
             ],
