@@ -583,12 +583,12 @@ Known relationship types are compiled through an explicit impact-direction allow
 
 ## Bounded Investigation Planner — v0.8
 
-The planner is deterministic and bounded. It uses incident identity, feature flags and a bounded service neighborhood to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
+The planner is deterministic and bounded. It uses incident identity, feature flags and a frozen Operational Context Snapshot containing bounded topology, history, ChangeEvents and Graph Health to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
 
 ```mermaid
 flowchart TD
     INC[IncidentInput] --> PLAN[Deterministic Planner]
-    PAG[Persistent Awareness Graph] --> CTX[Bounded 1-hop Context]
+    PAG[Persistent Awareness Graph] --> CTX[Frozen Operational Context]
     CTX --> PLAN
     CFG[Server Budgets + Feature Flags] --> PLAN
 
@@ -622,7 +622,9 @@ Planner safety properties:
 
 - only six allow-listed specialist task kinds exist;
 - every task is read-only;
-- task count, graph context, parallelism and per-specialist query budget are server bounded;
+- task count, topology depth/nodes, history targets, observations per target, recent changes, parallelism and per-specialist query budget are server bounded;
+- tombstoned facts remain visible in operational context but are excluded from current `required_entity_ids`;
+- context-only persistent records are rejected from causal hypothesis scoring;
 - database/stateful work depends on the trace task so dependency identity is typed before dependency telemetry is queried;
 - the planner cannot confirm hypotheses, attach evidence, invoke mutation or bypass the separate remediation plane;
 - the execution endpoint recompiles the plan server-side, so caller-authored task graphs are never executed;
