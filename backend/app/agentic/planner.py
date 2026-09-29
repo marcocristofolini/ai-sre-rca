@@ -99,6 +99,7 @@ async def _graph_context(
     window = timedelta(
         minutes=settings.change_correlation_window_minutes
     )
+    change_limit = min(20, settings.agentic_max_context_nodes)
     recent_events = await repo.list_awareness_change_events(
         incident.tenant_id,
         incident.cluster,
@@ -106,8 +107,10 @@ async def _graph_context(
         subject_entity_id=projection.root.id,
         since=incident.starts_at - window,
         until=incident.starts_at + window,
-        limit=min(20, settings.agentic_max_context_nodes),
+        limit=change_limit + 1,
     )
+    changes_truncated = len(recent_events) > change_limit
+    recent_events = recent_events[:change_limit]
 
     return PlannerGraphContext(
         root_entity_id=projection.root.id,
@@ -127,10 +130,7 @@ async def _graph_context(
         ],
         truncated=(
             projection.truncated
-            or len(recent_events) >= min(
-                20,
-                settings.agentic_max_context_nodes,
-            )
+            or changes_truncated
         ),
     )
 
