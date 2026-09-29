@@ -27,6 +27,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Shared evidence envelope** with evidence-integrity verification. Branch-local hypotheses are advisory-only and the execution response intentionally has no `root_cause` field.
 - **Deterministic shared-envelope evaluator** that re-scores only integrity-verified evidence, reapplies trace/stateful causal gates, preserves Kubernetes precedence, fails closed when a required higher-precedence specialist did not complete, and emits a rejected-hypothesis explanation graph.
 - **Three distinct agentic surfaces:** `plan` compiles, `execute` collects read-only specialist evidence, and `investigate` runs both plus deterministic evaluation. Only `investigate` can return a root-cause verdict.
+- **Optional model-assisted planning**, disabled by default. The LLM may suggest only specialist names and rationale; the server intersects that advice with the existing allow-list, deterministic eligibility gates, mandatory baseline branches and server-owned budgets/dependencies before any task exists.
 
 Current v0.8 APIs include:
 
@@ -41,7 +42,7 @@ POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
 ```
 
-The planner remains a preview/compilation surface. Parallel specialist execution is an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. The new `/investigate` path then revalidates the shared envelope, recalculates deterministic hypothesis scores, reapplies trace/stateful causal gates, enforces Kubernetes precedence and produces an explanation graph before a root-cause verdict is allowed. The LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
+The planner remains a preview/compilation surface. Parallel specialist execution is an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. When `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`, an advisory model may prioritize optional branches, but executable tasks are still compiled exclusively from server-owned templates. Kubernetes, metrics and traces remain mandatory whenever they are deterministically eligible; unknown/ineligible model choices are rejected and malformed/model-failure responses preserve the deterministic plan. The `/investigate` path then revalidates the shared envelope, recalculates deterministic hypothesis scores, reapplies trace/stateful causal gates, enforces Kubernetes precedence and produces an explanation graph before a root-cause verdict is allowed. The LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.md) · [Agentic Investigation](docs/agentic-investigation.md).
 
