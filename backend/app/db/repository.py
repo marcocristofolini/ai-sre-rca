@@ -743,6 +743,15 @@ class SQLRepository:
                     f"ALTER TABLE {table} "
                     "ADD COLUMN IF NOT EXISTS tombstone_source VARCHAR(128)"
                 ))
+                for column in (
+                    "tombstoned_at",
+                    "tombstone_snapshot_id",
+                    "tombstone_source",
+                ):
+                    await conn.execute(text(
+                        f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} "
+                        f"ON {table} ({column})"
+                    ))
 
     async def save(self, result: InvestigationResult) -> None:
         async with self.sessions() as session:
