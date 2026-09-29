@@ -243,6 +243,7 @@ def materialize_inventory_relationships(
 
 
 def inventory_observation_id(
+    source: str,
     snapshot_id: str,
     target_type: str,
     target_id: str,
@@ -251,6 +252,7 @@ def inventory_observation_id(
     return _stable_inventory_id(
         "ao",
         "inventory",
+        source,
         snapshot_id,
         target_type,
         target_id,
