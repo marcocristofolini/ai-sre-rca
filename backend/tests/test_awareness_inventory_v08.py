@@ -9,6 +9,7 @@ from app.awareness.inventory import (
     InventoryCoverage,
     InventoryRelationship,
     InventoryResource,
+    InventorySnapshotConflictError,
     InventoryResourceRef,
 )
 from app.awareness.topology import (
@@ -434,3 +435,26 @@ async def test_blast_radius_rejects_tombstoned_source_and_edges():
             stale_after_minutes=60,
             as_of=now + timedelta(minutes=10),
         )
+
+
+
+@pytest.mark.asyncio
+async def test_snapshot_id_reuse_with_different_content_is_rejected():
+    repo = MemoryRepository()
+    now = datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc)
+    await repo.save(make_result("inc-initial", created_at=now))
+
+    original = authoritative_snapshot(
+        "snap-immutable",
+        observed_at=now + timedelta(minutes=10),
+        include_deployment=True,
+    )
+    await repo.reconcile_authoritative_inventory(original)
+
+    conflicting = authoritative_snapshot(
+        "snap-immutable",
+        observed_at=now + timedelta(minutes=10),
+        include_deployment=False,
+    )
+    with pytest.raises(InventorySnapshotConflictError):
+        await repo.reconcile_authoritative_inventory(conflicting)
