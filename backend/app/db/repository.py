@@ -6,6 +6,18 @@ from typing import Protocol
 from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.awareness.inventory import (
+    AuthoritativeInventorySnapshot,
+    InventoryReconciliationResult,
+    InventorySnapshotConflictError,
+    inventory_incident_id,
+    inventory_observation_id,
+    inventory_snapshot_fingerprint,
+    inventory_snapshot_receipt_id,
+    materialize_inventory_entities,
+    materialize_inventory_relationships,
+    resource_in_coverage,
+)
 from app.awareness.models import (
     AwarenessEntity,
     AwarenessGraphSnapshot,
@@ -69,7 +81,14 @@ class InvestigationRepository(Protocol):
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]: ...
+    async def reconcile_authoritative_inventory(
+        self,
+        snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
+    ) -> InventoryReconciliationResult: ...
     async def save_remediation_plan(self, plan: RemediationPlan) -> None: ...
     async def get_remediation_plan(
         self,
@@ -96,6 +115,30 @@ class InvestigationRepository(Protocol):
         tenant_id: str | None = None,
     ) -> dict[str, int]: ...
     async def close(self) -> None: ...
+
+
+def _inventory_reconciliation_audit(
+    snapshot: AuthoritativeInventorySnapshot,
+    result: InventoryReconciliationResult,
+    actor: str,
+) -> AuditEvent:
+    return AuditEvent(
+        tenant_id=snapshot.tenant_id,
+        actor=actor,
+        action="awareness.inventory.reconcile",
+        detail={
+            "cluster": snapshot.cluster,
+            "source": snapshot.source,
+            "snapshot_id": snapshot.snapshot_id,
+            "coverage": snapshot.coverage.model_dump(),
+            "resources_observed": result.resources_observed,
+            "relationships_observed": result.relationships_observed,
+            "entities_tombstoned": result.entities_tombstoned,
+            "relationships_tombstoned": result.relationships_tombstoned,
+            "skipped_newer_entities": result.skipped_newer_entities,
+            "skipped_newer_relationships": result.skipped_newer_relationships,
+        },
+    )
 
 
 def incident_fingerprint(incident: IncidentInput, root_cause: str | None = None) -> str:
@@ -146,6 +189,13 @@ class MemoryRepository:
                     current.last_seen = entity.last_seen
                     current.last_incident_id = entity.last_incident_id
                     current.metadata = dict(entity.metadata)
+                    if (
+                        current.tombstoned_at is not None
+                        and entity.last_seen >= current.tombstoned_at
+                    ):
+                        current.tombstoned_at = None
+                        current.tombstone_snapshot_id = None
+                        current.tombstone_source = None
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -163,6 +213,13 @@ class MemoryRepository:
                     current.last_incident_id = relationship.last_incident_id
                     current.metadata = dict(relationship.metadata)
                     current.evidence_ids = list(relationship.evidence_ids)
+                    if (
+                        current.tombstoned_at is not None
+                        and relationship.last_seen >= current.tombstoned_at
+                    ):
+                        current.tombstoned_at = None
+                        current.tombstone_snapshot_id = None
+                        current.tombstone_source = None
                 current.observation_count += 1
             self._awareness_observations[observation.id] = observation.model_copy(deep=True)
 
@@ -218,7 +275,10 @@ class MemoryRepository:
             and (namespace is None or item.namespace == namespace)
             and (kind is None or item.kind.lower() == kind.lower())
         ]
-        entities.sort(key=lambda item: item.last_seen, reverse=True)
+        entities.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         entities = entities[:max_items]
         entity_ids = {item.id for item in entities}
         relationships = [
@@ -229,7 +289,10 @@ class MemoryRepository:
             and item.source_id in entity_ids
             and item.target_id in entity_ids
         ]
-        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         relationships = relationships[: max_items * 4]
         return AwarenessGraphSnapshot(
             tenant_id=tenant_id,
@@ -273,6 +336,7 @@ class MemoryRepository:
             and (name is None or item.name == name)
             and (namespace is None or item.namespace == namespace)
             and (kind is None or item.kind.lower() == kind.lower())
+            and item.tombstoned_at is None
         ]
         items.sort(key=lambda item: item.last_seen, reverse=True)
         return items[:max(1, min(limit, 500))]
@@ -297,6 +361,7 @@ class MemoryRepository:
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
         if not entity_ids:
             return [], []
@@ -306,12 +371,16 @@ class MemoryRepository:
             for item in self._awareness_relationships.values()
             if item.tenant_id == tenant_id
             and item.cluster == cluster
+            and (include_tombstoned or item.tombstoned_at is None)
             and (
                 item.source_id in entity_ids
                 or item.target_id in entity_ids
             )
         ]
-        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         relationships = relationships[:bounded_limit]
         neighbor_ids = {
             endpoint
@@ -324,8 +393,272 @@ class MemoryRepository:
             if item.id in neighbor_ids
             and item.tenant_id == tenant_id
             and item.cluster == cluster
+            and (include_tombstoned or item.tombstoned_at is None)
         ]
         return entities, relationships
+
+    async def reconcile_authoritative_inventory(
+        self,
+        snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
+    ) -> InventoryReconciliationResult:
+        receipt_id = inventory_snapshot_receipt_id(snapshot)
+        fingerprint = inventory_snapshot_fingerprint(snapshot)
+        existing_receipt = self._awareness_observations.get(receipt_id)
+        if existing_receipt is not None:
+            if existing_receipt.payload.get("fingerprint") != fingerprint:
+                raise InventorySnapshotConflictError(
+                    "authoritative inventory snapshot_id was reused "
+                    "with different content"
+                )
+        else:
+            self._awareness_observations[receipt_id] = AwarenessObservation(
+                id=receipt_id,
+                tenant_id=snapshot.tenant_id,
+                cluster=snapshot.cluster,
+                incident_id=f"inventory:{snapshot.snapshot_id}",
+                target_type="inventory_snapshot",
+                target_id=receipt_id,
+                observed_at=snapshot.observed_at,
+                payload={
+                    "origin": "authoritative_inventory",
+                    "source": snapshot.source,
+                    "snapshot_id": snapshot.snapshot_id,
+                    "fingerprint": fingerprint,
+                },
+            )
+
+        entities = materialize_inventory_entities(snapshot)
+        relationships = materialize_inventory_relationships(snapshot)
+        origin = inventory_incident_id(snapshot)
+        result = InventoryReconciliationResult(
+            snapshot_id=snapshot.snapshot_id,
+            source=snapshot.source,
+            tenant_id=snapshot.tenant_id,
+            cluster=snapshot.cluster,
+            observed_at=snapshot.observed_at,
+            resources_observed=len(entities),
+            relationships_observed=len(relationships),
+        )
+
+        def append_observation(
+            target_type: str,
+            target_id: str,
+            action: str,
+            payload: dict,
+        ) -> bool:
+            observation_id = inventory_observation_id(
+                snapshot.source,
+                snapshot.snapshot_id,
+                target_type,
+                target_id,
+                action,
+            )
+            if observation_id in self._awareness_observations:
+                result.duplicate_observations += 1
+                return False
+            self._awareness_observations[observation_id] = AwarenessObservation(
+                id=observation_id,
+                tenant_id=snapshot.tenant_id,
+                cluster=snapshot.cluster,
+                incident_id=origin,
+                target_type=target_type,
+                target_id=target_id,
+                observed_at=snapshot.observed_at,
+                payload={
+                    "origin": "authoritative_inventory",
+                    "source": snapshot.source,
+                    "snapshot_id": snapshot.snapshot_id,
+                    "action": action,
+                    **payload,
+                },
+            )
+            return True
+
+        for entity in entities.values():
+            if not append_observation(
+                "entity",
+                entity.id,
+                "observed",
+                {"metadata": entity.metadata},
+            ):
+                continue
+            current = self._awareness_entities.get(entity.id)
+            if current is None:
+                self._awareness_entities[entity.id] = entity.model_copy(deep=True)
+                result.entities_created += 1
+                continue
+
+            current.first_seen = min(current.first_seen, entity.first_seen)
+            current.observation_count += 1
+            current_boundary = current.last_seen
+            if (
+                current.tombstoned_at is not None
+                and current.tombstoned_at > current_boundary
+            ):
+                current_boundary = current.tombstoned_at
+            if entity.last_seen < current_boundary:
+                result.skipped_newer_entities += 1
+                continue
+
+            was_tombstoned = current.tombstoned_at is not None
+            if (
+                was_tombstoned
+                and current.tombstoned_at is not None
+                and entity.last_seen >= current.tombstoned_at
+            ):
+                current.tombstoned_at = None
+                current.tombstone_snapshot_id = None
+                current.tombstone_source = None
+                result.entities_reactivated += 1
+            else:
+                result.entities_refreshed += 1
+            current.last_seen = entity.last_seen
+            current.last_incident_id = entity.last_incident_id
+            current.metadata = dict(entity.metadata)
+
+        covered_entity_ids = {
+            item.id
+            for item in self._awareness_entities.values()
+            if item.tenant_id == snapshot.tenant_id
+            and item.cluster == snapshot.cluster
+            and item.metadata.get("temporal_role") != "event"
+            and resource_in_coverage(
+                item.kind,
+                item.namespace,
+                snapshot.coverage,
+            )
+        }
+        newly_tombstoned_entity_ids: set[str] = set()
+        for entity_id in sorted(covered_entity_ids - set(entities)):
+            current = self._awareness_entities[entity_id]
+            if current.last_seen > snapshot.observed_at:
+                result.skipped_newer_entities += 1
+                continue
+            if current.tombstoned_at is not None:
+                continue
+            if not append_observation(
+                "entity",
+                entity_id,
+                "tombstoned",
+                {
+                    "kind": current.kind,
+                    "name": current.name,
+                    "namespace": current.namespace,
+                },
+            ):
+                continue
+            current.tombstoned_at = snapshot.observed_at
+            current.tombstone_snapshot_id = snapshot.snapshot_id
+            current.tombstone_source = snapshot.source
+            newly_tombstoned_entity_ids.add(entity_id)
+            result.entities_tombstoned += 1
+
+        for relationship in relationships.values():
+            if not append_observation(
+                "relationship",
+                relationship.id,
+                "observed",
+                {
+                    "metadata": relationship.metadata,
+                    "relationship": relationship.relationship,
+                },
+            ):
+                continue
+            current = self._awareness_relationships.get(relationship.id)
+            if current is None:
+                self._awareness_relationships[relationship.id] = (
+                    relationship.model_copy(deep=True)
+                )
+                result.relationships_created += 1
+                continue
+
+            current.first_seen = min(
+                current.first_seen,
+                relationship.first_seen,
+            )
+            current.observation_count += 1
+            current_boundary = current.last_seen
+            if (
+                current.tombstoned_at is not None
+                and current.tombstoned_at > current_boundary
+            ):
+                current_boundary = current.tombstoned_at
+            if relationship.last_seen < current_boundary:
+                result.skipped_newer_relationships += 1
+                continue
+
+            was_tombstoned = current.tombstoned_at is not None
+            if (
+                was_tombstoned
+                and current.tombstoned_at is not None
+                and relationship.last_seen >= current.tombstoned_at
+            ):
+                current.tombstoned_at = None
+                current.tombstone_snapshot_id = None
+                current.tombstone_source = None
+                result.relationships_reactivated += 1
+            else:
+                result.relationships_refreshed += 1
+            current.last_seen = relationship.last_seen
+            current.last_incident_id = relationship.last_incident_id
+            current.metadata = dict(relationship.metadata)
+            current.evidence_ids = list(relationship.evidence_ids)
+
+        authoritative_relationship_types = set(
+            snapshot.coverage.relationship_types
+        )
+        for current in self._awareness_relationships.values():
+            if (
+                current.tenant_id != snapshot.tenant_id
+                or current.cluster != snapshot.cluster
+                or current.metadata.get("temporal_role") == "event"
+                or current.id in relationships
+                or current.tombstoned_at is not None
+            ):
+                continue
+
+            cascaded = (
+                current.source_id in newly_tombstoned_entity_ids
+                or current.target_id in newly_tombstoned_entity_ids
+            )
+            explicitly_covered = (
+                current.relationship in authoritative_relationship_types
+                and current.source_id in covered_entity_ids
+                and current.target_id in covered_entity_ids
+            )
+            if not cascaded and not explicitly_covered:
+                continue
+            if current.last_seen > snapshot.observed_at:
+                result.skipped_newer_relationships += 1
+                continue
+            if not append_observation(
+                "relationship",
+                current.id,
+                "tombstoned",
+                {
+                    "relationship": current.relationship,
+                    "source_id": current.source_id,
+                    "target_id": current.target_id,
+                    "reason": (
+                        "endpoint_tombstoned"
+                        if cascaded
+                        else "absent_from_authoritative_relationship_inventory"
+                    ),
+                },
+            ):
+                continue
+            current.tombstoned_at = snapshot.observed_at
+            current.tombstone_snapshot_id = snapshot.snapshot_id
+            current.tombstone_source = snapshot.source
+            result.relationships_tombstoned += 1
+
+        if actor is not None:
+            self._audit.append(
+                _inventory_reconciliation_audit(snapshot, result, actor)
+            )
+        return result
 
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
         self._remediation[plan.id] = plan.model_copy(deep=True)
@@ -442,6 +775,28 @@ class SQLRepository:
                 "CREATE INDEX IF NOT EXISTS investigations_embedding_hnsw "
                 "ON investigations USING hnsw (embedding vector_cosine_ops)"
             ))
+            for table in ("awareness_entities", "awareness_relationships"):
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ"
+                ))
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstone_snapshot_id VARCHAR(128)"
+                ))
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstone_source VARCHAR(128)"
+                ))
+                for column in (
+                    "tombstoned_at",
+                    "tombstone_snapshot_id",
+                    "tombstone_source",
+                ):
+                    await conn.execute(text(
+                        f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} "
+                        f"ON {table} ({column})"
+                    ))
 
     async def save(self, result: InvestigationResult) -> None:
         async with self.sessions() as session:
@@ -503,6 +858,13 @@ class SQLRepository:
                     record.last_seen = entity.last_seen
                     record.last_incident_id = entity.last_incident_id
                     record.metadata_json = dict(entity.metadata)
+                    if (
+                        record.tombstoned_at is not None
+                        and entity.last_seen >= record.tombstoned_at
+                    ):
+                        record.tombstoned_at = None
+                        record.tombstone_snapshot_id = None
+                        record.tombstone_source = None
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
@@ -542,6 +904,13 @@ class SQLRepository:
                     record.last_incident_id = relationship.last_incident_id
                     record.metadata_json = dict(relationship.metadata)
                     record.evidence_ids = list(relationship.evidence_ids)
+                    if (
+                        record.tombstoned_at is not None
+                        and relationship.last_seen >= record.tombstoned_at
+                    ):
+                        record.tombstoned_at = None
+                        record.tombstone_snapshot_id = None
+                        record.tombstone_source = None
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
@@ -613,7 +982,15 @@ class SQLRepository:
                 AwarenessEntityRecord.tenant_id == tenant_id,
                 AwarenessEntityRecord.cluster == cluster,
             )
-            .order_by(AwarenessEntityRecord.last_seen.desc())
+            .order_by(
+                func.greatest(
+                    AwarenessEntityRecord.last_seen,
+                    func.coalesce(
+                        AwarenessEntityRecord.tombstoned_at,
+                        AwarenessEntityRecord.last_seen,
+                    ),
+                ).desc()
+            )
             .limit(max_items)
         )
         if namespace is not None:
@@ -636,7 +1013,15 @@ class SQLRepository:
                         AwarenessRelationshipRecord.source_id.in_(entity_ids),
                         AwarenessRelationshipRecord.target_id.in_(entity_ids),
                     )
-                    .order_by(AwarenessRelationshipRecord.last_seen.desc())
+                    .order_by(
+                        func.greatest(
+                            AwarenessRelationshipRecord.last_seen,
+                            func.coalesce(
+                                AwarenessRelationshipRecord.tombstoned_at,
+                                AwarenessRelationshipRecord.last_seen,
+                            ),
+                        ).desc()
+                    )
                     .limit(max_items * 4)
                 )
                 relationship_rows = list(
@@ -656,6 +1041,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in entity_rows
         ]
@@ -673,6 +1061,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in relationship_rows
         ]
@@ -731,6 +1122,7 @@ class SQLRepository:
             .where(
                 AwarenessEntityRecord.tenant_id == tenant_id,
                 AwarenessEntityRecord.cluster == cluster,
+                AwarenessEntityRecord.tombstoned_at.is_(None),
             )
             .order_by(AwarenessEntityRecord.last_seen.desc())
             .limit(max(1, min(limit, 500)))
@@ -760,6 +1152,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in rows
         ]
@@ -791,6 +1186,9 @@ class SQLRepository:
             last_seen=row.last_seen,
             last_incident_id=row.last_incident_id,
             observation_count=row.observation_count,
+            tombstoned_at=row.tombstoned_at,
+            tombstone_snapshot_id=row.tombstone_snapshot_id,
+            tombstone_source=row.tombstone_source,
         )
 
     async def get_awareness_neighbors(
@@ -800,21 +1198,36 @@ class SQLRepository:
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
         if not entity_ids:
             return [], []
         bounded_limit = max(1, min(limit, 8001))
-        relationship_statement = (
-            select(AwarenessRelationshipRecord)
-            .where(
-                AwarenessRelationshipRecord.tenant_id == tenant_id,
-                AwarenessRelationshipRecord.cluster == cluster,
-                or_(
-                    AwarenessRelationshipRecord.source_id.in_(entity_ids),
-                    AwarenessRelationshipRecord.target_id.in_(entity_ids),
-                ),
+        relationship_statement = select(
+            AwarenessRelationshipRecord
+        ).where(
+            AwarenessRelationshipRecord.tenant_id == tenant_id,
+            AwarenessRelationshipRecord.cluster == cluster,
+            or_(
+                AwarenessRelationshipRecord.source_id.in_(entity_ids),
+                AwarenessRelationshipRecord.target_id.in_(entity_ids),
+            ),
+        )
+        if not include_tombstoned:
+            relationship_statement = relationship_statement.where(
+                AwarenessRelationshipRecord.tombstoned_at.is_(None)
             )
-            .order_by(AwarenessRelationshipRecord.last_seen.desc())
+        relationship_statement = (
+            relationship_statement
+            .order_by(
+                func.greatest(
+                    AwarenessRelationshipRecord.last_seen,
+                    func.coalesce(
+                        AwarenessRelationshipRecord.tombstoned_at,
+                        AwarenessRelationshipRecord.last_seen,
+                    ),
+                ).desc()
+            )
             .limit(bounded_limit)
         )
         async with self.sessions() as session:
@@ -836,6 +1249,10 @@ class SQLRepository:
                     AwarenessEntityRecord.cluster == cluster,
                     AwarenessEntityRecord.id.in_(neighbor_ids),
                 )
+                if not include_tombstoned:
+                    entity_statement = entity_statement.where(
+                        AwarenessEntityRecord.tombstoned_at.is_(None)
+                    )
                 entity_rows = list(
                     (await session.scalars(entity_statement)).all()
                 )
@@ -853,6 +1270,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in entity_rows
         ]
@@ -870,10 +1290,386 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in relationship_rows
         ]
         return entities, relationships
+
+    async def reconcile_authoritative_inventory(
+        self,
+        snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
+    ) -> InventoryReconciliationResult:
+        entities = materialize_inventory_entities(snapshot)
+        relationships = materialize_inventory_relationships(snapshot)
+        origin = inventory_incident_id(snapshot)
+        result = InventoryReconciliationResult(
+            snapshot_id=snapshot.snapshot_id,
+            source=snapshot.source,
+            tenant_id=snapshot.tenant_id,
+            cluster=snapshot.cluster,
+            observed_at=snapshot.observed_at,
+            resources_observed=len(entities),
+            relationships_observed=len(relationships),
+        )
+
+        async with self.sessions() as session:
+            # Serialize authoritative snapshots for one source/scope. This keeps
+            # concurrent retries idempotent and prevents two different snapshots
+            # from interleaving tombstone/current-state writes.
+            lock_scope = "\x1f".join(
+                (
+                    "awareness-inventory",
+                    snapshot.tenant_id,
+                    snapshot.cluster,
+                    snapshot.source,
+                )
+            )
+            await session.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtextextended(:scope, 0))"
+                ),
+                {"scope": lock_scope},
+            )
+
+            receipt_id = inventory_snapshot_receipt_id(snapshot)
+            fingerprint = inventory_snapshot_fingerprint(snapshot)
+            existing_receipt = await session.get(
+                AwarenessObservationRecord,
+                receipt_id,
+            )
+            if existing_receipt is not None:
+                if (
+                    (existing_receipt.payload or {}).get("fingerprint")
+                    != fingerprint
+                ):
+                    raise InventorySnapshotConflictError(
+                        "authoritative inventory snapshot_id was reused "
+                        "with different content"
+                    )
+            else:
+                session.add(AwarenessObservationRecord(
+                    id=receipt_id,
+                    tenant_id=snapshot.tenant_id,
+                    cluster=snapshot.cluster,
+                    incident_id=origin,
+                    target_type="inventory_snapshot",
+                    target_id=receipt_id,
+                    observed_at=snapshot.observed_at,
+                    payload={
+                        "origin": "authoritative_inventory",
+                        "source": snapshot.source,
+                        "snapshot_id": snapshot.snapshot_id,
+                        "fingerprint": fingerprint,
+                    },
+                ))
+
+            async def append_observation(
+                target_type: str,
+                target_id: str,
+                action: str,
+                payload: dict,
+            ) -> bool:
+                observation_id = inventory_observation_id(
+                    snapshot.source,
+                    snapshot.snapshot_id,
+                    target_type,
+                    target_id,
+                    action,
+                )
+                if await session.get(
+                    AwarenessObservationRecord,
+                    observation_id,
+                ):
+                    result.duplicate_observations += 1
+                    return False
+                session.add(AwarenessObservationRecord(
+                    id=observation_id,
+                    tenant_id=snapshot.tenant_id,
+                    cluster=snapshot.cluster,
+                    incident_id=origin,
+                    target_type=target_type,
+                    target_id=target_id,
+                    observed_at=snapshot.observed_at,
+                    payload={
+                        "origin": "authoritative_inventory",
+                        "source": snapshot.source,
+                        "snapshot_id": snapshot.snapshot_id,
+                        "action": action,
+                        **payload,
+                    },
+                ))
+                return True
+
+            for entity in entities.values():
+                if not await append_observation(
+                    "entity",
+                    entity.id,
+                    "observed",
+                    {"metadata": entity.metadata},
+                ):
+                    continue
+                record = await session.get(AwarenessEntityRecord, entity.id)
+                if record is None:
+                    session.add(AwarenessEntityRecord(
+                        id=entity.id,
+                        tenant_id=entity.tenant_id,
+                        cluster=entity.cluster,
+                        kind=entity.kind,
+                        name=entity.name,
+                        namespace=entity.namespace,
+                        metadata_json=entity.metadata,
+                        first_seen=entity.first_seen,
+                        last_seen=entity.last_seen,
+                        last_incident_id=entity.last_incident_id,
+                        observation_count=1,
+                    ))
+                    result.entities_created += 1
+                    continue
+
+                record.first_seen = min(record.first_seen, entity.first_seen)
+                record.observation_count += 1
+                current_boundary = record.last_seen
+                if (
+                    record.tombstoned_at is not None
+                    and record.tombstoned_at > current_boundary
+                ):
+                    current_boundary = record.tombstoned_at
+                if entity.last_seen < current_boundary:
+                    result.skipped_newer_entities += 1
+                    continue
+                was_tombstoned = record.tombstoned_at is not None
+                if (
+                    was_tombstoned
+                    and record.tombstoned_at is not None
+                    and entity.last_seen >= record.tombstoned_at
+                ):
+                    record.tombstoned_at = None
+                    record.tombstone_snapshot_id = None
+                    record.tombstone_source = None
+                    result.entities_reactivated += 1
+                else:
+                    result.entities_refreshed += 1
+                record.last_seen = entity.last_seen
+                record.last_incident_id = entity.last_incident_id
+                record.metadata_json = dict(entity.metadata)
+
+            covered_statement = select(AwarenessEntityRecord).where(
+                AwarenessEntityRecord.tenant_id == snapshot.tenant_id,
+                AwarenessEntityRecord.cluster == snapshot.cluster,
+                func.lower(AwarenessEntityRecord.kind).in_(
+                    [item.casefold() for item in snapshot.coverage.kinds]
+                ),
+            )
+            if snapshot.coverage.namespaces is not None:
+                covered_statement = covered_statement.where(
+                    AwarenessEntityRecord.namespace.in_(
+                        snapshot.coverage.namespaces
+                    )
+                )
+            covered_rows = list(
+                (await session.scalars(covered_statement)).all()
+            )
+            covered_entity_ids = {
+                row.id
+                for row in covered_rows
+                if (row.metadata_json or {}).get("temporal_role") != "event"
+            }
+            newly_tombstoned_entity_ids: set[str] = set()
+            for row in covered_rows:
+                if (
+                    row.id in entities
+                    or (row.metadata_json or {}).get("temporal_role") == "event"
+                ):
+                    continue
+                if row.last_seen > snapshot.observed_at:
+                    result.skipped_newer_entities += 1
+                    continue
+                if row.tombstoned_at is not None:
+                    continue
+                if not await append_observation(
+                    "entity",
+                    row.id,
+                    "tombstoned",
+                    {
+                        "kind": row.kind,
+                        "name": row.name,
+                        "namespace": row.namespace,
+                    },
+                ):
+                    continue
+                row.tombstoned_at = snapshot.observed_at
+                row.tombstone_snapshot_id = snapshot.snapshot_id
+                row.tombstone_source = snapshot.source
+                newly_tombstoned_entity_ids.add(row.id)
+                result.entities_tombstoned += 1
+
+            for relationship in relationships.values():
+                if not await append_observation(
+                    "relationship",
+                    relationship.id,
+                    "observed",
+                    {
+                        "metadata": relationship.metadata,
+                        "relationship": relationship.relationship,
+                    },
+                ):
+                    continue
+                record = await session.get(
+                    AwarenessRelationshipRecord,
+                    relationship.id,
+                )
+                if record is None:
+                    session.add(AwarenessRelationshipRecord(
+                        id=relationship.id,
+                        tenant_id=relationship.tenant_id,
+                        cluster=relationship.cluster,
+                        source_id=relationship.source_id,
+                        target_id=relationship.target_id,
+                        relationship=relationship.relationship,
+                        metadata_json=relationship.metadata,
+                        evidence_ids=relationship.evidence_ids,
+                        first_seen=relationship.first_seen,
+                        last_seen=relationship.last_seen,
+                        last_incident_id=relationship.last_incident_id,
+                        observation_count=1,
+                    ))
+                    result.relationships_created += 1
+                    continue
+
+                record.first_seen = min(
+                    record.first_seen,
+                    relationship.first_seen,
+                )
+                record.observation_count += 1
+                current_boundary = record.last_seen
+                if (
+                    record.tombstoned_at is not None
+                    and record.tombstoned_at > current_boundary
+                ):
+                    current_boundary = record.tombstoned_at
+                if relationship.last_seen < current_boundary:
+                    result.skipped_newer_relationships += 1
+                    continue
+                was_tombstoned = record.tombstoned_at is not None
+                if (
+                    was_tombstoned
+                    and record.tombstoned_at is not None
+                    and relationship.last_seen >= record.tombstoned_at
+                ):
+                    record.tombstoned_at = None
+                    record.tombstone_snapshot_id = None
+                    record.tombstone_source = None
+                    result.relationships_reactivated += 1
+                else:
+                    result.relationships_refreshed += 1
+                record.last_seen = relationship.last_seen
+                record.last_incident_id = relationship.last_incident_id
+                record.metadata_json = dict(relationship.metadata)
+                record.evidence_ids = list(relationship.evidence_ids)
+
+            relationship_filters = []
+            if snapshot.coverage.relationship_types:
+                relationship_filters.append(
+                    AwarenessRelationshipRecord.relationship.in_(
+                        snapshot.coverage.relationship_types
+                    )
+                )
+            if newly_tombstoned_entity_ids:
+                relationship_filters.append(or_(
+                    AwarenessRelationshipRecord.source_id.in_(
+                        newly_tombstoned_entity_ids
+                    ),
+                    AwarenessRelationshipRecord.target_id.in_(
+                        newly_tombstoned_entity_ids
+                    ),
+                ))
+
+            if relationship_filters:
+                relationship_statement = select(
+                    AwarenessRelationshipRecord
+                ).where(
+                    AwarenessRelationshipRecord.tenant_id
+                    == snapshot.tenant_id,
+                    AwarenessRelationshipRecord.cluster == snapshot.cluster,
+                    AwarenessRelationshipRecord.tombstoned_at.is_(None),
+                    or_(*relationship_filters),
+                )
+                relationship_rows = list(
+                    (await session.scalars(relationship_statement)).all()
+                )
+                authoritative_relationship_types = set(
+                    snapshot.coverage.relationship_types
+                )
+                for row in relationship_rows:
+                    if (
+                        row.id in relationships
+                        or (row.metadata_json or {}).get("temporal_role")
+                        == "event"
+                    ):
+                        continue
+                    cascaded = (
+                        row.source_id in newly_tombstoned_entity_ids
+                        or row.target_id in newly_tombstoned_entity_ids
+                    )
+                    explicitly_covered = (
+                        row.relationship
+                        in authoritative_relationship_types
+                        and row.source_id in covered_entity_ids
+                        and row.target_id in covered_entity_ids
+                    )
+                    if not cascaded and not explicitly_covered:
+                        continue
+                    if row.last_seen > snapshot.observed_at:
+                        result.skipped_newer_relationships += 1
+                        continue
+                    if not await append_observation(
+                        "relationship",
+                        row.id,
+                        "tombstoned",
+                        {
+                            "relationship": row.relationship,
+                            "source_id": row.source_id,
+                            "target_id": row.target_id,
+                            "reason": (
+                                "endpoint_tombstoned"
+                                if cascaded
+                                else (
+                                    "absent_from_authoritative_"
+                                    "relationship_inventory"
+                                )
+                            ),
+                        },
+                    ):
+                        continue
+                    row.tombstoned_at = snapshot.observed_at
+                    row.tombstone_snapshot_id = snapshot.snapshot_id
+                    row.tombstone_source = snapshot.source
+                    result.relationships_tombstoned += 1
+
+            if actor is not None:
+                audit = _inventory_reconciliation_audit(
+                    snapshot,
+                    result,
+                    actor,
+                )
+                session.add(AuditEventRecord(
+                    id=audit.id,
+                    incident_id=audit.incident_id,
+                    tenant_id=audit.tenant_id,
+                    actor=audit.actor,
+                    action=audit.action,
+                    detail=audit.detail,
+                    created_at=audit.created_at,
+                ))
+
+            await session.commit()
+        return result
 
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
         async with self.sessions() as session:

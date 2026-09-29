@@ -89,6 +89,7 @@ async def _graph_context(
             ),
             max_edges=settings.awareness_max_traversal_edges,
             stale_after_minutes=settings.awareness_stale_after_minutes,
+            include_tombstoned=False,
         )
     except (AwarenessEntityNotFoundError, AmbiguousServiceError):
         return PlannerGraphContext()

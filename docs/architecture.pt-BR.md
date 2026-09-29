@@ -434,19 +434,27 @@ flowchart LR
 
 A identidade canônica da entidade deriva de `tenant + cluster + kind + namespace + name`. A identidade da relação deriva dos endpoints canônicos no mesmo escopo mais o tipo da relação. Persistir novamente o mesmo incidente é idempotente.
 
-### Reconciliação não inventa deleção
+### Reconciliação autoritativa sem inferir deleção
 
 ```mermaid
 flowchart TD
-    LS[last_seen] --> CMP{Mais antigo que o threshold de stale?}
+    INC[Observação de Incidente] --> LS[last_seen]
+    LS --> CMP{Mais antigo que o threshold de stale?}
     CMP -->|Não| F[Fresh]
     CMP -->|Sim| S[Stale]
     S --> KEEP[Preservar registro atual + histórico]
-    KEEP --> WAIT[Aguardar fonte autoritativa de inventário]
-    WAIT -. futuro .-> T[Tombstone / deleção]
+
+    API[Reconciliação Admin de Inventário] --> SRC{Fonte allow-listed?}
+    SRC -->|Não| DENY[Rejeitar]
+    SRC -->|Sim| COMPLETE{Snapshot completo + cobertura explícita?}
+    COMPLETE -->|Não| DENY
+    COMPLETE -->|Sim| DIFF[Comparar inventário coberto]
+    DIFF -->|Presente| REFRESH[Atualizar / Reativar]
+    DIFF -->|Ausente e sem observação mais nova| T[Tombstone]
+    DIFF -->|Existe fato mais novo| PRESERVE[Preservar fato mais novo]
 ```
 
-Observações de incidentes são parciais. Portanto, um recurso ausente em um RCA posterior não é tratado como deletado.
+Observações de incidentes continuam parciais e nunca removem estado do grafo. Tombstones só são produzidos por snapshot completo, autorizado para admin e vindo de fonte autoritativa allow-listed. O escopo é explícito por kind, namespace e tipo de relação. Tombstones permanecem no histórico/topologia, aparecem no Awareness Explorer e ficam fora da resolução corrente de entidades e da travessia de blast radius.
 
 ### Projeção de serviço
 

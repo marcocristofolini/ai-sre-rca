@@ -434,19 +434,27 @@ flowchart LR
 
 Canonical entity identity is derived from `tenant + cluster + kind + namespace + name`. Relationship identity is derived from the scoped canonical endpoints plus relationship type. Re-saving the same incident is idempotent.
 
-### Reconciliation does not invent deletion
+### Authoritative reconciliation without inferred deletion
 
 ```mermaid
 flowchart TD
-    LS[last_seen] --> CMP{Older than stale threshold?}
+    INC[Incident Observation] --> LS[last_seen]
+    LS --> CMP{Older than stale threshold?}
     CMP -->|No| F[Fresh]
     CMP -->|Yes| S[Stale]
     S --> KEEP[Keep current record + history]
-    KEEP --> WAIT[Wait for authoritative inventory source]
-    WAIT -. future .-> T[Tombstone / deletion]
+
+    API[Admin Inventory Reconcile] --> SRC{Allow-listed source?}
+    SRC -->|No| DENY[Reject]
+    SRC -->|Yes| COMPLETE{Complete snapshot + explicit coverage?}
+    COMPLETE -->|No| DENY
+    COMPLETE -->|Yes| DIFF[Diff covered inventory]
+    DIFF -->|Present| REFRESH[Refresh / Reactivate]
+    DIFF -->|Absent and no newer observation| T[Tombstone]
+    DIFF -->|Newer graph fact exists| PRESERVE[Preserve newer fact]
 ```
 
-Incident observations are partial. A resource missing from a later RCA is therefore not treated as deleted.
+Incident observations remain partial and can never delete graph state. Tombstones are produced only by a complete, admin-authorized snapshot from an allow-listed authoritative source. The scope is explicit by kind, namespace and relationship type. Tombstones remain in history/topology, are visible in the Awareness Explorer, and are excluded from current entity resolution and blast-radius traversal.
 
 ### Service projection
 

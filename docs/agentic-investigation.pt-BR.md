@@ -198,4 +198,4 @@ O resultado inclui `root_cause` determinística somente quando todos esses gates
 
 ## Próxima fase
 
-Os eventos first-class de deployment/change e o explorer read-only do Persistent Awareness Graph agora fazem parte da v0.8. O gap restante da fundação do grafo é a reconciliação autoritativa de inventário completo/tombstones. A próxima geração agentic poderá usar eventos temporais e projeções persistentes mais ricos como contexto bounded de planejamento sem tratar correlação visível na UI como prova causal.
+Os eventos first-class de deployment/change, o explorer read-only do Persistent Awareness Graph e a reconciliação autoritativa de inventário completo com tombstones agora fazem parte da v0.8. Ausência em incidente continua sem semântica de deleção; somente snapshot autorizado para admin e vindo de fonte allow-listed pode tombstonar fatos cobertos, e snapshots antigos não removem observações mais novas. A próxima geração agentic poderá usar estado atual, histórico e explicitamente tombstoned como contexto bounded de planejamento sem tratar correlação visível na UI ou ausência histórica como prova causal.

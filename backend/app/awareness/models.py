@@ -59,6 +59,9 @@ class AwarenessEntity(BaseModel):
     last_seen: datetime
     last_incident_id: str
     observation_count: int = 1
+    tombstoned_at: datetime | None = None
+    tombstone_snapshot_id: str | None = None
+    tombstone_source: str | None = None
 
 
 class AwarenessRelationship(BaseModel):
@@ -74,6 +77,9 @@ class AwarenessRelationship(BaseModel):
     last_seen: datetime
     last_incident_id: str
     observation_count: int = 1
+    tombstoned_at: datetime | None = None
+    tombstone_snapshot_id: str | None = None
+    tombstone_source: str | None = None
 
 
 class AwarenessObservation(BaseModel):
@@ -81,7 +87,7 @@ class AwarenessObservation(BaseModel):
     tenant_id: str
     cluster: str
     incident_id: str
-    target_type: Literal["entity", "relationship"]
+    target_type: Literal["entity", "relationship", "inventory_snapshot"]
     target_id: str
     observed_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)

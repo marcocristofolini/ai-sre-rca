@@ -30,9 +30,9 @@ The graph stores three record families:
 
 - `awareness_entities`: current logical entity state, first/last seen timestamps and observation count;
 - `awareness_relationships`: current relationship state, evidence references from the latest observation, first/last seen and observation count;
-- `awareness_observations`: immutable per-incident observations for entity or relationship history.
+- `awareness_observations`: immutable entity/relationship history plus inventory-snapshot receipts used to enforce replay identity.
 
-Observation IDs are deterministic from `incident + target`. Re-saving the same incident is therefore idempotent and cannot inflate observation counts. Older metadata and evidence references remain in `awareness_observations`; the current entity/relationship record reflects the newest observation.
+Incident observation IDs are deterministic from `incident + target`. Authoritative inventory observations use `source + snapshot + target + action`. Replaying the same evidence is therefore idempotent and cannot inflate observation counts. Older metadata and evidence references remain in `awareness_observations`; the current entity/relationship record reflects the newest valid observation. Entity and relationship records also carry explicit tombstone timestamp, source and snapshot identity when a complete authoritative inventory proves that a previously known fact is no longer current.
 
 ~~~mermaid
 flowchart LR
@@ -51,19 +51,26 @@ Graph ingestion happens inside the repository save boundary. With PostgreSQL, th
 
 ## Topology reconciliation
 
-v0.8 classifies persistent topology entities/relationships as `fresh` or `stale` from `last_seen` and a server-controlled threshold. Immutable temporal facts such as `ChangeEvent` nodes reconcile as `historical` instead.
+v0.8 classifies persistent topology entities/relationships as `fresh`, `stale` or `tombstoned`. Fresh/stale comes from `last_seen` and a server-controlled threshold. Immutable temporal facts such as `ChangeEvent` nodes reconcile as `historical` instead.
 
 ~~~mermaid
 flowchart LR
-    CUR[Current Graph State] --> AGE[Compare last_seen with threshold]
+    INC[Partial Incident Observation] --> CUR[Current Graph State]
+    CUR --> AGE[Compare last_seen with threshold]
     AGE -->|inside threshold| F[Fresh]
     AGE -->|older than threshold| S[Stale]
-    OBS[Append-only Observations] --> CUR
-    S --> KEEP[Keep historical node/edge]
-    KEEP --> NO[No inferred deletion]
+    S --> KEEP[Keep fact, infer no deletion]
+
+    INV[Complete Authoritative Inventory] --> SCOPE[Validate source + declared coverage]
+    SCOPE --> PRESENT[Refresh facts present in snapshot]
+    SCOPE --> ABSENT[Covered fact absent from snapshot]
+    ABSENT -->|last_seen <= snapshot time| T[Tombstoned]
+    ABSENT -->|newer graph observation exists| SKIP[Preserve newer fact]
 ~~~
 
-The system deliberately does **not** infer deletion or a tombstone from absence in a later incident. Incident-derived observations are partial, not authoritative cluster inventory snapshots. True tombstones require a future full-inventory reconciliation source.
+Absence from an incident is never deletion evidence. A tombstone can only come from `POST /api/v1/awareness/inventory/reconcile`, requires the admin role, a source in `AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES`, `complete=true`, and explicit kind/namespace/relationship coverage. Resources outside that declared coverage are untouched. ChangeEvent nodes and event relationships are excluded from inventory tombstoning.
+
+A newer incident or authoritative inventory observation can reactivate a tombstoned fact. Older snapshots can never overwrite or delete a newer graph observation. The tuple `tenant + cluster + source + snapshot_id` is immutable: replaying identical content is idempotent, while reusing that identity with different content is rejected as a conflict. Tombstoned facts remain queryable in the graph/history for explanation, but current entity resolution and blast-radius traversal exclude them.
 
 ## Service-centric projections
 
@@ -84,7 +91,7 @@ Blast radius is not a generic graph traversal. Relationship types have explicit 
 | `runs_as` | service → workload | workload → service |
 | `serves` | workload → service | workload → service |
 
-Unknown relationship types remain visible in topology responses but are never traversed as impact paths. Relationships classified as `stale` are also excluded from current blast-radius propagation and are returned separately as skipped stale relationship IDs.
+Unknown relationship types remain visible in topology responses but are never traversed as impact paths. Relationships classified as `stale` or `tombstoned` are excluded from current blast-radius propagation. A tombstoned entity cannot be used as a current blast-radius source, and tombstoned targets are not promoted as current impacts.
 
 ## API
 
@@ -95,9 +102,10 @@ GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
 GET /api/v1/awareness/topology?cluster=<cluster>
 GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
 GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
+POST /api/v1/awareness/inventory/reconcile?cluster=<cluster>
 ~~~
 
-The tenant comes from the authenticated principal. A platform principal with `tenant_id="*"` must explicitly provide `tenant_id`; ordinary principals cannot request another tenant. Existing cluster authorization is enforced before graph access.
+The tenant comes from the authenticated principal. A platform principal with `tenant_id="*"` must explicitly provide `tenant_id`; ordinary principals cannot request another tenant. Existing cluster authorization is enforced before graph access. Inventory reconciliation additionally requires the admin role and an allow-listed authoritative source. Every accepted reconciliation is written to the audit log with its scope and tombstone counts.
 
 Default server-side bounds are `depth=4`, `nodes=200`, `edges=800`, with a 24-hour stale threshold. They are configurable through Helm/environment settings.
 
@@ -105,10 +113,14 @@ Default server-side bounds are `depth=4`, `nodes=200`, `edges=800`, with a 24-ho
 
 - no infrastructure mutation is introduced;
 - no LLM can create persistent graph facts directly;
-- only investigation entities and relationships enter the graph;
+- incident evidence can add observations, while deletion state can only be changed by a complete allow-listed authoritative inventory snapshot;
 - unknown edge endpoints are skipped rather than invented;
 - tenant and cluster are included in canonical identity and every repository query;
-- historical observations are preserved even when current metadata changes.
+- historical observations are preserved even when current metadata changes;
+- incident absence never creates tombstones;
+- snapshot coverage is explicit and fail-closed;
+- older snapshots cannot tombstone newer observations;
+- ChangeEvents are historical facts and are never inventory-tombstoned.
 
 ## Next v0.8 phases
 
@@ -119,11 +131,11 @@ Completed in the current development branch:
 - causal-direction-aware blast-radius traversal;
 - bounded graph context for the Investigation Planner;
 - deterministic shared-envelope evaluation and rejected-hypothesis explanation graph;
-- read-only Awareness Explorer for reconciled topology, service projections and ChangeEvent history.
+- read-only Awareness Explorer for reconciled topology, service projections and ChangeEvent history;
+- authoritative complete-inventory reconciliation with first-class tombstones, audit records and reactivation semantics.
 
 Still planned:
 
-- authoritative tombstones from full inventory reconciliation;
 - authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
 - graph health metrics and retention policy;
 - richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
@@ -131,7 +143,7 @@ Still planned:
 
 ## Read-only Awareness Explorer
 
-The Next.js route `/awareness` consumes only viewer APIs. It can scope by cluster, namespace and service, renders reconciled `fresh` / `stale` / `historical` entity state, shows persisted relationships, and places ChangeEvents on a bounded historical timeline. Service filters switch the topology read to the existing bounded service projection endpoint rather than implementing graph traversal in the browser.
+The Next.js route `/awareness` consumes only viewer APIs. It can scope by cluster, namespace and service, renders reconciled `fresh` / `stale` / `historical` / `tombstoned` entity state, shows persisted relationships, and places ChangeEvents on a bounded historical timeline. Service filters switch the topology read to the existing bounded service projection endpoint rather than implementing graph traversal in the browser.
 
 The explorer forwards the same authorization headers as the existing UI and exposes an optional tenant override only for principals that already have global tenant scope. It has no mutation controls and no graph-write endpoint.
 

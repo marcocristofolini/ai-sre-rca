@@ -197,13 +197,14 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .awarenessFilters input:focus { border-color:rgba(116,224,180,.48); box-shadow:0 0 0 2px rgba(116,224,180,.05); }
 .awarenessFilters button { border:1px solid rgba(116,224,180,.38); background:rgba(116,224,180,.07); color:var(--accent); border-radius:7px; padding:10px 12px; font-size:8px; font-weight:850; letter-spacing:.11em; cursor:pointer; white-space:nowrap; }
 .awarenessFilters button:hover { background:rgba(116,224,180,.12); }
-.awarenessStats { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.awarenessStats { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:10px; margin-top:14px; }
 .awarenessStat { padding:13px; display:grid; gap:4px; }
 .awarenessStat span { color:#71849a; font-size:8px; text-transform:uppercase; letter-spacing:.11em; }
 .awarenessStat strong { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:22px; }
 .awarenessStat.fresh strong { color:var(--accent); }
 .awarenessStat.stale strong { color:var(--warn); }
 .awarenessStat.historical strong { color:#8fbfff; }
+.awarenessStat.tombstoned strong { color:var(--danger); }
 .awarenessRoot { border-color:rgba(116,224,180,.22); }
 .awarenessRootBody { display:flex; justify-content:space-between; align-items:flex-end; gap:18px; }
 .awarenessRootBody h2 { margin-bottom:4px; }
@@ -219,6 +220,7 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .freshnessBadge.fresh { color:var(--accent); border-color:rgba(116,224,180,.34); background:rgba(116,224,180,.04); }
 .freshnessBadge.stale { color:var(--warn); border-color:rgba(245,199,108,.34); background:rgba(245,199,108,.04); }
 .freshnessBadge.historical { color:#8fbfff; border-color:rgba(92,167,255,.3); background:rgba(92,167,255,.04); }
+.freshnessBadge.tombstoned { color:var(--danger); border-color:rgba(255,115,115,.34); background:rgba(255,115,115,.04); }
 .awarenessEntityMeta { display:flex; flex-wrap:wrap; gap:5px; }
 .awarenessEntityMeta span { color:#6d7f94; border:1px solid #1f2a36; background:#0c1219; border-radius:4px; padding:3px 5px; font-size:7px; }
 .awarenessRelationship { display:grid; grid-template-columns:minmax(0,1fr) 92px minmax(0,1fr); gap:7px; align-items:center; }
@@ -231,6 +233,7 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .freshnessDot.fresh { background:var(--accent); }
 .freshnessDot.stale { background:var(--warn); }
 .freshnessDot.historical { background:#8fbfff; }
+.freshnessDot.tombstoned { background:var(--danger); }
 .awarenessTimelineHeader { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; }
 .awarenessTimelineHeader>div p { max-width:850px; }
 .awarenessTimelineHeader>span { color:#8fbfff; border:1px solid rgba(92,167,255,.26); border-radius:999px; padding:5px 8px; font-size:8px; white-space:nowrap; }

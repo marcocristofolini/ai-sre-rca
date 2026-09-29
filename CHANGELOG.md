@@ -14,10 +14,15 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - `historical` reconciliation semantics for immutable event nodes/edges, distinct from fresh/stale topology state.
 - Bounded `GET /api/v1/awareness/changes` timeline API with service, namespace and time-window filters.
 - Read-only `/awareness` explorer for reconciled entities, stored relationships, service-scoped projections and historical ChangeEvent context.
-- Fresh/stale topology reconciliation from last_seen without inferring unsafe tombstones.
+- Fresh/stale topology reconciliation from last_seen without inferring deletion from partial incident observations.
+- Admin-only authoritative inventory reconciliation with explicit kind/namespace/relationship coverage and allow-listed sources.
+- First-class entity/relationship tombstones with source/snapshot identity, append-only reconciliation observations, newer-observation protection and reactivation semantics.
+- Immutable inventory snapshot identity: identical replays are idempotent, while reuse of the same tenant/cluster/source/snapshot ID with different content fails with conflict.
+- Tombstoned facts remain available for topology/history and the Awareness Explorer while being excluded from current entity resolution and blast-radius traversal.
+- Audited `POST /api/v1/awareness/inventory/reconcile` endpoint plus in-memory/PostgreSQL repository parity.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
 - Graph-backed blast radius with an allow-listed relationship impact-direction model.
-- Unknown or stale graph relationships remain visible as topology/history context but are excluded from current impact traversal.
+- Unknown, stale or tombstoned graph relationships remain visible as topology/history context but are excluded from current impact traversal.
 - Bounded Investigation Planner with allow-listed read-only specialist task types.
 - Planner budgets for maximum tasks, parallelism, graph context nodes and queries per specialist.
 - Explicit traces -> database/stateful task dependency so stateful checks require typed dependency identity.
@@ -74,11 +79,12 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - ChangeEvent relationships are context-only and are deliberately absent from the causal impact-direction allow-list; temporal proximity alone cannot promote a deploy into root cause.
 - ChangeEvent materialization fails closed when application/revision identity or the authoritative operation timestamp is missing/malformed.
 - Deployment, Service and GitRepository event links are created only from explicit unambiguous graph relationships; namespace/list ordering is never used as identity evidence.
-- Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
+- Incident-derived graph absence is never treated as deletion; only complete snapshots from configured authoritative sources can create tombstones.
+- Inventory reconciliation fails closed on incomplete snapshots, out-of-scope resources, non-authoritative relationship types and snapshots older than a newer graph observation.
+- Immutable ChangeEvent nodes/edges are excluded from inventory tombstoning.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
-- Authoritative tombstones from full inventory reconciliation.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 

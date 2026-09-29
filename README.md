@@ -16,11 +16,12 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **First-class ChangeEvent nodes** derived from Argo CD deployment evidence and matching Git revision evidence, with stable identity across repeated observations. Materialization requires application, revision and an authoritative operation timestamp; workload/service/repository links are emitted only when the existing graph resolves them unambiguously.
 - **Tenant + cluster isolation** at identity, persistence and query boundaries.
 - **Current state + append-only observations** with idempotent ingestion.
-- **Topology reconciliation** that classifies current records as `fresh` or `stale` from `last_seen` without inventing deletion/tombstones from incomplete incident data.
+- **Topology reconciliation** that classifies observed records as `fresh` or `stale` from `last_seen`, while incomplete incident data never implies deletion.
+- **Authoritative inventory tombstones** from complete admin-only snapshots supplied by allow-listed sources, with explicit coverage, newer-observation protection, reactivation semantics and append-only audit/history.
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
-- **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown or stale relationships are visible as context but never traversed as current impact paths.
+- **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown, stale or tombstoned relationships are visible as context but never traversed as current impact paths.
 - **Historical change timeline semantics.** Change events and their event edges are context-only, reconcile as `historical`, and are never added to the blast-radius causal allow-list.
-- **Read-only Awareness Explorer at `/awareness`** with cluster/namespace/service scoping, reconciled entity freshness, stored relationships and the bounded ChangeEvent timeline. It reuses the existing viewer authorization and server-side API client without introducing graph-write controls.
+- **Read-only Awareness Explorer at `/awareness`** with cluster/namespace/service scoping, reconciled fresh/stale/historical/tombstoned state, stored relationships and the bounded ChangeEvent timeline. It reuses the existing viewer authorization and server-side API client without introducing graph-write controls.
 - **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
 - **Kubernetes specialist parity with the core engine.** The agentic Kubernetes branch now delegates to the same deterministic stage used by classic RCA, covering eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypotheses and evidence rules.
 - **Shared Kubernetes root-priority policy + fail-closed partial branches.** Classic and agentic paths use the same specificity ordering, and hypotheses from a non-completed specialist can never be selected.
