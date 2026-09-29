@@ -13,14 +13,15 @@ flowchart TD
     KINV[Inventário da API Kubernetes] --> KCRON[CronJob Read-only de Inventário]
     KCRON --> KSNAP[Snapshots Autoritativos Completos]
     KSNAP --> PAG[(Persistent Awareness Graph)]
-    PAG --> CTX[Contexto Bounded do Serviço]
-    CTX --> EL
+    PAG --> OCS[Operational Context Snapshot Congelado]
+    OCS --> EL
     EL --> COMP[Compilador de Plano no Servidor]
     EL -. contexto elegível sanitizado .-> MPL[LLM Advisory Opcional]
     MPL -. somente nomes + justificativas .-> COMP
     COMP --> PLAN[Investigation Plan Bounded]
     PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
     PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
+    OCS --> ORCH
     ORCH --> SE[Shared Evidence Envelope]
     SE --> AE[Avaliador Agentic Determinístico]
     AE --> XG[Explanation Graph]
@@ -47,6 +48,9 @@ flowchart TD
     PAG --> SV[Projeções por Serviço]
     PAG --> BR[Blast Radius]
     PAG --> CE[Timeline de Change Events]
+    REC --> OCS
+    GH --> OCS
+    CE --> OCS
     GH --> API
     REC --> AUI[Awareness Explorer Next.js<br/>Read-only]
     SV --> AUI
@@ -119,6 +123,30 @@ flowchart LR
 ```
 
 `AWARENESS_OBSERVATION_RETENTION_DAYS` tem padrão 90 e `AWARENESS_TOMBSTONE_RETENTION_DAYS` tem padrão 30. O endpoint usa a mesma fronteira de autorização por tenant/cluster das APIs do grafo. O scheduler opcional chama o mesmo contrato do repositório diretamente com escopo explícito de tenant/cluster, Secret dedicado de banco e `automountServiceAccountToken: false`.
+
+## Operational Context Snapshot agentic — v0.8
+
+O planner agentic não recebe mais somente IDs de entidades/relações vindos de uma projeção de um salto. Antes de compilar as tarefas, ele congela um snapshot operacional bounded que combina topologia reconciliada, histórico recente do grafo, ChangeEvents e Graph Health.
+
+```mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> T[Topologia<br/>fresh / stale / historical / tombstoned]
+    PAG --> H[Observações bounded]
+    PAG --> C[ChangeEvents recentes]
+    GH[Graph Health] --> S[Operational Context Congelado]
+    T --> S
+    H --> S
+    C --> S
+    S --> PLAN[InvestigationPlan]
+    PLAN --> SPEC[Especialistas read-only]
+    S --> ENV[Shared Evidence Envelope]
+    SPEC --> ENV
+    ENV --> DET[Avaliador Determinístico]
+```
+
+Fatos tombstoned permanecem visíveis para explicação, mas ficam fora de `required_entity_ids` das tarefas. ChangeEvents persistidos consumidos durante a execução são marcados como `context_only`. O evaluator remove explicitamente referências context-only do scoring causal, portanto o contexto persistente pode orientar a investigação e preservar continuidade sem virar autoridade de causa raiz.
+
+O contexto possui limites rígidos para quantidade de nós, profundidade do grafo, alvos de histórico, observações por alvo e número de mudanças recentes. O LLM opcional do planner recebe somente uma projeção rasa e sanitizada desse snapshot; continua sem poder criar tarefas, ferramentas, queries, dependências ou verdicts.
 
 ## Compilador de planejamento assistido por modelo — v0.8
 
