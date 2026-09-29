@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.api.awareness import router as awareness_router
+from app.auth import Principal, get_principal
 from app.awareness.inventory import (
     AuthoritativeInventoryRequest,
     AuthoritativeInventorySnapshot,
@@ -18,6 +22,7 @@ from app.awareness.topology import (
     calculate_blast_radius,
     reconcile_snapshot,
 )
+from app.config import Settings
 from app.db.repository import MemoryRepository
 from app.schemas import (
     Entity,
@@ -618,3 +623,109 @@ async def test_older_authoritative_presence_cannot_reactivate_newer_tombstone():
     assert replay.relationships_reactivated == 0
     assert replay.skipped_newer_entities >= 1
     assert replay.skipped_newer_relationships >= 1
+
+
+
+def _inventory_api(principal: Principal, *, sources: str = "kubernetes"):
+    api = FastAPI()
+    api.include_router(awareness_router)
+    api.state.repo = MemoryRepository()
+    api.state.settings = Settings(
+        awareness_authoritative_inventory_sources=sources,
+    )
+
+    async def principal_override():
+        return principal
+
+    api.dependency_overrides[get_principal] = principal_override
+    return api
+
+
+def _inventory_request_payload(*, source: str = "kubernetes") -> dict:
+    return {
+        "snapshot_id": "snap-api",
+        "source": source,
+        "observed_at": "2026-09-29T13:00:00Z",
+        "complete": True,
+        "coverage": {
+            "kinds": ["Service"],
+            "namespaces": ["payments"],
+            "relationship_types": [],
+        },
+        "resources": [
+            {
+                "kind": "Service",
+                "name": "checkout",
+                "namespace": "payments",
+                "metadata": {},
+            }
+        ],
+        "relationships": [],
+    }
+
+
+def test_inventory_reconcile_api_requires_admin_role():
+    api = _inventory_api(
+        Principal(
+            subject="investigator",
+            tenant_id="tenant-a",
+            roles=frozenset({"investigator"}),
+            clusters=frozenset({"prod"}),
+        )
+    )
+
+    with TestClient(api) as client:
+        response = client.post(
+            "/api/v1/awareness/inventory/reconcile",
+            params={"cluster": "prod"},
+            json=_inventory_request_payload(),
+        )
+
+    assert response.status_code == 403
+
+
+def test_inventory_reconcile_api_rejects_non_authoritative_source():
+    api = _inventory_api(
+        Principal(
+            subject="admin",
+            tenant_id="tenant-a",
+            roles=frozenset({"admin"}),
+            clusters=frozenset({"prod"}),
+        ),
+        sources="kubernetes",
+    )
+
+    with TestClient(api) as client:
+        response = client.post(
+            "/api/v1/awareness/inventory/reconcile",
+            params={"cluster": "prod"},
+            json=_inventory_request_payload(source="untrusted-source"),
+        )
+
+    assert response.status_code == 422
+    assert "not configured as authoritative" in response.json()["detail"]
+
+
+def test_inventory_reconcile_api_audits_accepted_snapshot():
+    api = _inventory_api(
+        Principal(
+            subject="platform-admin",
+            tenant_id="tenant-a",
+            roles=frozenset({"admin"}),
+            clusters=frozenset({"prod"}),
+        )
+    )
+
+    with TestClient(api) as client:
+        response = client.post(
+            "/api/v1/awareness/inventory/reconcile",
+            params={"cluster": "prod"},
+            json=_inventory_request_payload(),
+        )
+
+    assert response.status_code == 200
+    audit = api.state.repo._audit
+    assert len(audit) == 1
+    assert audit[0].actor == "platform-admin"
+    assert audit[0].action == "awareness.inventory.reconcile"
+    assert audit[0].detail["snapshot_id"] == "snap-api"
