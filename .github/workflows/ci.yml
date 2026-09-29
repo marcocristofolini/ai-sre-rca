@@ -123,6 +123,7 @@ jobs:
             --set networkPolicy.enabled=true \
             --set backend.existingSecret=ai-sre-secrets \
             --set inventoryCollector.enabled=true \
+            --set inventoryCollector.existingSecret=ai-sre-inventory-secrets \
             --set 'inventoryCollector.clusters[0]=prod-us-east-1' \
             --set remediator.enabled=true \
             --set remediator.existingSecret=ai-sre-remediator-secrets \
@@ -149,13 +150,22 @@ jobs:
           grep -q "must differ from the investigator" /tmp/ai-sre-rca-invalid.err
 
           if helm template ai-sre-rca helm/ai-sre-rca \
-            --set backend.existingSecret=ai-sre-secrets \
             --set inventoryCollector.enabled=true \
+            --set inventoryCollector.existingSecret=ai-sre-inventory-secrets \
             >/tmp/ai-sre-rca-invalid-inventory.yaml 2>/tmp/ai-sre-rca-invalid-inventory.err; then
             echo "Expected Helm to reject inventory collector without cluster scope" >&2
             exit 1
           fi
           grep -q "inventoryCollector.clusters must contain at least one" /tmp/ai-sre-rca-invalid-inventory.err
+
+          if helm template ai-sre-rca helm/ai-sre-rca \
+            --set inventoryCollector.enabled=true \
+            --set 'inventoryCollector.clusters[0]=prod-us-east-1' \
+            >/tmp/ai-sre-rca-invalid-inventory-secret.yaml 2>/tmp/ai-sre-rca-invalid-inventory-secret.err; then
+            echo "Expected Helm to reject inventory collector without a dedicated Secret" >&2
+            exit 1
+          fi
+          grep -q "inventoryCollector.existingSecret is required" /tmp/ai-sre-rca-invalid-inventory-secret.err
 
 
   smoke:
