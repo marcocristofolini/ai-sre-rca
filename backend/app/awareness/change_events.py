@@ -45,6 +45,21 @@ def _parse_datetime(value: object, fallback: datetime) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _parse_authoritative_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def _entity_by_kind(
     entities: list[Entity],
     kind: str,
@@ -93,61 +108,133 @@ def augment_with_change_events(
         application = str(facts.get("application") or "").strip()
         revision = str(facts.get("revision") or "").strip()
         repo_url = str(facts.get("repo_url") or "").strip()
-        if not application:
+        if not application or not revision:
+            # A deployment event needs both application and revision identity.
+            # Missing identity remains correlation evidence only.
             continue
 
-        finished_at = facts.get("finished_at")
-        if not finished_at:
-            # A current Argo CD revision without operation time is correlation,
-            # not an authoritative deployment event timestamp.
+        occurred_at = _parse_authoritative_datetime(facts.get("finished_at"))
+        if occurred_at is None:
+            # A missing or malformed operation timestamp is not replaced by the
+            # evidence observation time. Temporal event identity must stay
+            # authoritative and fail closed.
             continue
-        occurred_at = _parse_datetime(
-            finished_at,
-            change_evidence.observed_at,
-        )
         event_key = _stable_event_key(
             application,
-            revision or "unknown",
+            revision,
             occurred_at,
         )
         local_id = f"change:{event_key}"
         if local_id in existing_ids:
             continue
 
-        deployment = _entity_by_kind(
-            entities,
-            "Deployment",
-            namespace=result.incident.namespace,
-        )
-        service = _entity_by_kind(
-            entities,
-            "Service",
-            name=result.incident.service,
-            namespace=result.incident.namespace,
-        )
-        if service is None:
-            service = _entity_by_kind(
-                entities,
-                "Service",
-                namespace=result.incident.namespace,
-            )
         argo = _entity_by_kind(
             entities,
             "ArgoCDApplication",
             name=application,
         )
-        repository = _entity_by_kind(
+        entity_by_id = {item.id: item for item in entities}
+        exact_service = _entity_by_kind(
             entities,
-            "GitRepository",
-            name=repo_url or None,
+            "Service",
+            name=result.incident.service,
+            namespace=result.incident.namespace,
         )
+        deployment: Entity | None = None
+        service: Entity | None = None
+        repository: Entity | None = None
+
+        # Resolve event targets only from explicit graph relationships. Picking
+        # the first Deployment/Service/GitRepository in a namespace can attach
+        # valid evidence to the wrong resource in multi-workload environments.
+        if argo is not None:
+            managed_ids = {
+                edge.source
+                for edge in graph_edges
+                if edge.relationship == "managed_by"
+                and edge.target == argo.id
+            }
+            managed_deployments = [
+                entity_by_id[item_id]
+                for item_id in managed_ids
+                if item_id in entity_by_id
+                and entity_by_id[item_id].kind.lower() == "deployment"
+                and (
+                    result.incident.namespace is None
+                    or entity_by_id[item_id].namespace == result.incident.namespace
+                )
+            ]
+
+            if exact_service is not None:
+                served_ids = {
+                    edge.source
+                    for edge in graph_edges
+                    if edge.relationship == "serves"
+                    and edge.target == exact_service.id
+                }
+                service_matches = [
+                    item
+                    for item in managed_deployments
+                    if item.id in served_ids
+                ]
+                if len(service_matches) == 1:
+                    deployment = service_matches[0]
+                    service = exact_service
+
+            if deployment is None and len(managed_deployments) == 1:
+                deployment = managed_deployments[0]
+                linked_service_ids = {
+                    edge.target
+                    for edge in graph_edges
+                    if edge.relationship == "serves"
+                    and edge.source == deployment.id
+                }
+                linked_services = [
+                    entity_by_id[item_id]
+                    for item_id in linked_service_ids
+                    if item_id in entity_by_id
+                    and entity_by_id[item_id].kind.lower() == "service"
+                    and (
+                        result.incident.namespace is None
+                        or entity_by_id[item_id].namespace == result.incident.namespace
+                    )
+                ]
+                if (
+                    exact_service is not None
+                    and exact_service.id in linked_service_ids
+                ):
+                    service = exact_service
+                elif len(linked_services) == 1:
+                    service = linked_services[0]
+
+            linked_repository_ids = {
+                edge.target
+                for edge in graph_edges
+                if edge.relationship == "syncs_from"
+                and edge.source == argo.id
+            }
+            linked_repositories = [
+                entity_by_id[item_id]
+                for item_id in linked_repository_ids
+                if item_id in entity_by_id
+                and entity_by_id[item_id].kind.lower() == "gitrepository"
+            ]
+            if repo_url:
+                repository_matches = [
+                    item
+                    for item in linked_repositories
+                    if item.name == repo_url
+                ]
+                if len(repository_matches) == 1:
+                    repository = repository_matches[0]
+            elif len(linked_repositories) == 1:
+                repository = linked_repositories[0]
 
         matching_git = next(
             (
                 item
                 for item in git_evidence
-                if not revision
-                or str(item.facts.get("sha") or "").strip() == revision
+                if str(item.facts.get("sha") or "").strip() == revision
             ),
             None,
         )
@@ -163,10 +250,10 @@ def augment_with_change_events(
                 "commit_at": matching_git.observed_at.isoformat(),
             }
 
-        service_name = service.name if service is not None else result.incident.service
+        service_name = service.name if service is not None else None
         workload_name = deployment.name if deployment is not None else None
         event_name = (
-            f"{application}@{(revision or 'unknown')[:12]}"
+            f"{application}@{revision[:12]}"
             f"#{occurred_at.strftime('%Y%m%dT%H%M%SZ')}"
         )
         event = Entity(
@@ -179,7 +266,7 @@ def augment_with_change_events(
                 "change_type": "deployment",
                 "occurred_at": occurred_at.isoformat(),
                 "application": application,
-                "revision": revision or None,
+                "revision": revision,
                 "repository": repo_url or None,
                 "service_name": service_name,
                 "workload_kind": "Deployment" if deployment is not None else None,
