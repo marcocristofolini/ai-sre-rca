@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.agentic.models import SpecialistResult, SpecialistTask
+from app.agentic.models import PlannerGraphContext, SpecialistResult, SpecialistTask
 from app.config import Settings
 from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
@@ -634,6 +634,7 @@ async def _changes(
     task: SpecialistTask,
     incident: IncidentInput,
     tools,
+    operational_context: PlannerGraphContext,
 ) -> SpecialistResult:
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
@@ -651,6 +652,33 @@ async def _changes(
         )
 
     evidence: list[Evidence] = []
+    if operational_context.recent_changes:
+        recent = operational_context.recent_changes[:10]
+        evidence.append(Evidence(
+            source="awareness",
+            category="agentic-persistent-change-context",
+            summary=(
+                f"Persistent Awareness Graph contains {len(recent)} recent "
+                "ChangeEvent(s) in the bounded incident window."
+            ),
+            facts={
+                "context_only": True,
+                "change_event_count": len(recent),
+                "changes": [
+                    {
+                        "entity_id": item.entity_id,
+                        "application": item.application,
+                        "revision": item.revision,
+                        "occurred_at": item.occurred_at.isoformat(),
+                        "workload_kind": item.workload_kind,
+                        "workload_name": item.workload_name,
+                    }
+                    for item in recent
+                ],
+            },
+            raw_reference="awareness://persistent-change-context",
+            strength="weak",
+        ))
     try:
         budget.consume("argocd_application")
         app = await tools.argocd_application(app_name)
@@ -724,6 +752,33 @@ async def _changes(
         started_at=started,
         evidence=evidence,
     )
+def _context_references(
+    task: SpecialistTask,
+    context: PlannerGraphContext,
+) -> list[str]:
+    refs: list[str] = []
+    current_ids = set(context.entity_ids)
+    refs.extend(
+        item
+        for item in task.required_entity_ids
+        if item in current_ids
+    )
+    refs.extend(
+        f"relationship:{item}"
+        for item in context.relationship_ids[:20]
+    )
+    if task.specialist == "changes":
+        refs.extend(
+            f"change:{item.entity_id}"
+            for item in context.recent_changes[:20]
+        )
+    refs.extend(
+        f"inventory:{item.source}:{item.freshness}"
+        for item in context.inventory_sources
+    )
+    return list(dict.fromkeys(refs))[:100]
+
+
 async def execute_specialist(
     task: SpecialistTask,
     *,
@@ -731,31 +786,67 @@ async def execute_specialist(
     tools,
     settings: Settings,
     prior_results: dict[str, SpecialistResult],
+    operational_context: PlannerGraphContext,
 ) -> SpecialistResult:
     try:
         if task.specialist == "kubernetes":
-            return await _kubernetes(
+            result = await _kubernetes(
                 task,
                 incident,
                 tools,
                 settings,
             )
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
         if task.specialist == "metrics":
-            return await _metrics(task, incident, tools)
+            result = await _metrics(task, incident, tools)
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
         if task.specialist == "logs":
-            return await _logs(task, incident, tools)
+            result = await _logs(task, incident, tools)
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
         if task.specialist == "traces":
-            return await _traces(task, incident, tools, settings)
+            result = await _traces(task, incident, tools, settings)
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
         if task.specialist == "database":
-            return await _database(
+            result = await _database(
                 task,
                 incident,
                 tools,
                 settings,
                 prior_results,
             )
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
         if task.specialist == "changes":
-            return await _changes(task, incident, tools)
+            result = await _changes(
+                task,
+                incident,
+                tools,
+                operational_context,
+            )
+            result.context_references = _context_references(
+                task,
+                operational_context,
+            )
+            return result
     except Exception as exc:
         now = datetime.now(timezone.utc)
         return SpecialistResult(
