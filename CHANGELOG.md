@@ -35,11 +35,20 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Agentic Kubernetes coverage now includes eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypothesis IDs and evidence rules.
 - Dedicated `AGENTIC_KUBERNETES_MAX_QUERIES` budget, default 30, layered under the existing global query budget.
 - Regression coverage comparing classic and agentic Kubernetes outcomes plus fail-closed specialist budget exhaustion.
+- Optional model-assisted branch selection compiled through the existing specialist allow-list.
+- Model advice is limited to specialist names/rationale; executable task templates, dependencies and budgets remain server-controlled.
+- Model-assisted planning preserves the Kubernetes/metrics/traces evidence baseline whenever those branches are deterministically eligible.
+- Planner output records requested, accepted, rejected and forced specialist choices for auditability.
+- Invalid, unavailable or unknown model choices fall back to the deterministic plan.
 - PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
 ### Safety
 - The planner cannot confirm root cause, attach evidence IDs or request remediation.
+- Model-assisted planning is advisory-only and disabled by default.
+- The model cannot create SpecialistTask objects, tool names, queries, budgets or dependencies; the server recompiles all executable tasks.
+- Unknown or ineligible model specialist names are rejected and cannot expand the deterministic tool surface.
+- Model-planner failure or malformed output preserves the deterministic plan.
 - Agentic execution is read-only, opt-in and disabled by default.
 - Agentic execution responses intentionally expose no `root_cause` field.
 - Specialist hypotheses are advisory-only; deterministic evaluation remains the root-cause authority.
