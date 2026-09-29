@@ -236,6 +236,7 @@ jobs:
               "/stateful/kafka",
               "/stateful/redis",
               "/ops",
+              "/awareness",
           ):
               html = get(f"{FRONTEND}{path}")
               assert b"AI SRE RCA" in html or b"SRE" in html
@@ -325,6 +326,7 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/v1/incidents/demo/stateful/postgresql)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/postgresql)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/ops)" = "200"
+          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/awareness)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
 
           curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.8.0"'
