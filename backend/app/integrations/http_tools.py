@@ -81,6 +81,121 @@ class ReadOnlyHTTPTools:
             response.raise_for_status()
             return response.json()
 
+    async def _k8s_list(
+        self,
+        path: str,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        continue_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"limit": page_size}
+            if continue_token:
+                params["continue"] = continue_token
+            payload = await self._k8s_get(path, params)
+            page = payload.get("items")
+            if not isinstance(page, list):
+                raise RuntimeError(
+                    f"Kubernetes inventory list was incomplete or invalid: {path}"
+                )
+            items.extend(
+                item for item in page if isinstance(item, dict)
+            )
+            raw_continue = payload.get("metadata", {}).get("continue")
+            continue_token = (
+                str(raw_continue).strip()
+                if raw_continue is not None
+                else ""
+            )
+            if not continue_token:
+                return items
+
+    async def list_services(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/api/v1/namespaces/{path_segment(namespace)}/services"
+            if namespace
+            else "/api/v1/services"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
+    async def list_pods(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/api/v1/namespaces/{path_segment(namespace)}/pods"
+            if namespace
+            else "/api/v1/pods"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
+    async def list_nodes(
+        self,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        return await self._k8s_list("/api/v1/nodes", page_size=page_size)
+
+    async def list_deployments(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/apis/apps/v1/namespaces/{path_segment(namespace)}/deployments"
+            if namespace
+            else "/apis/apps/v1/deployments"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
+    async def list_statefulsets(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/apis/apps/v1/namespaces/{path_segment(namespace)}/statefulsets"
+            if namespace
+            else "/apis/apps/v1/statefulsets"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
+    async def list_daemonsets(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/apis/apps/v1/namespaces/{path_segment(namespace)}/daemonsets"
+            if namespace
+            else "/apis/apps/v1/daemonsets"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
+    async def list_replicasets(
+        self,
+        namespace: str | None = None,
+        *,
+        page_size: int = 500,
+    ) -> list[dict[str, Any]]:
+        path = (
+            f"/apis/apps/v1/namespaces/{path_segment(namespace)}/replicasets"
+            if namespace
+            else "/apis/apps/v1/replicasets"
+        )
+        return await self._k8s_list(path, page_size=page_size)
+
     async def get_pod(self, namespace: str, pod: str) -> dict[str, Any]:
         return await self._k8s_get(f"/api/v1/namespaces/{path_segment(namespace)}/pods/{path_segment(pod)}")
 
