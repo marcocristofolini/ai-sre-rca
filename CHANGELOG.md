@@ -21,6 +21,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Tombstoned facts remain available for topology/history and the Awareness Explorer while being excluded from current entity resolution and blast-radius traversal.
 - Audited `POST /api/v1/awareness/inventory/reconcile` endpoint plus in-memory/PostgreSQL repository parity.
 - Optional automatic Kubernetes inventory CronJob with complete paginated Service/Deployment/StatefulSet/DaemonSet/ReplicaSet/Pod/Node snapshots.
+- Viewer-scoped Awareness Graph Health API with factual current/stale/historical/tombstoned counts, awareness observation volume and per-authoritative-source inventory freshness.
+- Independent `AWARENESS_INVENTORY_MAX_AGE_MINUTES` threshold for authoritative snapshot freshness, separate from graph-fact stale semantics.
 - Deterministic Kubernetes inventory relationships from controller ownerReferences, Pod scheduling identity and exact Service selectors.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
 - Graph-backed blast radius with an allow-listed relationship impact-direction model.
@@ -86,10 +88,12 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Automatic Kubernetes inventory collection aborts before reconciliation if any configured list or page is incomplete, invalid, unavailable or repeats a continuation token.
 - Kubernetes `owned_by` inventory edges require a single controller ownerReference whose UID matches the currently observed owner object, preventing name reuse from creating false controller links.
 - Namespace-scoped inventory never asserts Pod-to-Node tombstones across a cluster-scoped Node boundary; cluster-wide scheduling edges require a complete cluster-wide pass.
+- Graph Health is read-only, tenant/cluster isolated and factual; it introduces no composite reliability score, LLM-derived status or graph mutation path.
 - Immutable ChangeEvent nodes/edges are excluded from inventory tombstoning.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
+- Awareness observation/tombstone retention policy with explanation-safe minimums.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 
