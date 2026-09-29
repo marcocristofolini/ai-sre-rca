@@ -72,6 +72,33 @@ Absence from an incident is never deletion evidence. A tombstone can only come f
 
 A newer incident or authoritative inventory observation can reactivate a tombstoned fact. Older snapshots can never overwrite or delete a newer graph observation. The tuple `tenant + cluster + source + snapshot_id` is immutable: replaying identical content is idempotent, while reusing that identity with different content is rejected as a conflict. Tombstoned facts remain queryable in the graph/history for explanation, but current entity resolution and blast-radius traversal exclude them.
 
+## Automatic Kubernetes inventory source
+
+The first automated authoritative source is a separate one-shot Kubernetes inventory worker deployed by Helm as an optional `CronJob`. It is intentionally not embedded in the API process: API horizontal scaling therefore cannot multiply inventory loops, and `concurrencyPolicy: Forbid` prevents overlapping jobs from the same release.
+
+The worker performs only Kubernetes GET/LIST operations using the investigator's read-only ServiceAccount. Supported first-pass kinds are `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` and `Node`. Pagination follows the Kubernetes `metadata.continue` token until completion. Any HTTP/list/payload failure aborts the collection before a snapshot reaches reconciliation.
+
+Relationships are emitted only from explicit Kubernetes state:
+
+- `owned_by` from an unambiguous controller `ownerReference`;
+- `scheduled_on` from `Pod.spec.nodeName`, only when the snapshot is cluster-wide and includes Nodes;
+- `serves` from a Service selector matching Pods whose stable controller chain resolves to a Deployment, StatefulSet or DaemonSet.
+
+Namespace-scoped collection deliberately does not assert Pod-to-Node deletion semantics because Node is cluster-scoped. In that mode the worker emits separate authoritative scopes for namespaced resources and Nodes. Cluster-wide collection can safely reconcile cross-scope scheduling edges because both endpoint inventories are observed in the same complete collection.
+
+~~~mermaid
+flowchart LR
+    CRON[Helm CronJob<br/>concurrencyPolicy: Forbid] --> GET[Kubernetes GET/LIST only]
+    GET --> PAGE[Paginate until metadata.continue is empty]
+    PAGE --> COMPLETE{Every configured list complete?}
+    COMPLETE -->|No| ABORT[Abort run<br/>no reconciliation]
+    COMPLETE -->|Yes| BUILD[Build explicit resources + relationships]
+    BUILD --> SNAP[Complete authoritative snapshot]
+    SNAP --> REC[Existing inventory reconciliation contract]
+    REC --> PAG[(Persistent Awareness Graph)]
+    REC --> AUDIT[(Audit history)]
+~~~
+
 ## Service-centric projections
 
 A service projection resolves the exact canonical `Service` entity and walks an undirected topology neighborhood under hard depth/node/edge budgets. If the same service name exists in multiple namespaces, the caller must provide a namespace rather than receiving an arbitrary match.
