@@ -187,11 +187,25 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
             + second.relationships_tombstoned
             == 1
         )
-        assert (
-            first.duplicate_observations
-            + second.duplicate_observations
-            >= 1
-        )
+        # The snapshot receipt itself provides replay identity. An empty
+        # authoritative inventory does not necessarily create a duplicate
+        # entity/relationship observation on the serialized retry.
+        async with repo.engine.begin() as conn:
+            receipt_count = (
+                await conn.execute(
+                    text(
+                        "SELECT count(*) FROM awareness_observations "
+                        "WHERE tenant_id = :tenant_id "
+                        "AND cluster = :cluster "
+                        "AND target_type = 'inventory_snapshot'"
+                    ),
+                    {
+                        "tenant_id": tenant_id,
+                        "cluster": cluster,
+                    },
+                )
+            ).scalar_one()
+        assert receipt_count == 1
 
         graph = await repo.get_awareness_graph(tenant_id, cluster)
         reconciled = reconcile_snapshot(
