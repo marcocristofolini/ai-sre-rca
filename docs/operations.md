@@ -185,6 +185,28 @@ ALERTMANAGER_TENANT_ID=platform
 
 Send the token in `X-Webhook-Token`.
 
+## Automatic Kubernetes inventory CronJob
+
+The v0.8 inventory collector is disabled by default. Enable it only with an explicit logical cluster list and a dedicated Secret containing the collector credentials, especially `DATABASE_URL`:
+
+```yaml
+backend:
+  existingSecret: ai-sre-backend-secrets
+
+inventoryCollector:
+  enabled: true
+  existingSecret: ai-sre-inventory-secrets
+  schedule: "*/5 * * * *"
+  tenantId: payments
+  clusters:
+    - prod-us
+  namespaces: []
+```
+
+An empty namespace list means cluster-wide inventory. If more than one logical cluster is configured, each cluster must exist in `CLUSTER_CONFIG_JSON`; otherwise the worker fails before applying any snapshot. The dedicated collector Secret should not contain OIDC, LLM, GitHub or notification credentials that the worker does not need.
+
+The CronJob reuses the investigator's read-only ServiceAccount. `concurrencyPolicy: Forbid` prevents overlapping runs for the same Helm release. Any incomplete Kubernetes LIST page or source failure exits non-zero before reconciliation, so collection failure cannot become deletion evidence.
+
 ## NetworkPolicy
 
 The chart ships opt-in NetworkPolicy templates:
