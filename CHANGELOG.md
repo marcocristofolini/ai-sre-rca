@@ -48,6 +48,11 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
+### Changed
+- CI production-image smoke builds retry bounded transient registry/network failures before failing the job.
+- Python 3.14 test tooling now permits pytest-asyncio 1.4+, removing the legacy 0.x compatibility cap.
+- The remediation incident-freshness gate is exposed consistently through `.env.example`, Helm values and bilingual remediation documentation.
+
 ### Safety
 - The planner cannot confirm root cause, attach evidence IDs or request remediation.
 - Model-assisted planning is advisory-only and disabled by default.
