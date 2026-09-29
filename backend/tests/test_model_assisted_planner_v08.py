@@ -228,3 +228,66 @@ async def test_model_advisor_is_not_called_when_feature_is_disabled():
     assert advisor.calls == 0
     assert plan.planner_origin == "deterministic"
     assert plan.advisory_trace is None
+
+
+@pytest.mark.asyncio
+async def test_model_path_falls_back_when_task_budget_cannot_fit_baseline():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_model_planner_enabled=True,
+        agentic_max_tasks=2,
+    )
+    advisor = FakeAdvisor(ModelPlanningAdvice(
+        requested_specialists=["changes"],
+    ))
+
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident(),
+        settings=settings,
+        advisor=advisor,
+    )
+
+    assert plan.planner_origin == "deterministic"
+    assert [task.specialist for task in plan.tasks] == [
+        "kubernetes",
+        "metrics",
+    ]
+    assert plan.advisory_trace is not None
+    assert "mandatory model-assisted baseline" in (
+        plan.advisory_trace.fallback_reason or ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_compiler_caps_advice_even_for_nonstandard_advisor():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_model_planner_enabled=True,
+        agentic_model_planner_max_specialists=2,
+        agentic_max_tasks=6,
+    )
+    advisor = FakeAdvisor(ModelPlanningAdvice(
+        requested_specialists=[
+            "changes",
+            "logs",
+            "database",
+            "shell",
+        ],
+    ))
+
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident(),
+        settings=settings,
+        advisor=advisor,
+    )
+
+    assert plan.planner_origin == "model-assisted"
+    assert plan.advisory_trace is not None
+    assert plan.advisory_trace.requested_specialists == [
+        "changes",
+        "logs",
+    ]
+    assert "database" in plan.advisory_trace.rejected_specialists
+    assert "shell" in plan.advisory_trace.rejected_specialists
