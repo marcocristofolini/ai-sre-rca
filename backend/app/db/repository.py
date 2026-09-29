@@ -81,6 +81,7 @@ class InvestigationRepository(Protocol):
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]: ...
     async def reconcile_authoritative_inventory(
         self,
@@ -248,7 +249,10 @@ class MemoryRepository:
             and (namespace is None or item.namespace == namespace)
             and (kind is None or item.kind.lower() == kind.lower())
         ]
-        entities.sort(key=lambda item: item.last_seen, reverse=True)
+        entities.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         entities = entities[:max_items]
         entity_ids = {item.id for item in entities}
         relationships = [
@@ -259,7 +263,10 @@ class MemoryRepository:
             and item.source_id in entity_ids
             and item.target_id in entity_ids
         ]
-        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         relationships = relationships[: max_items * 4]
         return AwarenessGraphSnapshot(
             tenant_id=tenant_id,
@@ -328,6 +335,7 @@ class MemoryRepository:
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
         if not entity_ids:
             return [], []
@@ -337,12 +345,16 @@ class MemoryRepository:
             for item in self._awareness_relationships.values()
             if item.tenant_id == tenant_id
             and item.cluster == cluster
+            and (include_tombstoned or item.tombstoned_at is None)
             and (
                 item.source_id in entity_ids
                 or item.target_id in entity_ids
             )
         ]
-        relationships.sort(key=lambda item: item.last_seen, reverse=True)
+        relationships.sort(
+            key=lambda item: item.tombstoned_at or item.last_seen,
+            reverse=True,
+        )
         relationships = relationships[:bounded_limit]
         neighbor_ids = {
             endpoint
@@ -355,6 +367,7 @@ class MemoryRepository:
             if item.id in neighbor_ids
             and item.tenant_id == tenant_id
             and item.cluster == cluster
+            and (include_tombstoned or item.tombstoned_at is None)
         ]
         return entities, relationships
 
@@ -937,7 +950,15 @@ class SQLRepository:
                 AwarenessEntityRecord.tenant_id == tenant_id,
                 AwarenessEntityRecord.cluster == cluster,
             )
-            .order_by(AwarenessEntityRecord.last_seen.desc())
+            .order_by(
+                func.greatest(
+                    AwarenessEntityRecord.last_seen,
+                    func.coalesce(
+                        AwarenessEntityRecord.tombstoned_at,
+                        AwarenessEntityRecord.last_seen,
+                    ),
+                ).desc()
+            )
             .limit(max_items)
         )
         if namespace is not None:
@@ -960,7 +981,15 @@ class SQLRepository:
                         AwarenessRelationshipRecord.source_id.in_(entity_ids),
                         AwarenessRelationshipRecord.target_id.in_(entity_ids),
                     )
-                    .order_by(AwarenessRelationshipRecord.last_seen.desc())
+                    .order_by(
+                        func.greatest(
+                            AwarenessRelationshipRecord.last_seen,
+                            func.coalesce(
+                                AwarenessRelationshipRecord.tombstoned_at,
+                                AwarenessRelationshipRecord.last_seen,
+                            ),
+                        ).desc()
+                    )
                     .limit(max_items * 4)
                 )
                 relationship_rows = list(
@@ -1137,21 +1166,36 @@ class SQLRepository:
         cluster: str,
         *,
         limit: int,
+        include_tombstoned: bool = True,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]:
         if not entity_ids:
             return [], []
         bounded_limit = max(1, min(limit, 8001))
-        relationship_statement = (
-            select(AwarenessRelationshipRecord)
-            .where(
-                AwarenessRelationshipRecord.tenant_id == tenant_id,
-                AwarenessRelationshipRecord.cluster == cluster,
-                or_(
-                    AwarenessRelationshipRecord.source_id.in_(entity_ids),
-                    AwarenessRelationshipRecord.target_id.in_(entity_ids),
-                ),
+        relationship_statement = select(
+            AwarenessRelationshipRecord
+        ).where(
+            AwarenessRelationshipRecord.tenant_id == tenant_id,
+            AwarenessRelationshipRecord.cluster == cluster,
+            or_(
+                AwarenessRelationshipRecord.source_id.in_(entity_ids),
+                AwarenessRelationshipRecord.target_id.in_(entity_ids),
+            ),
+        )
+        if not include_tombstoned:
+            relationship_statement = relationship_statement.where(
+                AwarenessRelationshipRecord.tombstoned_at.is_(None)
             )
-            .order_by(AwarenessRelationshipRecord.last_seen.desc())
+        relationship_statement = (
+            relationship_statement
+            .order_by(
+                func.greatest(
+                    AwarenessRelationshipRecord.last_seen,
+                    func.coalesce(
+                        AwarenessRelationshipRecord.tombstoned_at,
+                        AwarenessRelationshipRecord.last_seen,
+                    ),
+                ).desc()
+            )
             .limit(bounded_limit)
         )
         async with self.sessions() as session:
@@ -1173,6 +1217,10 @@ class SQLRepository:
                     AwarenessEntityRecord.cluster == cluster,
                     AwarenessEntityRecord.id.in_(neighbor_ids),
                 )
+                if not include_tombstoned:
+                    entity_statement = entity_statement.where(
+                        AwarenessEntityRecord.tombstoned_at.is_(None)
+                    )
                 entity_rows = list(
                     (await session.scalars(entity_statement)).all()
                 )
