@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from hashlib import sha256
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -240,6 +241,103 @@ def materialize_inventory_relationships(
             last_incident_id=origin,
         )
     return output
+
+
+
+
+class InventorySnapshotConflictError(ValueError):
+    pass
+
+
+def inventory_snapshot_receipt_id(
+    snapshot: AuthoritativeInventorySnapshot,
+) -> str:
+    return _stable_inventory_id(
+        "is",
+        snapshot.tenant_id,
+        snapshot.cluster,
+        snapshot.source,
+        snapshot.snapshot_id,
+    )
+
+
+def inventory_snapshot_fingerprint(
+    snapshot: AuthoritativeInventorySnapshot,
+) -> str:
+    resources = sorted(
+        (
+            {
+                "kind": item.kind,
+                "name": item.name,
+                "namespace": item.namespace,
+                "metadata": item.metadata,
+            }
+            for item in snapshot.resources
+        ),
+        key=lambda item: (
+            str(item["kind"]).casefold(),
+            str(item["namespace"] or ""),
+            str(item["name"]),
+        ),
+    )
+    relationships = sorted(
+        (
+            {
+                "source": {
+                    "kind": item.source.kind,
+                    "name": item.source.name,
+                    "namespace": item.source.namespace,
+                },
+                "target": {
+                    "kind": item.target.kind,
+                    "name": item.target.name,
+                    "namespace": item.target.namespace,
+                },
+                "relationship": item.relationship,
+                "metadata": item.metadata,
+            }
+            for item in snapshot.relationships
+        ),
+        key=lambda item: (
+            str(item["source"]["kind"]).casefold(),
+            str(item["source"]["namespace"] or ""),
+            str(item["source"]["name"]),
+            str(item["relationship"]),
+            str(item["target"]["kind"]).casefold(),
+            str(item["target"]["namespace"] or ""),
+            str(item["target"]["name"]),
+        ),
+    )
+    payload = {
+        "tenant_id": snapshot.tenant_id,
+        "cluster": snapshot.cluster,
+        "source": snapshot.source,
+        "snapshot_id": snapshot.snapshot_id,
+        "observed_at": snapshot.observed_at.isoformat(),
+        "coverage": {
+            "kinds": sorted(
+                item.casefold() for item in snapshot.coverage.kinds
+            ),
+            "namespaces": (
+                sorted(snapshot.coverage.namespaces)
+                if snapshot.coverage.namespaces is not None
+                else None
+            ),
+            "relationship_types": sorted(
+                snapshot.coverage.relationship_types
+            ),
+        },
+        "resources": resources,
+        "relationships": relationships,
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    ).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 def inventory_observation_id(
