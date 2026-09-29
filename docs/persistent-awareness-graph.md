@@ -135,7 +135,8 @@ Safety rules are stricter than a simple age-based delete:
 - expired tombstoned relationships are removed before expired tombstoned entities;
 - a tombstoned entity is removed only when no surviving relationship still references it;
 - dry-run performs no deletion and emits no purge audit event;
-- an executed purge is audited in the same repository transaction as the deletion.
+- an executed purge is audited in the same repository transaction as the deletion;
+- the optional scheduled worker uses the same purge contract, explicit tenant/cluster scope, a dedicated database Secret and no mounted Kubernetes ServiceAccount token.
 
 ~~~mermaid
 flowchart TD
