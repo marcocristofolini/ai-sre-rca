@@ -96,8 +96,13 @@ def augment_with_change_events(
         if not application:
             continue
 
+        finished_at = facts.get("finished_at")
+        if not finished_at:
+            # A current Argo CD revision without operation time is correlation,
+            # not an authoritative deployment event timestamp.
+            continue
         occurred_at = _parse_datetime(
-            facts.get("finished_at"),
+            finished_at,
             change_evidence.observed_at,
         )
         event_key = _stable_event_key(
