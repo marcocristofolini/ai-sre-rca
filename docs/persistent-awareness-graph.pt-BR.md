@@ -135,7 +135,8 @@ As regras de segurança são mais rígidas que um delete apenas por idade:
 - relações tombstoned expiradas são removidas antes das entidades tombstoned expiradas;
 - uma entidade tombstoned só é removida quando nenhuma relação sobrevivente ainda a referencia;
 - dry-run não remove dados e não gera evento de auditoria de purge;
-- um purge executado é auditado na mesma transação do repositório que realiza as deleções.
+- um purge executado é auditado na mesma transação do repositório que realiza as deleções;
+- o worker agendado opcional usa o mesmo contrato de purge, escopo explícito de tenant/cluster, Secret dedicado de banco e nenhum token de ServiceAccount Kubernetes montado.
 
 ~~~mermaid
 flowchart TD
