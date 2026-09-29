@@ -174,6 +174,11 @@ Agentic investigation foundation:
 - [x] allow-listed Kubernetes, metrics, logs, traces, database and change task types
 - [x] database/stateful branch depends on typed trace identity
 - [x] planner context retrieval from bounded Awareness Graph neighborhoods
+- [x] frozen Operational Context Snapshot shared by planner, specialists and shared envelope
+- [x] current/stale/historical/tombstoned topology represented explicitly in agentic context
+- [x] bounded per-target graph history and incident-window ChangeEvents in agentic context
+- [x] Graph Health and authoritative inventory-source freshness in agentic context
+- [x] context-only persistent facts blocked from causal hypothesis scoring
 - [x] deterministic hypothesis verification remains the root-cause authority
 - [x] opt-in parallel specialist execution in dependency-aware waves
 - [x] per-specialist read-only execution contracts and result envelopes
