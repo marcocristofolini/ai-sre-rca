@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.integrity import verify_evidence_hash
 from app.schemas import Entity, InvestigationResult
 
 
@@ -273,6 +274,8 @@ def extract_change_events(
 
     events: list[AwarenessChangeEvent] = []
     for evidence in result.evidence:
+        if not verify_evidence_hash(evidence):
+            continue
         if evidence.source == "argocd" and evidence.category == "change-correlation":
             application = str(evidence.facts.get("application") or "argocd")
             revision = str(evidence.facts.get("revision") or "") or None
