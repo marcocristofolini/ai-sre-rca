@@ -29,10 +29,19 @@ SpecialistKind = Literal[
 ]
 
 
+class PlannerChangeContext(BaseModel):
+    id: str
+    event_type: Literal["deployment_sync", "source_commit"]
+    source: Literal["argocd", "github"]
+    occurred_at: datetime
+    revision: str | None = None
+
+
 class PlannerGraphContext(BaseModel):
     root_entity_id: str | None = None
     entity_ids: list[str] = Field(default_factory=list)
     relationship_ids: list[str] = Field(default_factory=list)
+    recent_changes: list[PlannerChangeContext] = Field(default_factory=list)
     truncated: bool = False
 
 
