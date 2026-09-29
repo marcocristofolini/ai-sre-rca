@@ -150,3 +150,56 @@ class AwarenessObservationRecord(Base):
     target_id: Mapped[str] = mapped_column(String(64), index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+
+class AwarenessChangeEventRecord(Base):
+    __tablename__ = "awareness_change_events"
+    __table_args__ = (
+        Index(
+            "awareness_change_events_scope_time_idx",
+            "tenant_id",
+            "cluster",
+            "occurred_at",
+        ),
+        Index(
+            "awareness_change_events_scope_type_time_idx",
+            "tenant_id",
+            "cluster",
+            "event_type",
+            "occurred_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), index=True)
+    cluster: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    source: Mapped[str] = mapped_column(String(64), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True,
+    )
+    namespace: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    revision: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    subject_entity_ids: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_ids: Mapped[list] = mapped_column(JSON, default=list)
+    incident_ids: Mapped[list] = mapped_column(JSON, default=list)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    observation_count: Mapped[int] = mapped_column(Integer, default=1)
+    first_observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True,
+    )
+    last_observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True,
+    )
