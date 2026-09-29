@@ -17,6 +17,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Fresh/stale topology reconciliation from last_seen without inferring deletion from partial incident observations.
 - Admin-only authoritative inventory reconciliation with explicit kind/namespace/relationship coverage and allow-listed sources.
 - First-class entity/relationship tombstones with source/snapshot identity, append-only reconciliation observations, newer-observation protection and reactivation semantics.
+- Immutable inventory snapshot identity: identical replays are idempotent, while reuse of the same tenant/cluster/source/snapshot ID with different content fails with conflict.
 - Tombstoned facts remain available for topology/history and the Awareness Explorer while being excluded from current entity resolution and blast-radius traversal.
 - Audited `POST /api/v1/awareness/inventory/reconcile` endpoint plus in-memory/PostgreSQL repository parity.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
