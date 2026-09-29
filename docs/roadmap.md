@@ -152,7 +152,7 @@ Persistent Awareness Graph:
 - [x] service-centric bounded neighborhood projections
 - [x] graph-backed blast-radius traversal with explicit impact direction
 - [x] unknown and stale relationship types/instances excluded from current impact traversal
-- [ ] authoritative tombstones from full inventory reconciliation
+- [x] authoritative tombstones from complete allow-listed inventory reconciliation
 - [x] first-class deployment/change event nodes
 - [x] stable deployment-event identity across repeated incidents
 - [x] historical event semantics distinct from fresh/stale topology
