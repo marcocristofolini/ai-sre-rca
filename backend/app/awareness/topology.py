@@ -13,7 +13,7 @@ from app.awareness.models import (
 )
 
 
-Freshness = Literal["fresh", "stale"]
+Freshness = Literal["fresh", "stale", "historical"]
 
 
 class AwarenessTopologyRepository(Protocol):
@@ -174,6 +174,29 @@ def _freshness(
     )
 
 
+def _historical_age_seconds(
+    metadata: dict[str, object],
+    *,
+    fallback: datetime,
+    as_of: datetime,
+) -> float:
+    raw = metadata.get("occurred_at")
+    occurred_at = fallback
+    if isinstance(raw, datetime):
+        occurred_at = raw
+    elif isinstance(raw, str) and raw:
+        try:
+            occurred_at = datetime.fromisoformat(
+                raw.replace("Z", "+00:00")
+            )
+        except ValueError:
+            occurred_at = fallback
+    return max(
+        0.0,
+        (_utc(as_of) - _utc(occurred_at)).total_seconds(),
+    )
+
+
 def reconcile_entity(
     entity: AwarenessEntity,
     *,
@@ -181,11 +204,20 @@ def reconcile_entity(
     stale_after_minutes: int,
     depth: int | None = None,
 ) -> ReconciledEntity:
-    freshness, age_seconds, stale_since = _freshness(
-        entity.last_seen,
-        as_of=as_of,
-        stale_after_minutes=stale_after_minutes,
-    )
+    if entity.metadata.get("temporal_role") == "event":
+        freshness: Freshness = "historical"
+        age_seconds = _historical_age_seconds(
+            entity.metadata,
+            fallback=entity.last_seen,
+            as_of=as_of,
+        )
+        stale_since = None
+    else:
+        freshness, age_seconds, stale_since = _freshness(
+            entity.last_seen,
+            as_of=as_of,
+            stale_after_minutes=stale_after_minutes,
+        )
     return ReconciledEntity(
         **entity.model_dump(),
         freshness=freshness,
@@ -201,11 +233,20 @@ def reconcile_relationship(
     as_of: datetime,
     stale_after_minutes: int,
 ) -> ReconciledRelationship:
-    freshness, age_seconds, stale_since = _freshness(
-        relationship.last_seen,
-        as_of=as_of,
-        stale_after_minutes=stale_after_minutes,
-    )
+    if relationship.metadata.get("temporal_role") == "event":
+        freshness: Freshness = "historical"
+        age_seconds = _historical_age_seconds(
+            relationship.metadata,
+            fallback=relationship.last_seen,
+            as_of=as_of,
+        )
+        stale_since = None
+    else:
+        freshness, age_seconds, stale_since = _freshness(
+            relationship.last_seen,
+            as_of=as_of,
+            stale_after_minutes=stale_after_minutes,
+        )
     return ReconciledRelationship(
         **relationship.model_dump(),
         freshness=freshness,
