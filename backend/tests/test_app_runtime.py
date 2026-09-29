@@ -7,6 +7,7 @@ def test_application_imports_with_runtime_dependencies():
     paths = app.openapi()["paths"]
     assert "/api/v1/awareness/graph" in paths
     assert "/api/v1/awareness/history/{target_id}" in paths
+    assert "/api/v1/awareness/changes" in paths
     assert "/api/v1/awareness/topology" in paths
     assert "/api/v1/awareness/services/{service_name}" in paths
     assert "/api/v1/awareness/blast-radius/{target_id}" in paths
