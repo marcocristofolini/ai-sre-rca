@@ -13,7 +13,7 @@ O serviço recebe um incidente, resolve ownership e topologia de runtime do Kube
 A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A branch de desenvolvimento agora inclui:
 
 - **Persistent Awareness Graph temporal** com identidade canônica de entidades e relações entre incidentes.
-- **Nós ChangeEvent first-class** derivados das evidências de deploy do Argo CD e da revisão Git correspondente, com identidade estável entre reobservações do mesmo deploy.
+- **Nós ChangeEvent first-class** derivados das evidências de deploy do Argo CD e da revisão Git correspondente, com identidade estável entre reobservações do mesmo deploy. A materialização exige aplicação, revisão e timestamp autoritativo da operação; vínculos com workload, serviço e repositório só são emitidos quando o grafo existente os resolve sem ambiguidade.
 - **Isolamento por tenant + cluster** na identidade, persistência e consultas.
 - **Estado atual + observações append-only** com ingestão idempotente.
 - **Reconciliação de topologia** que classifica registros atuais como `fresh` ou `stale` usando `last_seen`, sem inventar deleções/tombstones a partir de dados incompletos de incidentes.
@@ -39,6 +39,7 @@ GET  /api/v1/awareness/history/{target_id}
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
+GET  /api/v1/awareness/changes
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
