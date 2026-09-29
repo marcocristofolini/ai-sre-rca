@@ -31,6 +31,10 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Direct Kubernetes failure-signal precedence that blocks downstream trace/stateful promotion.
 - Rejected-hypothesis explanation graph with evidence, hypothesis, gate and verdict nodes.
 - `POST /api/v1/planner/investigate` composing plan, read-only execution and deterministic evaluation.
+- Agentic Kubernetes specialist now reuses the same deterministic Kubernetes stage as the classic engine instead of a simplified parallel implementation.
+- Agentic Kubernetes coverage now includes eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypothesis IDs and evidence rules.
+- Dedicated `AGENTIC_KUBERNETES_MAX_QUERIES` budget, default 30, layered under the existing global query budget.
+- Regression coverage comparing classic and agentic Kubernetes outcomes plus fail-closed specialist budget exhaustion.
 - PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
@@ -45,13 +49,13 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - The evaluator does not trust specialist-local `confirmed` state; it recalculates score and causal eligibility from the integrity-verified envelope.
 - Missing support or contradiction references fail closed and prevent root-cause selection.
 - A planned higher-precedence Kubernetes specialist that does not complete blocks downstream trace/stateful promotion, preventing absence-by-failure from being treated as clean infrastructure evidence.
+- Kubernetes specialist budget exhaustion is fail-closed; partial infrastructure collection cannot be treated as a clean Kubernetes result.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
-- Kubernetes specialist parity with the full infrastructure playbook engine.
 - Authoritative tombstones from full inventory reconciliation.
 - Persistent graph explorer UI and first-class deployment/change event nodes.
 - Remediation policy bundles, post-action verification and signed approval evidence.

@@ -12,6 +12,7 @@ from app.agentic.models import (
     HypothesisExplanationGraph,
 )
 from app.core.integrity import verify_evidence_hash
+from app.core.playbooks import kubernetes_hypothesis_priority
 from app.core.scoring import score_hypothesis
 from app.schemas import Evidence, HypothesisStatus, RootCause
 
@@ -46,8 +47,12 @@ def _direct_kubernetes_blockers(
         if item.source != "kubernetes":
             continue
 
-        if item.category == "agentic-node-conditions":
-            conditions = item.facts.get("conditions") or {}
+        if item.category in {"agentic-node-conditions", "node-conditions"}:
+            conditions = (
+                item.facts.get("conditions")
+                if item.category == "agentic-node-conditions"
+                else item.facts
+            ) or {}
             if isinstance(conditions, dict):
                 ready = str(conditions.get("Ready") or "")
                 if ready in {"False", "Unknown"}:
@@ -60,7 +65,23 @@ def _direct_kubernetes_blockers(
                             f"node {name}=True is a direct infrastructure signal"
                         )
 
-        if item.category == "agentic-pod-status":
+        if item.category == "node-ready":
+            condition = item.facts.get("condition") or {}
+            if isinstance(condition, dict):
+                ready = str(condition.get("status") or "")
+                if ready in {"False", "Unknown"}:
+                    blockers.append(
+                        f"node Ready={ready} is a direct infrastructure signal"
+                    )
+
+        if item.category == "node-pressure":
+            for name in ("MemoryPressure", "DiskPressure", "PIDPressure"):
+                if _truthy_condition(item.facts.get(name)):
+                    blockers.append(
+                        f"node {name}=True is a direct infrastructure signal"
+                    )
+
+        if item.category in {"agentic-pod-status", "pod-status"}:
             reason = str(item.facts.get("reason") or "")
             if reason in {"Evicted", "NodeLost"}:
                 blockers.append(
@@ -73,11 +94,28 @@ def _direct_kubernetes_blockers(
                 for reason in item.facts.get("reasons", [])
                 if reason
             }
-            for reason in sorted(
-                reasons.intersection(DIRECT_KUBERNETES_EVENT_REASONS)
+        elif item.category in {"event", "node-event", "hpa-event"}:
+            reason = str(item.facts.get("reason") or "")
+            reasons = {reason} if reason else set()
+        else:
+            reasons = set()
+
+        for reason in sorted(
+            reasons.intersection(DIRECT_KUBERNETES_EVENT_REASONS)
+        ):
+            blockers.append(
+                f"Kubernetes event reason={reason} is direct infrastructure evidence"
+            )
+
+        if item.category == "container-state":
+            terminated = item.facts.get("terminated") or []
+            if isinstance(terminated, list) and any(
+                str(entry.get("reason") or "").lower() == "oomkilled"
+                for entry in terminated
+                if isinstance(entry, dict)
             ):
                 blockers.append(
-                    f"Kubernetes event reason={reason} is direct infrastructure evidence"
+                    "container OOMKilled is direct Kubernetes runtime evidence"
                 )
 
     return sorted(set(blockers))
@@ -93,6 +131,16 @@ def _specialist_context_blockers(
         result.specialist: result
         for result in execution.specialist_results
     }
+
+    source_result = results.get(specialist)
+    if source_result is None or source_result.status != "completed":
+        source_status = (
+            source_result.status if source_result is not None else "missing"
+        )
+        blockers.append(
+            f"source specialist status={source_status}; partial or missing "
+            "specialist evidence cannot authorize root-cause promotion"
+        )
 
     if specialist in {"traces", "database"} and "kubernetes" in planned:
         kubernetes = results.get("kubernetes")
@@ -533,6 +581,11 @@ def evaluate_shared_evidence(
     selectable.sort(
         key=lambda item: (
             item.precedence_rank,
+            (
+                kubernetes_hypothesis_priority(item.id)
+                if item.specialist == "kubernetes"
+                else 0
+            ),
             -item.score,
             -len(item.supporting_evidence),
             item.id,

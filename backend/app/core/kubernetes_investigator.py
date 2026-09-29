@@ -15,7 +15,7 @@ from app.core.k8s_signals import (
     terminated_states,
     waiting_states,
 )
-from app.core.playbooks import hypotheses_for_scenario
+from app.core.playbooks import hypotheses_for_scenario, kubernetes_root_priority
 from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
@@ -109,21 +109,10 @@ def _event_evidence(
     )
 
 
-def _root_priority(scenario: str) -> list[str]:
-    return {
-        "oomkilled": ["container-memory-limit", "node-memory-pressure", "container-oom", "missing-memory-limit"],
-        "crashloop": ["oom-restart", "probe-failure", "application-exit", "container-crash-loop", "recent-change-regression"],
-        "failed-scheduling": ["karpenter-capacity", "volume-binding", "taint-toleration-mismatch", "affinity-mismatch", "insufficient-resources"],
-        "hpa": ["hpa-max-saturation", "hpa-metrics-unavailable", "hpa-scale-blocked"],
-        "keda": ["keda-scaler-error", "keda-paused", "keda-fallback", "keda-trigger-inactive"],
-        "node-not-ready": ["node-unreachable", "node-kubelet-unhealthy", "node-resource-pressure", "karpenter-node-disruption"],
-    }.get(scenario, [])
-
-
 def _select_primary(scenario: str, hypotheses: list[Hypothesis]) -> Hypothesis:
     deterministic = [item for item in hypotheses if item.origin == "playbook"]
     confirmed = {item.id: item for item in deterministic if item.status == HypothesisStatus.CONFIRMED}
-    for hypothesis_id in _root_priority(scenario):
+    for hypothesis_id in kubernetes_root_priority(scenario):
         if hypothesis_id in confirmed:
             return confirmed[hypothesis_id]
     confirmed_values = sorted(confirmed.values(), key=lambda item: item.score, reverse=True)

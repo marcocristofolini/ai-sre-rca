@@ -1,6 +1,66 @@
 from app.schemas import Hypothesis
 
 
+KUBERNETES_SCENARIO_ROOT_PRIORITY: dict[str, tuple[str, ...]] = {
+    "oomkilled": (
+        "container-memory-limit",
+        "node-memory-pressure",
+        "container-oom",
+        "missing-memory-limit",
+    ),
+    "crashloop": (
+        "oom-restart",
+        "probe-failure",
+        "application-exit",
+        "container-crash-loop",
+        "recent-change-regression",
+    ),
+    "failed-scheduling": (
+        "karpenter-capacity",
+        "volume-binding",
+        "taint-toleration-mismatch",
+        "affinity-mismatch",
+        "insufficient-resources",
+    ),
+    "hpa": (
+        "hpa-max-saturation",
+        "hpa-metrics-unavailable",
+        "hpa-scale-blocked",
+    ),
+    "keda": (
+        "keda-scaler-error",
+        "keda-paused",
+        "keda-fallback",
+        "keda-trigger-inactive",
+    ),
+    "node-not-ready": (
+        "node-unreachable",
+        "node-kubelet-unhealthy",
+        "node-resource-pressure",
+        "karpenter-node-disruption",
+    ),
+}
+
+
+def kubernetes_root_priority(scenario: str) -> tuple[str, ...]:
+    return KUBERNETES_SCENARIO_ROOT_PRIORITY.get(scenario, ())
+
+
+def kubernetes_hypothesis_priority(hypothesis_id: str) -> int:
+    """Return the classic Kubernetes playbook specificity rank.
+
+    Eviction intentionally has no fixed priority here because its classic path
+    selects among confirmed candidates by score. Unknown IDs therefore receive
+    the fallback rank and preserve score-based selection.
+    """
+    ranks = [
+        priority.index(hypothesis_id)
+        for priority in KUBERNETES_SCENARIO_ROOT_PRIORITY.values()
+        if hypothesis_id in priority
+    ]
+    return min(ranks) if ranks else 1000
+
+
 def pod_eviction_hypotheses() -> list[Hypothesis]:
     return [
         Hypothesis(

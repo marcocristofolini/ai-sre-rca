@@ -67,6 +67,9 @@ O executor recompila o plano no servidor imediatamente antes da execução. O cl
 - A saída do planner fica restrita a uma allow-list fixa de especialistas.
 - Toda tarefa recebe `read_only=true`.
 - O servidor limita quantidade de tarefas, paralelismo, tamanho do contexto do grafo e budget de queries por especialista.
+- O specialist Kubernetes delega para a mesma etapa determinística Kubernetes usada pelo core engine; ele não mantém uma segunda implementação simplificada de RCA.
+- A prioridade de especificidade da causa raiz Kubernetes é compartilhada com o seletor clássico de playbooks, impedindo que uma hipótese de mecanismo supere uma causa específica confirmada apenas por score bruto maior.
+- Qualquer hipótese emitida por um specialist cujo status final não seja `completed` é bloqueada pelo gate de contexto; evidência parcial de ramos `failed`, `skipped` ou `budget_exhausted` nunca pode ser selecionada.
 - Kubernetes só é planejado quando o incidente possui identidade de runtime Kubernetes.
 - Logs exigem namespace e identidade de pod/serviço.
 - Traces exigem identidade de serviço e trace analysis habilitada.
@@ -125,12 +128,15 @@ Defaults atuais no servidor:
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
 | `AGENTIC_SPECIALIST_MAX_QUERIES` | 12 |
+| `AGENTIC_KUBERNETES_MAX_QUERIES` | 30 |
 
 São limites rígidos do servidor, não sugestões fornecidas pelo cliente.
 
 ## Execução paralela
 
 O executor roda tarefas independentes em paralelo até `AGENTIC_MAX_PARALLEL_TASKS`. Tarefas com dependências entram em waves posteriores. Hoje isso significa que o ramo database/stateful só pode executar depois de o ramo de traces terminar com análises tipadas.
+
+O ramo Kubernetes usa um budget read-only próprio porque a etapa determinística completa pode consultar legitimamente estado de Pod/Node, eventos, ownership ReplicaSet/Deployment, HPA/KEDA, Prometheus, Loki, Argo CD, GitHub e contexto do Karpenter. O default é 30 queries no specialist Kubernetes, ainda subordinadas ao query budget global do incidente.
 
 As saídas dos especialistas incluem evidências, entidades, arestas do grafo e estruturas de análise tipadas. Tudo é mesclado em um `SharedEvidenceEnvelope`; evidências cujo hash de integridade falhe são excluídas do envelope e fazem a integridade global ficar falsa.
 

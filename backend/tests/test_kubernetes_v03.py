@@ -2,7 +2,12 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.agentic.evaluator import evaluate_shared_evidence
+from app.agentic.executor import execute_investigation_plan
+from app.agentic.planner import build_investigation_plan
+from app.config import Settings
 from app.core.engine import InvestigationEngine
+from app.db.repository import MemoryRepository
 from app.integrations.demo import DemoTools
 from app.schemas import IncidentInput
 
@@ -309,3 +314,147 @@ async def test_node_not_ready_survives_optional_integration_outages():
     assert result.root_cause.hypothesis_id == "node-unreachable"
     blast_radius = next(item for item in result.evidence if item.category == "blast-radius")
     assert blast_radius.facts["pod_count"] == 0
+
+
+async def _agentic_kubernetes_verdict(
+    tools,
+    incident: IncidentInput,
+    *,
+    settings: Settings | None = None,
+):
+    settings = settings or Settings(
+        query_budget_enabled=False,
+        agentic_execution_enabled=True,
+    )
+    plan = await build_investigation_plan(
+        MemoryRepository(),
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    kubernetes = next(
+        result
+        for result in execution.specialist_results
+        if result.specialist == "kubernetes"
+    )
+    return (
+        evaluate_shared_evidence(execution),
+        kubernetes,
+    )
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_oom_playbook():
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        OOMTools(),
+        pod_incident("KubePodOOMKilled"),
+    )
+    assert kubernetes.status == "completed"
+    assert {item.id for item in kubernetes.hypotheses} >= {
+        "container-oom",
+        "container-memory-limit",
+    }
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "container-memory-limit"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_crashloop_playbook():
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        CrashLoopTools(),
+        pod_incident("KubePodCrashLooping"),
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "application-exit"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_failed_scheduling_playbook():
+    incident = pod_incident("KubePodFailedScheduling")
+    incident.node = None
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        FailedSchedulingTools(),
+        incident,
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "insufficient-resources"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_karpenter_capacity_playbook():
+    incident = pod_incident("KubePodFailedScheduling")
+    incident.node = None
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        KarpenterCapacityTools(),
+        incident,
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "karpenter-capacity"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_hpa_playbook():
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        HPATools(),
+        pod_incident("KubeHpaMaxedOut"),
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "hpa-max-saturation"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_keda_playbook():
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        KEDATools(),
+        pod_incident("KedaScalerErrors"),
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "keda-scaler-error"
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_matches_node_not_ready_playbook():
+    incident = IncidentInput(
+        title="Node not ready",
+        cluster="prod",
+        node="ip-10-0-1-42",
+        alert_name="KubeNodeNotReady",
+        starts_at=START,
+    )
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        NodeNotReadyTools(),
+        incident,
+    )
+    assert kubernetes.status == "completed"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "node-unreachable"
+    assert any(
+        item.category == "blast-radius"
+        for item in kubernetes.evidence
+    )
+
+
+@pytest.mark.asyncio
+async def test_agentic_kubernetes_budget_exhaustion_fails_closed():
+    settings = Settings(
+        query_budget_enabled=False,
+        agentic_execution_enabled=True,
+        agentic_kubernetes_max_queries=1,
+    )
+    evaluation, kubernetes = await _agentic_kubernetes_verdict(
+        OOMTools(),
+        pod_incident("KubePodOOMKilled"),
+        settings=settings,
+    )
+    assert kubernetes.status == "budget_exhausted"
+    assert evaluation.root_cause is None
+    assert evaluation.status == "inconclusive"

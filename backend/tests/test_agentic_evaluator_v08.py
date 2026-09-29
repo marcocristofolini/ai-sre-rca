@@ -92,14 +92,25 @@ async def test_direct_kubernetes_evidence_blocks_downstream_promotion():
 
     evaluation = evaluate_shared_evidence(execution)
 
-    assert evaluation.status == "inconclusive"
-    assert evaluation.root_cause is None
+    assert evaluation.status == "resolved"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id == "disk-pressure"
+    selected = next(
+        item
+        for item in evaluation.evaluated_hypotheses
+        if item.decision == "selected"
+    )
+    assert selected.specialist == "kubernetes"
     blocked = [
         item
         for item in evaluation.evaluated_hypotheses
         if item.decision == "blocked_by_precedence"
     ]
     assert blocked
+    assert all(
+        item.specialist in {"traces", "database"}
+        for item in blocked
+    )
     gate = next(
         node
         for node in evaluation.explanation_graph.nodes

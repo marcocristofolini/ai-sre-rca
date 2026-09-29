@@ -67,6 +67,9 @@ The executor recompiles the plan server-side immediately before execution. Clien
 - Planner output is restricted to a fixed specialist allow-list.
 - Every task is marked `read_only=true`.
 - The server limits task count, parallelism, graph context size and per-specialist query budget.
+- The Kubernetes specialist delegates to the same deterministic Kubernetes stage used by the core engine; it does not maintain a second simplified RCA implementation.
+- Kubernetes root-cause specificity priority is shared with the classic playbook selector, so mechanism hypotheses cannot outrank a more specific confirmed cause only because they have a higher raw score.
+- Any hypothesis emitted by a specialist whose final status is not `completed` is blocked by the specialist-context gate; partial evidence from `failed`, `skipped` or `budget_exhausted` branches is never selectable.
 - Kubernetes planning is selected only when the incident has Kubernetes runtime identity.
 - Logs require scoped namespace plus pod/service identity.
 - Traces require a service identity and enabled trace analysis.
@@ -125,12 +128,15 @@ The current server-side defaults are:
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
 | `AGENTIC_SPECIALIST_MAX_QUERIES` | 12 |
+| `AGENTIC_KUBERNETES_MAX_QUERIES` | 30 |
 
 These are hard server limits, not hints supplied by the client.
 
 ## Parallel execution
 
 The executor runs independent tasks concurrently up to `AGENTIC_MAX_PARALLEL_TASKS`. Dependency tasks run in later waves. Today this means the database/stateful branch cannot execute until the traces branch has completed with typed trace analyses.
+
+The Kubernetes branch uses a dedicated read-only budget because the full deterministic playbook stage can legitimately query Pod/Node state, events, ReplicaSet/Deployment ownership, HPA/KEDA, Prometheus, Loki, Argo CD, GitHub and Karpenter context. The default is 30 Kubernetes specialist queries, still bounded by the global incident query budget.
 
 Specialist outputs contain evidence, entities, graph edges and typed analysis structures. They are merged into `SharedEvidenceEnvelope`; evidence with a failed integrity hash is excluded from the shared envelope and marks envelope integrity false.
 

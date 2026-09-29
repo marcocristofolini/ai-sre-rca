@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from app.agentic.models import SpecialistResult, SpecialistTask
 from app.config import Settings
+from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
 from app.core.query_safety import quoted_string
 from app.core.stateful_dependency import enrich_with_stateful_dependencies
@@ -41,6 +42,123 @@ class SpecialistBudget:
                 f"specialist query budget exhausted before {operation}"
             )
         self.used += 1
+
+
+
+class KubernetesBudgetedTools:
+    """Explicit read-only surface required by the full Kubernetes stage."""
+
+    def __init__(self, tools, budget: SpecialistBudget):
+        self._tools = tools
+        self._budget = budget
+
+    async def get_pod(self, namespace: str, pod: str):
+        self._budget.consume("get_pod")
+        return await self._tools.get_pod(namespace, pod)
+
+    async def get_node(self, node: str):
+        self._budget.consume("get_node")
+        return await self._tools.get_node(node)
+
+    async def get_events(self, namespace: str, object_name: str):
+        self._budget.consume("get_events")
+        return await self._tools.get_events(namespace, object_name)
+
+    async def get_cluster_events(self, object_name: str):
+        self._budget.consume("get_cluster_events")
+        return await self._tools.get_cluster_events(object_name)
+
+    async def get_replicaset(self, namespace: str, name: str):
+        self._budget.consume("get_replicaset")
+        return await self._tools.get_replicaset(namespace, name)
+
+    async def get_deployment(self, namespace: str, name: str):
+        self._budget.consume("get_deployment")
+        return await self._tools.get_deployment(namespace, name)
+
+    async def list_pods_on_node(self, node: str):
+        self._budget.consume("list_pods_on_node")
+        return await self._tools.list_pods_on_node(node)
+
+    async def get_hpa_for_target(
+        self,
+        namespace: str,
+        kind: str,
+        name: str,
+    ):
+        self._budget.consume("get_hpa_for_target")
+        return await self._tools.get_hpa_for_target(
+            namespace,
+            kind,
+            name,
+        )
+
+    async def get_scaledobject_for_target(
+        self,
+        namespace: str,
+        kind: str,
+        name: str,
+    ):
+        self._budget.consume("get_scaledobject_for_target")
+        return await self._tools.get_scaledobject_for_target(
+            namespace,
+            kind,
+            name,
+        )
+
+    async def prometheus_query(
+        self,
+        query: str,
+        at: datetime | None = None,
+    ):
+        self._budget.consume("prometheus_query")
+        return await self._tools.prometheus_query(query, at)
+
+    async def prometheus_query_range(
+        self,
+        query: str,
+        start: datetime,
+        end: datetime,
+        step: str = "60s",
+    ):
+        self._budget.consume("prometheus_query_range")
+        return await self._tools.prometheus_query_range(
+            query,
+            start,
+            end,
+            step,
+        )
+
+    async def service_graph(self, service: str, at: datetime):
+        self._budget.consume("service_graph")
+        return await self._tools.service_graph(service, at)
+
+    async def loki_query_range(
+        self,
+        query: str,
+        start: datetime,
+        end: datetime,
+        limit: int = 100,
+    ):
+        self._budget.consume("loki_query_range")
+        return await self._tools.loki_query_range(
+            query,
+            start,
+            end,
+            limit,
+        )
+
+    async def argocd_application(self, app_name: str):
+        self._budget.consume("argocd_application")
+        return await self._tools.argocd_application(app_name)
+
+    async def github_commit(self, repo_url: str, revision: str):
+        self._budget.consume("github_commit")
+        return await self._tools.github_commit(repo_url, revision)
+
+    async def karpenter_nodeclaim_for_node(self, node: str):
+        self._budget.consume("karpenter_nodeclaim_for_node")
+        return await self._tools.karpenter_nodeclaim_for_node(node)
 class TraceBudgetedTools:
     """Explicit narrow surface required by trace enrichment."""
 
@@ -235,99 +353,48 @@ async def _kubernetes(
     task: SpecialistTask,
     incident: IncidentInput,
     tools,
+    settings: Settings,
 ) -> SpecialistResult:
+    """Run the exact deterministic Kubernetes stage used by the core engine."""
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
-    evidence: list[Evidence] = []
+    proxy = KubernetesBudgetedTools(tools, budget)
+    engine = InvestigationEngine(
+        tools=proxy,
+        memory=None,
+        settings=settings,
+    )
+
     try:
-        if incident.namespace and incident.pod:
-            budget.consume("get_pod")
-            pod = await tools.get_pod(incident.namespace, incident.pod)
-            if pod:
-                status = pod.get("status", {})
-                evidence.append(Evidence(
-                    source="kubernetes",
-                    category="agentic-pod-status",
-                    summary=(
-                        f"Pod {incident.namespace}/{incident.pod} "
-                        f"phase={status.get('phase', 'unknown')} "
-                        f"reason={status.get('reason', 'unknown')}."
-                    ),
-                    facts={
-                        "namespace": incident.namespace,
-                        "pod": incident.pod,
-                        "phase": status.get("phase"),
-                        "reason": status.get("reason"),
-                        "node": pod.get("spec", {}).get("nodeName"),
-                    },
-                    raw_reference=(
-                        f"k8s://pod/{incident.namespace}/{incident.pod}"
-                    ),
-                    strength="strong",
-                ))
-
-            budget.consume("get_events")
-            events = await tools.get_events(
-                incident.namespace,
-                incident.pod,
-            )
-            if events:
-                evidence.append(Evidence(
-                    source="kubernetes",
-                    category="agentic-events",
-                    summary=(
-                        f"Kubernetes returned {len(events)} events for "
-                        f"{incident.namespace}/{incident.pod}."
-                    ),
-                    facts={
-                        "event_count": len(events),
-                        "reasons": [
-                            str(item.get("reason") or "")
-                            for item in events[:20]
-                        ],
-                        "types": [
-                            str(item.get("type") or "")
-                            for item in events[:20]
-                        ],
-                    },
-                    raw_reference=(
-                        f"k8s://events/{incident.namespace}/{incident.pod}"
-                    ),
-                    strength="medium",
-                ))
-
-        if incident.node:
-            budget.consume("get_node")
-            node = await tools.get_node(incident.node)
-            if node:
-                conditions = {
-                    str(item.get("type")): item.get("status")
-                    for item in node.get("status", {}).get("conditions", [])
-                    if item.get("type")
-                }
-                evidence.append(Evidence(
-                    source="kubernetes",
-                    category="agentic-node-conditions",
-                    summary=(
-                        f"Node {incident.node} conditions were collected "
-                        "through the read-only Kubernetes API."
-                    ),
-                    facts={
-                        "node": incident.node,
-                        "conditions": conditions,
-                    },
-                    raw_reference=f"k8s://node/{incident.node}",
-                    strength="strong",
-                ))
+        result = await engine.investigate_kubernetes(
+            incident,
+            incident_id=f"agentic-kubernetes-{uuid4().hex[:12]}",
+            similar=[],
+        )
     except SpecialistBudgetExceeded:
-        pass
+        budget.exhausted = True
+        return _result(
+            task,
+            budget,
+            started_at=started,
+            reason="Kubernetes specialist query budget exhausted",
+        )
 
     return _result(
         task,
         budget,
         started_at=started,
-        evidence=evidence,
+        evidence=result.evidence,
+        entities=result.entities,
+        graph_edges=result.graph_edges,
+        hypotheses=[
+            item
+            for item in result.hypotheses
+            if item.origin == "playbook"
+        ],
     )
+
+
 async def _metrics(
     task: SpecialistTask,
     incident: IncidentInput,
@@ -667,7 +734,12 @@ async def execute_specialist(
 ) -> SpecialistResult:
     try:
         if task.specialist == "kubernetes":
-            return await _kubernetes(task, incident, tools)
+            return await _kubernetes(
+                task,
+                incident,
+                tools,
+                settings,
+            )
         if task.specialist == "metrics":
             return await _metrics(task, incident, tools)
         if task.specialist == "logs":
