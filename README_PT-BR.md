@@ -119,11 +119,15 @@ A v0.5.1 reforça a correção do RCA stateful após a revisão da v0.5: rotas i
 ```mermaid
 flowchart TD
     A[Alertmanager / API] --> N[Normalizador de Incidente]
-    N --> P[Investigation Planner Bounded]
+    N --> EL[Especialistas Deterministicamente Elegíveis]
     N --> E[Investigation Engine]
 
     G[(Persistent Awareness Graph)] --> C[Contexto Bounded do Serviço]
-    C --> P
+    C --> EL
+    EL --> PC[Compilador de Plano no Servidor]
+    EL -. contexto sanitizado .-> ADV[LLM Advisory Opcional]
+    ADV -. somente nomes de especialistas .-> PC
+    PC --> P[Investigation Plan Bounded]
     P --> T[Tarefas Allow-listed de Especialistas]
     T -->|opt-in| X[Especialistas Paralelos Read-only]
     X --> SE[Shared Evidence Envelope]
