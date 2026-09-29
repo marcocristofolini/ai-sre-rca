@@ -153,7 +153,11 @@ Persistent Awareness Graph:
 - [x] graph-backed blast-radius traversal with explicit impact direction
 - [x] unknown and stale relationship types/instances excluded from current impact traversal
 - [ ] authoritative tombstones from full inventory reconciliation
-- [ ] first-class deployment/change event nodes
+- [x] first-class deployment/change event nodes
+- [x] stable deployment-event identity across repeated incidents
+- [x] historical event semantics distinct from fresh/stale topology
+- [x] bounded service/time-window change-event API
+- [x] change-event relationships excluded from causal blast-radius traversal
 - [ ] persistent graph explorer UI
 
 Agentic investigation foundation:
