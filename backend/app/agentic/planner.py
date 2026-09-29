@@ -15,6 +15,7 @@ from app.agentic.models import (
     PlannerInventorySourceContext,
     PlannerStateCounts,
     SpecialistKind,
+    SpecialistScope,
     SpecialistTask,
 )
 from app.awareness.change_events import query_change_events
@@ -60,6 +61,7 @@ def _append_task(
     max_queries: int,
     depends_on: list[str] | None = None,
     required_entity_ids: list[str] | None = None,
+    scope: SpecialistScope | None = None,
 ) -> None:
     if specialist not in SPECIALIST_ALLOWLIST:
         raise ValueError(f"unsupported specialist: {specialist}")
@@ -73,6 +75,11 @@ def _append_task(
         max_queries=max_queries,
         depends_on=list(depends_on or []),
         required_entity_ids=list(required_entity_ids or []),
+        scope=(
+            scope.model_copy(deep=True)
+            if scope is not None
+            else SpecialistScope()
+        ),
     ))
 
 
@@ -272,6 +279,72 @@ async def _graph_context(
         "history_truncated": history_truncated,
     })
 
+def _fresh_context_entities(
+    context: PlannerGraphContext,
+    kind: str,
+    *,
+    namespace: str | None = None,
+) -> list[PlannerContextEntity]:
+    return [
+        item
+        for item in context.entities
+        if item.kind.casefold() == kind.casefold()
+        and item.freshness == "fresh"
+        and (namespace is None or item.namespace == namespace)
+    ]
+
+
+def _specialist_scope(
+    incident: IncidentInput,
+    context: PlannerGraphContext,
+) -> SpecialistScope:
+    resolved: list[str] = []
+    ambiguous: list[str] = []
+
+    pod = incident.pod
+    if pod is None and incident.namespace:
+        pod_candidates = _fresh_context_entities(
+            context,
+            "Pod",
+            namespace=incident.namespace,
+        )
+        if len(pod_candidates) == 1:
+            pod = pod_candidates[0].name
+            resolved.append("pod")
+        elif len(pod_candidates) > 1:
+            ambiguous.append("pod")
+
+    explicit_application = (
+        incident.labels.get("argocd_app")
+        or incident.labels.get("app.kubernetes.io/instance")
+    )
+    application = explicit_application
+    if application is None:
+        application_candidates = _fresh_context_entities(
+            context,
+            "ArgoCDApplication",
+        )
+        if len(application_candidates) == 1:
+            application = application_candidates[0].name
+            resolved.append("application")
+        elif len(application_candidates) > 1:
+            ambiguous.append("application")
+        else:
+            # Preserve legacy service-name lookup only when the persistent
+            # graph has no competing Argo CD application identity.
+            application = incident.service
+
+    return SpecialistScope(
+        namespace=incident.namespace,
+        service=incident.service,
+        pod=pod,
+        node=incident.node,
+        application=application,
+        graph_resolved_fields=resolved,
+        graph_ambiguous_fields=ambiguous,
+    )
+
+
 def _eligible_tasks(
     *,
     incident: IncidentInput,
@@ -280,19 +353,27 @@ def _eligible_tasks(
 ) -> list[SpecialistTask]:
     tasks: list[SpecialistTask] = []
     context_ids = context.entity_ids[: settings.agentic_max_context_nodes]
+    scope = _specialist_scope(incident, context)
 
-    if incident.node or (incident.namespace and incident.pod):
+    if scope.node or (scope.namespace and scope.pod):
+        kubernetes_reason = (
+            "The incident identifies Kubernetes-scoped runtime resources."
+        )
+        if "pod" in scope.graph_resolved_fields:
+            kubernetes_reason = (
+                "A single fresh Pod was resolved from the bounded persistent "
+                "topology and will be verified against live Kubernetes state."
+            )
         _append_task(
             tasks,
             specialist="kubernetes",
             objective=(
                 "Validate runtime, ownership, scheduling, controller and node signals."
             ),
-            rationale=(
-                "The incident identifies Kubernetes-scoped runtime resources."
-            ),
+            rationale=kubernetes_reason,
             max_queries=settings.agentic_kubernetes_max_queries,
             required_entity_ids=context_ids,
+            scope=scope,
         )
 
     _append_task(
@@ -304,23 +385,31 @@ def _eligible_tasks(
         ),
         max_queries=min(12, settings.agentic_specialist_max_queries),
         required_entity_ids=context_ids,
+        scope=scope,
     )
 
-    if incident.namespace and (incident.pod or incident.service):
+    if scope.namespace and scope.pod:
+        log_reason = (
+            "The incident has explicit namespace and Pod identity for scoped log queries."
+        )
+        if "pod" in scope.graph_resolved_fields:
+            log_reason = (
+                "A single fresh Pod was resolved from the bounded persistent "
+                "topology and will be used only to narrow the live Loki query."
+            )
         _append_task(
             tasks,
             specialist="logs",
             objective=(
                 "Search bounded log windows for error signatures and runtime context."
             ),
-            rationale=(
-                "The incident has enough namespace/resource identity for scoped log queries."
-            ),
+            rationale=log_reason,
             max_queries=min(8, settings.agentic_specialist_max_queries),
             required_entity_ids=context_ids,
+            scope=scope,
         )
 
-    if incident.service and settings.trace_analysis_enabled:
+    if scope.service and settings.trace_analysis_enabled:
         _append_task(
             tasks,
             specialist="traces",
@@ -332,6 +421,7 @@ def _eligible_tasks(
             ),
             max_queries=min(10, settings.agentic_specialist_max_queries),
             required_entity_ids=context_ids,
+            scope=scope,
         )
 
     trace_task_id = (
@@ -340,7 +430,7 @@ def _eligible_tasks(
         else None
     )
     if (
-        incident.service
+        scope.service
         and settings.stateful_dependency_analysis_enabled
         and trace_task_id is not None
     ):
@@ -358,21 +448,35 @@ def _eligible_tasks(
             max_queries=min(10, settings.agentic_specialist_max_queries),
             depends_on=[trace_task_id],
             required_entity_ids=context_ids,
+            scope=scope,
         )
 
-    if incident.service or incident.pod:
+    if scope.service or scope.pod or scope.application:
+        change_reason = (
+            "The incident identifies a workload/service that can be correlated "
+            "with deployment history."
+        )
+        if "application" in scope.graph_resolved_fields:
+            change_reason = (
+                "A single fresh Argo CD application was resolved from persistent "
+                "topology and will be verified against the live Argo CD API."
+            )
+        elif "application" in scope.graph_ambiguous_fields:
+            change_reason = (
+                "Persistent topology contains multiple fresh Argo CD application "
+                "candidates, so live application lookup remains fail-closed while "
+                "bounded persisted ChangeEvents remain available as context."
+            )
         _append_task(
             tasks,
             specialist="changes",
             objective=(
                 "Correlate deployed revision, Git metadata and recent operational changes."
             ),
-            rationale=(
-                "The incident identifies a workload/service that can be correlated "
-                "with deployment history."
-            ),
+            rationale=change_reason,
             max_queries=min(6, settings.agentic_specialist_max_queries),
             required_entity_ids=context_ids,
+            scope=scope,
         )
 
     return tasks
