@@ -99,6 +99,26 @@ flowchart LR
 
 `AWARENESS_STALE_AFTER_MINUTES` controls when active graph facts become stale. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` independently controls whether the latest authoritative snapshot for each configured source is reported as `current` or `stale`; a source with no receipt is `missing`.
 
+## Awareness retention — v0.8
+
+Retention is explicit, admin-only and dry-run by default. It never removes authoritative snapshot receipts in this phase because those receipts protect immutable snapshot identity and replay conflict detection. Historical entity/relationship observations are eligible only after the configured observation window and only when they are not the latest observation for that target.
+
+```mermaid
+flowchart LR
+    ADMIN[Admin request] --> PREVIEW{dry_run?}
+    PREVIEW -->|Yes| COUNT[Count eligible rows only]
+    PREVIEW -->|No| OLD[Old redundant observations]
+    OLD --> KEEP[Keep latest observation per target]
+    OLD --> RECEIPT[Keep all inventory snapshot receipts]
+    KEEP --> PURGE[Purge eligible history]
+    RECEIPT --> PURGE
+    PURGE --> REL[Remove expired tombstoned relationships]
+    REL --> ENT[Remove expired tombstoned entities<br/>only when no relationship survives]
+    ENT --> AUDIT[Transactional purge audit]
+```
+
+`AWARENESS_OBSERVATION_RETENTION_DAYS` defaults to 90 and `AWARENESS_TOMBSTONE_RETENTION_DAYS` defaults to 30. The retention endpoint is scoped by the same tenant/cluster authorization boundary as the graph APIs.
+
 ## Model-assisted planning compiler — v0.8
 
 Model assistance is an optional advisory layer, not a new execution authority. The deterministic planner first decides which specialist branches are eligible. Only that sanitized, bounded context is sent to the model. The response is compiled back through server-owned policy before a task graph exists.
