@@ -163,6 +163,21 @@ POST /api/v1/awareness/retention/purge?cluster=prod-us&dry_run=false
 
 O endpoint exige autorização admin. Preview é o padrão e não realiza escrita. Purges executados preservam todos os receipts autoritativos de snapshot e a observação mais recente de cada alvo do grafo, removem relações tombstoned expiradas antes das entidades e recusam apagar uma entidade tombstoned enquanto alguma relação ainda a referencia.
 
+A retention agendada começa desabilitada e roda em CronJob separado:
+
+```yaml
+awarenessRetention:
+  enabled: true
+  schedule: "17 3 * * *"
+  existingSecret: ai-sre-retention-db
+  tenantId: payments
+  clusters:
+    - prod-us
+    - prod-eu
+```
+
+O Secret de retention precisa somente de `DATABASE_URL`. O Pod usa `automountServiceAccountToken: false`, portanto não recebe credencial da API Kubernetes. `concurrencyPolicy: Forbid` impede execuções sobrepostas e o worker registra cada purge executado por cluster com um ator de sistema na auditoria.
+
 ## Health/capabilities por fonte
 
 ```text
