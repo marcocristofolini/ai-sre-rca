@@ -40,7 +40,11 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Model-assisted planning preserves the Kubernetes/metrics/traces evidence baseline whenever those branches are deterministically eligible.
 - Planner output records requested, accepted, rejected and forced specialist choices for auditability.
 - Invalid, unavailable or unknown model choices fall back to the deterministic plan.
-- PostgreSQL and in-memory repository parity for entity lookup and bounded neighbor traversal.
+- First-class temporal `deployment_sync` and `source_commit` events compiled from integrity-verified Argo CD/GitHub evidence.
+- Canonical temporal event IDs deduplicate the same operational change across independent incident observations while preserving incident/evidence provenance.
+- Tenant/cluster-scoped `GET /api/v1/awareness/changes` with bounded filters for namespace, event type, service/canonical subject and timezone-aware time windows.
+- Recent service change events are included as bounded planner context inside the configured change-correlation window.
+- PostgreSQL and in-memory repository parity for entity lookup, bounded neighbor traversal and temporal change-event queries.
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
 ### Safety
@@ -61,12 +65,14 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Kubernetes specialist budget exhaustion is fail-closed; partial infrastructure collection cannot be treated as a clean Kubernetes result.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
+- Temporal change events remain operational context only; they never create blast-radius edges or causal proof by themselves.
+- Change events are created only from evidence whose SHA-256 integrity still verifies.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
 - Authoritative tombstones from full inventory reconciliation.
-- Persistent graph explorer UI and first-class deployment/change event nodes.
+- Persistent graph explorer UI.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 
