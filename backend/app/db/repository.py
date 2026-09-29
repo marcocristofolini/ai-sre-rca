@@ -928,6 +928,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in entity_rows
         ]
@@ -945,6 +948,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in relationship_rows
         ]
@@ -1032,6 +1038,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in rows
         ]
@@ -1125,6 +1134,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in entity_rows
         ]
@@ -1142,6 +1154,9 @@ class SQLRepository:
                 last_seen=row.last_seen,
                 last_incident_id=row.last_incident_id,
                 observation_count=row.observation_count,
+                tombstoned_at=row.tombstoned_at,
+                tombstone_snapshot_id=row.tombstone_snapshot_id,
+                tombstone_source=row.tombstone_source,
             )
             for row in relationship_rows
         ]
