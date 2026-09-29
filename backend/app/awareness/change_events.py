@@ -301,6 +301,19 @@ async def query_change_events(
     until: datetime | None = None,
     limit: int = 100,
 ) -> list[AwarenessChangeEvent]:
+    normalized_since = (
+        _parse_datetime(since, since) if since is not None else None
+    )
+    normalized_until = (
+        _parse_datetime(until, until) if until is not None else None
+    )
+    if (
+        normalized_since is not None
+        and normalized_until is not None
+        and normalized_since > normalized_until
+    ):
+        raise ValueError("since must be earlier than or equal to until")
+
     fetch_limit = max(1, min(max(limit * 3, 100), 500))
     entities = await repo.find_awareness_entities(
         tenant_id,
@@ -316,9 +329,9 @@ async def query_change_events(
             continue
         if service_name and event.service_name != service_name:
             continue
-        if since and event.occurred_at < since:
+        if normalized_since and event.occurred_at < normalized_since:
             continue
-        if until and event.occurred_at > until:
+        if normalized_until and event.occurred_at > normalized_until:
             continue
         events.append(event)
 
