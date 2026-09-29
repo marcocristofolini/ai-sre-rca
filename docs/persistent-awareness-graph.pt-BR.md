@@ -76,13 +76,13 @@ Uma observação posterior, vinda de incidente ou inventário autoritativo, pode
 
 A primeira fonte autoritativa automatizada é um worker one-shot de inventário Kubernetes, implantado pelo Helm como um `CronJob` opcional. Ele não roda dentro do processo da API: escalar a API horizontalmente não multiplica loops de inventário, e `concurrencyPolicy: Forbid` impede jobs sobrepostos da mesma release.
 
-O worker executa somente operações GET/LIST no Kubernetes usando o ServiceAccount read-only do investigador. Os kinds iniciais suportados são `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` e `Node`. A paginação segue o token `metadata.continue` da API Kubernetes até terminar. Qualquer falha HTTP, de listagem ou de payload aborta a coleta antes que um snapshot chegue à reconciliação.
+O worker executa somente operações GET/LIST no Kubernetes usando o ServiceAccount read-only do investigador. Os kinds iniciais suportados são `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` e `Node`. A paginação segue o token `metadata.continue` da API Kubernetes até terminar e falha de forma fechada se uma página trouxer itens malformados ou repetir um token de continuação. Qualquer falha HTTP, de listagem ou de payload aborta a coleta antes que um snapshot chegue à reconciliação.
 
 As relações são emitidas somente a partir de estado explícito do Kubernetes:
 
-- `owned_by` a partir de um `ownerReference` controlador não ambíguo;
+- `owned_by` a partir de um único `ownerReference` controlador, somente quando seu UID corresponde ao objeto owner observado;
 - `scheduled_on` a partir de `Pod.spec.nodeName`, apenas quando o snapshot é cluster-wide e inclui Nodes;
-- `serves` a partir do selector do Service correspondendo a Pods cuja cadeia estável de controllers resolve para Deployment, StatefulSet ou DaemonSet.
+- `serves` a partir de um selector não vazio de Service que corresponde aos labels do Pod template de um Deployment, StatefulSet ou DaemonSet, inclusive quando o workload está escalado para zero.
 
 Uma coleta limitada por namespace propositalmente não afirma semântica de deleção Pod-to-Node, porque Node possui escopo de cluster. Nesse modo o worker emite escopos autoritativos separados para recursos namespaced e Nodes. Uma coleta cluster-wide pode reconciliar arestas de scheduling porque os dois lados foram observados na mesma coleta completa.
 
@@ -90,8 +90,10 @@ Uma coleta limitada por namespace propositalmente não afirma semântica de dele
 flowchart LR
     CRON[Helm CronJob<br/>concurrencyPolicy: Forbid] --> GET[Kubernetes somente GET/LIST]
     GET --> PAGE[Paginar até metadata.continue ficar vazio]
-    PAGE --> COMPLETE{Todas as listas configuradas completas?}
-    COMPLETE -->|Não| ABORT[Abortar execução<br/>sem reconciliação]
+    PAGE --> VALID{Objetos válidos + token progride?}
+    VALID -->|Não| ABORT[Abortar execução<br/>sem reconciliação]
+    VALID -->|Sim| COMPLETE{Todas as listas configuradas completas?}
+    COMPLETE -->|Não| ABORT
     COMPLETE -->|Sim| BUILD[Construir recursos + relações explícitas]
     BUILD --> SNAP[Snapshot autoritativo completo]
     SNAP --> REC[Contrato existente de reconciliação]
