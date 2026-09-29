@@ -687,6 +687,19 @@ class SQLRepository:
                 "CREATE INDEX IF NOT EXISTS investigations_embedding_hnsw "
                 "ON investigations USING hnsw (embedding vector_cosine_ops)"
             ))
+            for table in ("awareness_entities", "awareness_relationships"):
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstoned_at TIMESTAMPTZ"
+                ))
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstone_snapshot_id VARCHAR(128)"
+                ))
+                await conn.execute(text(
+                    f"ALTER TABLE {table} "
+                    "ADD COLUMN IF NOT EXISTS tombstone_source VARCHAR(128)"
+                ))
 
     async def save(self, result: InvestigationResult) -> None:
         async with self.sessions() as session:
@@ -748,6 +761,13 @@ class SQLRepository:
                     record.last_seen = entity.last_seen
                     record.last_incident_id = entity.last_incident_id
                     record.metadata_json = dict(entity.metadata)
+                    if (
+                        record.tombstoned_at is not None
+                        and entity.last_seen >= record.tombstoned_at
+                    ):
+                        record.tombstoned_at = None
+                        record.tombstone_snapshot_id = None
+                        record.tombstone_source = None
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
@@ -787,6 +807,13 @@ class SQLRepository:
                     record.last_incident_id = relationship.last_incident_id
                     record.metadata_json = dict(relationship.metadata)
                     record.evidence_ids = list(relationship.evidence_ids)
+                    if (
+                        record.tombstoned_at is not None
+                        and relationship.last_seen >= record.tombstoned_at
+                    ):
+                        record.tombstoned_at = None
+                        record.tombstone_snapshot_id = None
+                        record.tombstone_source = None
                 record.observation_count += 1
             session.add(AwarenessObservationRecord(
                 id=observation.id,
