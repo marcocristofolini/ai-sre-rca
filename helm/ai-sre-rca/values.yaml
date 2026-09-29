@@ -176,6 +176,10 @@ networkPolicy:
   # Fail closed for the mutation plane. Configure explicit peers when enabled.
   remediatorIngress: []
   remediatorEgress: []
+  # Inventory collector is read-only but still needs Kubernetes API + PostgreSQL egress.
+  # Replace the empty object with explicit peers in locked-down installations.
+  inventoryCollectorEgress:
+    - {}
   # Empty object means unrestricted backend egress once the policy is enabled.
   # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
   backendEgress:
