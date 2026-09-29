@@ -6,6 +6,14 @@ from typing import Protocol
 from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.awareness.inventory import (
+    AuthoritativeInventorySnapshot,
+    InventoryReconciliationResult,
+    inventory_observation_id,
+    materialize_inventory_entities,
+    materialize_inventory_relationships,
+    resource_in_coverage,
+)
 from app.awareness.models import (
     AwarenessEntity,
     AwarenessGraphSnapshot,
@@ -70,6 +78,10 @@ class InvestigationRepository(Protocol):
         *,
         limit: int,
     ) -> tuple[list[AwarenessEntity], list[AwarenessRelationship]]: ...
+    async def reconcile_authoritative_inventory(
+        self,
+        snapshot: AuthoritativeInventorySnapshot,
+    ) -> InventoryReconciliationResult: ...
     async def save_remediation_plan(self, plan: RemediationPlan) -> None: ...
     async def get_remediation_plan(
         self,
