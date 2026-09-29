@@ -76,13 +76,13 @@ A newer incident or authoritative inventory observation can reactivate a tombsto
 
 The first automated authoritative source is a separate one-shot Kubernetes inventory worker deployed by Helm as an optional `CronJob`. It is intentionally not embedded in the API process: API horizontal scaling therefore cannot multiply inventory loops, and `concurrencyPolicy: Forbid` prevents overlapping jobs from the same release.
 
-The worker performs only Kubernetes GET/LIST operations using the investigator's read-only ServiceAccount. Supported first-pass kinds are `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` and `Node`. Pagination follows the Kubernetes `metadata.continue` token until completion. Any HTTP/list/payload failure aborts the collection before a snapshot reaches reconciliation.
+The worker performs only Kubernetes GET/LIST operations using the investigator's read-only ServiceAccount. Supported first-pass kinds are `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` and `Node`. Pagination follows the Kubernetes `metadata.continue` token until completion and fails closed if a page contains malformed items or repeats a continuation token. Any HTTP/list/payload failure aborts the collection before a snapshot reaches reconciliation.
 
 Relationships are emitted only from explicit Kubernetes state:
 
-- `owned_by` from an unambiguous controller `ownerReference`;
+- `owned_by` from one controller `ownerReference` only when its UID matches the currently observed owner object;
 - `scheduled_on` from `Pod.spec.nodeName`, only when the snapshot is cluster-wide and includes Nodes;
-- `serves` from a Service selector matching Pods whose stable controller chain resolves to a Deployment, StatefulSet or DaemonSet.
+- `serves` from a non-empty Service selector matching the Pod-template labels of a Deployment, StatefulSet or DaemonSet, including scale-to-zero workloads.
 
 Namespace-scoped collection deliberately does not assert Pod-to-Node deletion semantics because Node is cluster-scoped. In that mode the worker emits separate authoritative scopes for namespaced resources and Nodes. Cluster-wide collection can safely reconcile cross-scope scheduling edges because both endpoint inventories are observed in the same complete collection.
 
@@ -90,8 +90,10 @@ Namespace-scoped collection deliberately does not assert Pod-to-Node deletion se
 flowchart LR
     CRON[Helm CronJob<br/>concurrencyPolicy: Forbid] --> GET[Kubernetes GET/LIST only]
     GET --> PAGE[Paginate until metadata.continue is empty]
-    PAGE --> COMPLETE{Every configured list complete?}
-    COMPLETE -->|No| ABORT[Abort run<br/>no reconciliation]
+    PAGE --> VALID{Valid objects + token progresses?}
+    VALID -->|No| ABORT[Abort run<br/>no reconciliation]
+    VALID -->|Yes| COMPLETE{Every configured list complete?}
+    COMPLETE -->|No| ABORT
     COMPLETE -->|Yes| BUILD[Build explicit resources + relationships]
     BUILD --> SNAP[Complete authoritative snapshot]
     SNAP --> REC[Existing inventory reconciliation contract]
