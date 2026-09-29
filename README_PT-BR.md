@@ -13,11 +13,13 @@ O serviço recebe um incidente, resolve ownership e topologia de runtime do Kube
 A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A branch de desenvolvimento agora inclui:
 
 - **Persistent Awareness Graph temporal** com identidade canônica de entidades e relações entre incidentes.
+- **Nós ChangeEvent first-class** derivados das evidências de deploy do Argo CD e da revisão Git correspondente, com identidade estável entre reobservações do mesmo deploy. A materialização exige aplicação, revisão e timestamp autoritativo da operação; vínculos com workload, serviço e repositório só são emitidos quando o grafo existente os resolve sem ambiguidade.
 - **Isolamento por tenant + cluster** na identidade, persistência e consultas.
 - **Estado atual + observações append-only** com ingestão idempotente.
 - **Reconciliação de topologia** que classifica registros atuais como `fresh` ou `stale` usando `last_seen`, sem inventar deleções/tombstones a partir de dados incompletos de incidentes.
 - **Projeções centradas em serviço** com budgets de profundidade, nós e arestas.
 - **Blast radius baseado no grafo** com direção causal explícita por tipo de relação. Relações desconhecidas ou stale continuam visíveis como contexto, mas nunca viram caminhos de impacto atual.
+- **Semântica histórica para mudanças.** Change Events e suas arestas são apenas contexto, reconciliam como `historical` e nunca entram na allow-list causal do blast radius.
 - **Investigation Planner bounded** que emite somente tarefas read-only allow-listed: Kubernetes, métricas, logs, traces, database e mudanças.
 - **Paridade do specialist Kubernetes com o core engine.** O ramo agentic Kubernetes agora delega para a mesma etapa determinística usada pelo RCA clássico, cobrindo eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/capacidade do Karpenter, HPA, KEDA e NodeNotReady com as mesmas hipóteses e regras de evidência.
 - **Política compartilhada de prioridade Kubernetes + fail-closed para ramos parciais.** Os caminhos clássico e agentic usam a mesma ordem de especificidade, e hipóteses de um specialist que não concluiu nunca podem ser selecionadas.
@@ -37,6 +39,7 @@ GET  /api/v1/awareness/history/{target_id}
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
+GET  /api/v1/awareness/changes
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
@@ -142,9 +145,10 @@ flowchart TD
     CH --> L
 
     L --> G
-    G --> R[Reconciliação Fresh / Stale]
+    G --> R[Reconciliação Fresh / Stale / Historical]
     G --> S[Projeções por Serviço]
     G --> B[Blast Radius]
+    G --> CE[Timeline de Change Events]
 
     L --> D[Avaliador Determinístico]
     V -. mesmas regras de autoridade .-> D
@@ -178,6 +182,7 @@ Acesse:
 - API de topologia reconciliada: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - API de topologia por serviço: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - API de blast radius: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
+- API de timeline de mudanças: `GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<ns>`
 - Preview do Investigation Planner: `POST /api/v1/planner/plan`
 - Execução paralela experimental de especialistas: `POST /api/v1/planner/execute` (exige `AGENTIC_EXECUTION_ENABLED=true`)
 - Investigação agentic completa com verdict determinístico + explanation graph: `POST /api/v1/planner/investigate` (mesmo opt-in da execução)

@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.awareness.change_events import augment_with_change_events
 from app.schemas import Entity, InvestigationResult
 
 
@@ -113,7 +114,9 @@ def canonicalize_investigation(
     relationships: list[AwarenessRelationship] = []
     observations: list[AwarenessObservation] = []
 
-    for entity in result.entities:
+    source_entities, source_edges = augment_with_change_events(result)
+
+    for entity in source_entities:
         canonical_id = canonical_entity_id(tenant_id, cluster, entity)
         local_to_canonical[entity.id] = canonical_id
         persistent = AwarenessEntity(
@@ -145,7 +148,7 @@ def canonicalize_investigation(
             },
         ))
 
-    for edge in result.graph_edges:
+    for edge in source_edges:
         source_id = local_to_canonical.get(edge.source)
         target_id = local_to_canonical.get(edge.target)
         if not source_id or not target_id:

@@ -13,11 +13,13 @@ The service receives an incident, resolves Kubernetes ownership and runtime topo
 v0.8 is evolving the project from an incident-local RCA engine into an autonomous, evidence-verified SRE platform. The current development branch now includes:
 
 - **Persistent temporal Awareness Graph** with canonical entity/relationship identity across incidents.
+- **First-class ChangeEvent nodes** derived from Argo CD deployment evidence and matching Git revision evidence, with stable identity across repeated observations. Materialization requires application, revision and an authoritative operation timestamp; workload/service/repository links are emitted only when the existing graph resolves them unambiguously.
 - **Tenant + cluster isolation** at identity, persistence and query boundaries.
 - **Current state + append-only observations** with idempotent ingestion.
 - **Topology reconciliation** that classifies current records as `fresh` or `stale` from `last_seen` without inventing deletion/tombstones from incomplete incident data.
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
 - **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown or stale relationships are visible as context but never traversed as current impact paths.
+- **Historical change timeline semantics.** Change events and their event edges are context-only, reconcile as `historical`, and are never added to the blast-radius causal allow-list.
 - **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
 - **Kubernetes specialist parity with the core engine.** The agentic Kubernetes branch now delegates to the same deterministic stage used by classic RCA, covering eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypotheses and evidence rules.
 - **Shared Kubernetes root-priority policy + fail-closed partial branches.** Classic and agentic paths use the same specificity ordering, and hypotheses from a non-completed specialist can never be selected.
@@ -37,6 +39,7 @@ GET  /api/v1/awareness/history/{target_id}
 GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
+GET  /api/v1/awareness/changes
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
@@ -142,9 +145,10 @@ flowchart TD
     CH --> L
 
     L --> G
-    G --> R[Fresh / Stale Reconciliation]
+    G --> R[Fresh / Stale / Historical Reconciliation]
     G --> S[Service Projections]
     G --> B[Blast Radius]
+    G --> CE[Change Event Timeline]
 
     L --> D[Deterministic Evaluator]
     V -. same authority rules .-> D
@@ -178,6 +182,7 @@ Open:
 - Reconciled topology API: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - Service topology API: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
+- Change timeline API: `GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<ns>`
 - Investigation planner preview: `POST /api/v1/planner/plan`
 - Experimental parallel specialist execution: `POST /api/v1/planner/execute` (requires `AGENTIC_EXECUTION_ENABLED=true`)
 - Full agentic investigation with deterministic verdict + explanation graph: `POST /api/v1/planner/investigate` (same opt-in execution flag)

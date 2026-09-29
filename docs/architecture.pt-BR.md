@@ -39,9 +39,10 @@ flowchart TD
     LG --> EV[Avaliador de Evidências]
     AE -. mesmas regras determinísticas de autoridade .-> EV
     LG --> PAG
-    PAG --> REC[Reconciliação Fresh / Stale]
+    PAG --> REC[Reconciliação Fresh / Stale / Historical]
     PAG --> SV[Projeções por Serviço]
     PAG --> BR[Blast Radius]
+    PAG --> CE[Timeline de Change Events]
 
     EV --> H[Hipóteses Determinísticas]
     EV --> MEM[Memória de Incidentes<br/>PostgreSQL + pgvector]
@@ -570,3 +571,34 @@ flowchart TD
 O explanation graph torna explícito o raciocínio negativo. Nós de evidência se conectam às hipóteses com `supports` ou `contradicts`; gates usam `blocks`; hipóteses se conectam ao verdict com `selected` ou `considered`.
 
 Essa etapa permanece read-only e não pode invocar remediação. Ela não confia no `confirmed` local de um specialist. Score e elegibilidade causal são recalculados independentemente a partir do shared envelope com integridade verificada.
+
+
+## Eventos de deployment/change first-class — v0.8
+
+Mudanças de deployment são persistidas como nós imutáveis `ChangeEvent`, derivados somente das evidências `change-correlation` coletadas do Argo CD. Evidência correspondente `source-change` do GitHub enriquece o mesmo evento com metadata do commit.
+
+```mermaid
+flowchart LR
+    AR[Evidência change-correlation do Argo CD] --> CE[ChangeEvent]
+    GH[Evidência source-change do GitHub] --> CE
+
+    CE -->|observed_on| APP[ArgoCDApplication]
+    CE -->|targets| DEP[Deployment]
+    CE -->|targets_service| SVC[Service]
+    CE -->|revision_from| REPO[GitRepository]
+
+    CE -. somente contexto temporal .-> CTX[Contexto do incidente / planner]
+    CE -. nunca causal automaticamente .-> NO[Fora da allow-list de impacto do blast radius]
+```
+
+O ChangeEvent possui identidade estável baseada em `application + revision + occurred_at`. Reobservar o mesmo deploy em outro incidente aumenta o contador de observações em vez de criar um evento duplicado.
+
+Change Events e suas relações usam `temporal_role=event` e reconciliam como `historical`, não como `fresh` ou `stale`. A distinção é intencional: topologia pode ficar stale, enquanto um deploy ocorrido no passado continua sendo um fato histórico válido.
+
+API temporal bounded:
+
+```text
+GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<namespace>&since=<iso8601>&until=<iso8601>&limit=100
+```
+
+O endpoint mantém isolamento por tenant/cluster e retorna no máximo 200 eventos. Proximidade temporal é somente contexto e nunca transforma deploy/source change em causa raiz sem evidência causal de runtime.

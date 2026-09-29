@@ -275,7 +275,7 @@ class MemoryRepository:
             and (kind is None or item.kind.lower() == kind.lower())
         ]
         items.sort(key=lambda item: item.last_seen, reverse=True)
-        return items[:max(1, min(limit, 100))]
+        return items[:max(1, min(limit, 500))]
 
     async def get_awareness_entity(
         self,
@@ -733,7 +733,7 @@ class SQLRepository:
                 AwarenessEntityRecord.cluster == cluster,
             )
             .order_by(AwarenessEntityRecord.last_seen.desc())
-            .limit(max(1, min(limit, 100)))
+            .limit(max(1, min(limit, 500)))
         )
         if name is not None:
             statement = statement.where(AwarenessEntityRecord.name == name)

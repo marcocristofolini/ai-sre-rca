@@ -39,9 +39,10 @@ flowchart TD
     LG --> EV[Evidence Evaluator]
     AE -. same deterministic authority rules .-> EV
     LG --> PAG
-    PAG --> REC[Fresh / Stale Reconciliation]
+    PAG --> REC[Fresh / Stale / Historical Reconciliation]
     PAG --> SV[Service Projections]
     PAG --> BR[Blast Radius]
+    PAG --> CE[Change Event Timeline]
 
     EV --> H[Deterministic Hypotheses]
     EV --> MEM[Incident Memory<br/>PostgreSQL + pgvector]
@@ -570,3 +571,34 @@ flowchart TD
 The explanation graph makes negative reasoning explicit. Evidence nodes connect to hypotheses with `supports` or `contradicts`; gates connect with `blocks`; hypotheses connect to the verdict with `selected` or `considered`.
 
 This stage remains read-only and cannot invoke remediation. It does not trust a specialist's local `confirmed` status. It independently recalculates score and gate eligibility from the integrity-verified shared envelope.
+
+
+## First-class deployment/change events — v0.8
+
+Deployment changes are persisted as immutable `ChangeEvent` nodes derived only from collected Argo CD `change-correlation` evidence. Matching GitHub `source-change` evidence enriches the same event with commit metadata.
+
+```mermaid
+flowchart LR
+    AR[Argo CD change-correlation evidence] --> CE[ChangeEvent]
+    GH[GitHub source-change evidence] --> CE
+
+    CE -->|observed_on| APP[ArgoCDApplication]
+    CE -->|targets| DEP[Deployment]
+    CE -->|targets_service| SVC[Service]
+    CE -->|revision_from| REPO[GitRepository]
+
+    CE -. temporal context only .-> CTX[Incident / planner context]
+    CE -. never auto-causal .-> NO[Not in blast-radius impact allow-list]
+```
+
+A ChangeEvent has stable identity from `application + revision + occurred_at`. Reobserving the same deployment from another incident increments its observation count instead of creating a duplicate event.
+
+Change events and their event relationships use `temporal_role=event` and reconcile as `historical`, not `fresh` or `stale`. This distinction is deliberate: topology can become stale, while a deployment that happened in the past remains a valid historical fact.
+
+The bounded temporal API is:
+
+```text
+GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<namespace>&since=<iso8601>&until=<iso8601>&limit=100
+```
+
+The endpoint remains tenant/cluster scoped and returns at most 200 events. Temporal proximity is context only and never upgrades a deployment/source change into root cause without runtime causal evidence.
