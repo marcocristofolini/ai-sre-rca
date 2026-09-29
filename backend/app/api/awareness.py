@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import Principal, authorize_cluster, authorize_tenant, require_role
 from app.awareness.change_events import AwarenessChangeEvent, query_change_events
+from app.awareness.health import AwarenessGraphHealth
 from app.awareness.inventory import (
     AuthoritativeInventoryRequest,
     AuthoritativeInventorySnapshot,
@@ -79,6 +80,27 @@ async def reconcile_authoritative_inventory(
     except InventorySnapshotConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return result
+
+
+@router.get("/health", response_model=AwarenessGraphHealth)
+async def get_awareness_health(
+    cluster: str,
+    request: Request,
+    tenant_id: str | None = None,
+    principal: Principal = Depends(require_role("viewer")),
+):
+    authorize_cluster(principal, cluster)
+    tenant = _tenant_scope(principal, tenant_id)
+    settings = request.app.state.settings
+    return await request.app.state.repo.get_awareness_health(
+        tenant_id=tenant,
+        cluster=cluster,
+        stale_after_minutes=settings.awareness_stale_after_minutes,
+        inventory_max_age_minutes=settings.awareness_inventory_max_age_minutes,
+        authoritative_sources=(
+            settings.awareness_authoritative_inventory_source_set
+        ),
+    )
 
 
 @router.get("/graph", response_model=AwarenessGraphSnapshot)

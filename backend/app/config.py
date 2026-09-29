@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Persistent Awareness Graph. Traversal is intentionally bounded so
     # topology and blast-radius queries cannot expand without server limits.
     awareness_stale_after_minutes: int = Field(default=1440, ge=1, le=10080)
+    awareness_inventory_max_age_minutes: int = Field(
+        default=15,
+        ge=1,
+        le=10080,
+    )
     awareness_authoritative_inventory_sources: str = "kubernetes"
     awareness_inventory_tenant_id: str = "default"
     awareness_inventory_clusters: str = ""

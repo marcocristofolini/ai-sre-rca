@@ -101,6 +101,24 @@ flowchart LR
     REC --> AUDIT[(Audit history)]
 ~~~
 
+## Graph health
+
+`GET /api/v1/awareness/health?cluster=<cluster>` exposes a factual tenant/cluster-scoped projection of the persisted graph. It reports current, stale, historical and tombstoned counts independently for entities and relationships, the total/latest awareness observation, and freshness for every configured authoritative inventory source.
+
+Inventory-source freshness is based on the latest immutable `inventory_snapshot` receipt. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` defaults to 15 minutes and is intentionally independent from `AWARENESS_STALE_AFTER_MINUTES`, which governs graph-fact freshness. A source is `missing` when no authoritative receipt exists, `current` while the latest receipt remains inside the configured age, and `stale` after that boundary.
+
+The endpoint is viewer-authorized and preserves the existing tenant/cluster isolation boundary. It intentionally does not collapse these facts into a composite graph-health score: consumers receive the observable state and can alert on the dimensions relevant to their environment.
+
+~~~mermaid
+flowchart LR
+    E[Entities / Relationships] --> C[State Counts]
+    O[Append-only Observations] --> L[Latest Observation]
+    O --> R[Latest Inventory Receipt by Source]
+    C --> H[Graph Health API]
+    L --> H
+    R --> H
+~~~
+
 ## Service-centric projections
 
 A service projection resolves the exact canonical `Service` entity and walks an undirected topology neighborhood under hard depth/node/edge budgets. If the same service name exists in multiple namespaces, the caller must provide a namespace rather than receiving an arbitrary match.
@@ -126,6 +144,7 @@ Unknown relationship types remain visible in topology responses but are never tr
 
 ~~~text
 GET /api/v1/awareness/graph?cluster=<cluster>
+GET /api/v1/awareness/health?cluster=<cluster>
 GET /api/v1/awareness/graph?cluster=<cluster>&namespace=<ns>&kind=<kind>
 GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
 GET /api/v1/awareness/topology?cluster=<cluster>
@@ -166,7 +185,7 @@ Completed in the current development branch:
 Still planned:
 
 - authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
-- graph health metrics and retention policy;
+- awareness observation/tombstone retention policy with explanation-safe minimums;
 - richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
 
 

@@ -264,5 +264,23 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
             "sql-admin-a",
             "sql-admin-b",
         }
+
+        health = await repo.get_awareness_health(
+            tenant_id,
+            cluster,
+            stale_after_minutes=60,
+            inventory_max_age_minutes=15,
+            authoritative_sources=frozenset({"kubernetes", "cmdb"}),
+            as_of=now + timedelta(minutes=11),
+        )
+        assert health.entities.total == 2
+        assert health.entities.current == 1
+        assert health.entities.tombstoned == 1
+        assert health.relationships.total == 1
+        assert health.relationships.tombstoned == 1
+        sources = {item.source: item for item in health.inventory_sources}
+        assert sources["kubernetes"].freshness == "current"
+        assert sources["kubernetes"].snapshot_id == snapshot_id
+        assert sources["cmdb"].freshness == "missing"
     finally:
         await repo.close()

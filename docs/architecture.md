@@ -43,9 +43,11 @@ flowchart TD
     AE -. same deterministic authority rules .-> EV
     LG --> PAG
     PAG --> REC[Fresh / Stale / Historical Reconciliation]
+    PAG --> GH[Graph Health<br/>Counts + Inventory Freshness]
     PAG --> SV[Service Projections]
     PAG --> BR[Blast Radius]
     PAG --> CE[Change Event Timeline]
+    GH --> API
     REC --> AUI[Next.js Awareness Explorer<br/>Read-only]
     SV --> AUI
     CE --> AUI
@@ -81,6 +83,21 @@ flowchart LR
 ```
 
 The collector never infers ownership from naming conventions. An `owned_by` edge is emitted only when a single controller `ownerReference` exists and its UID matches the currently observed owner object. Scheduling uses `Pod.spec.nodeName`. Service routing uses exact Service selectors against workload Pod-template labels, so the topology remains stable even when a workload is scaled to zero. Namespace-scoped runs split Node inventory from namespaced resources so a partial namespace scope cannot claim authoritative Pod-to-Node deletion semantics.
+
+## Awareness Graph health — v0.8
+
+Graph health is a read-only factual projection over persisted state. It does not assign a synthetic reliability score and does not use an LLM to infer whether the graph is healthy.
+
+```mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> STATE[Aggregate current / stale / historical / tombstoned]
+    OBS[(Awareness Observations)] --> INV[Latest inventory receipt per source]
+    STATE --> HEALTH[GET /api/v1/awareness/health]
+    INV --> HEALTH
+    HEALTH --> READ[Viewer-authorized tenant/cluster read]
+```
+
+`AWARENESS_STALE_AFTER_MINUTES` controls when active graph facts become stale. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` independently controls whether the latest authoritative snapshot for each configured source is reported as `current` or `stale`; a source with no receipt is `missing`.
 
 ## Model-assisted planning compiler — v0.8
 
