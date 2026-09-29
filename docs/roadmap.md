@@ -155,6 +155,9 @@ Persistent Awareness Graph:
 - [x] authoritative tombstones from complete allow-listed inventory reconciliation
 - [x] automatic read-only Kubernetes inventory collector with complete paginated snapshots
 - [x] singleton Helm CronJob execution with overlap protection and explicit cluster scope
+- [x] tenant/cluster Graph Health API with current/stale/historical/tombstoned aggregate counts
+- [x] authoritative inventory-source freshness with configurable maximum age
+- [ ] awareness observation/tombstone retention policy with explanation-safe minimums
 - [x] first-class deployment/change event nodes
 - [x] stable deployment-event identity across repeated incidents
 - [x] historical event semantics distinct from fresh/stale topology
