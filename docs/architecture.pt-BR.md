@@ -7,11 +7,15 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Normalizador de Incidente]
-    N --> PLAN[Investigation Planner Bounded]
+    N --> EL[Especialistas Deterministicamente Elegíveis]
     N --> I[Investigation Engine]
 
     PAG[(Persistent Awareness Graph)] --> CTX[Contexto Bounded do Serviço]
-    CTX --> PLAN
+    CTX --> EL
+    EL --> COMP[Compilador de Plano no Servidor]
+    EL -. contexto elegível sanitizado .-> MPL[LLM Advisory Opcional]
+    MPL -. somente nomes + justificativas .-> COMP
+    COMP --> PLAN[Investigation Plan Bounded]
     PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
     PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
     ORCH --> SE[Shared Evidence Envelope]
@@ -51,6 +55,31 @@ flowchart TD
 ```
 
 
+
+## Compilador de planejamento assistido por modelo — v0.8
+
+A assistência do modelo é uma camada advisory opcional, não uma nova autoridade de execução. Primeiro, o planner determinístico decide quais ramos especialistas são elegíveis. Somente esse contexto sanitizado e bounded é enviado ao modelo. A resposta volta para um compilador controlado pelo servidor antes de existir qualquer grafo de tarefas executável.
+
+```mermaid
+flowchart LR
+    INC[Identidade do Incidente] --> EL[Elegibilidade Determinística]
+    GRAPH[Contexto Bounded do Awareness Graph] --> EL
+    EL --> DET[Plano Determinístico]
+    EL -. sanitizado .-> LLM[LLM Advisory Opcional]
+    LLM -. somente nomes + razões .-> COMP[Compilador no Servidor]
+    EL --> COMP
+    COMP --> ALLOW[Allow-list de Especialistas]
+    COMP --> BASE[Baseline Obrigatório<br/>Kubernetes / Métricas / Traces quando elegíveis]
+    COMP --> DEP[Dependências Tipadas]
+    COMP --> BUD[Budgets Controlados pelo Servidor]
+    ALLOW --> PLAN[InvestigationPlan Compilado]
+    BASE --> PLAN
+    DEP --> PLAN
+    BUD --> PLAN
+    COMP --> AUDIT[Advisory Trace<br/>requested / accepted / rejected / forced]
+```
+
+O modelo não pode fornecer nome de ferramenta, query, comando, budget, dependência ou ação de remediação. Nomes desconhecidos ou inelegíveis são rejeitados. Falha do modelo, JSON inválido ou conselho sem especialista elegível preserva o plano determinístico. O plano executável registra se sua origem foi `deterministic` ou `model-assisted`.
 
 ## Etapa Kubernetes compartilhada — v0.8
 
