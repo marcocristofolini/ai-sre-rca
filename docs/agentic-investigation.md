@@ -198,4 +198,4 @@ The result includes a deterministic `root_cause` only when those gates pass. It 
 
 ## Next phase
 
-The remaining v0.8 product-depth work is first-class deployment/change event nodes, authoritative inventory reconciliation/tombstones and a UI explorer for both topology and explanation graphs. The next agentic generation can then use those richer temporal events and persistent graph projections as bounded planning context.
+First-class deployment/change events and the read-only Persistent Awareness Graph explorer are now part of v0.8. The remaining graph-foundation gap is authoritative full-inventory reconciliation/tombstones. The next agentic generation can use the richer temporal events and persistent graph projections as bounded planning context without treating UI-visible correlation as causal proof.
