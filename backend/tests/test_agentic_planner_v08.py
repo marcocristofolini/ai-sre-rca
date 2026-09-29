@@ -73,6 +73,7 @@ async def test_planner_emits_allowlisted_read_only_specialists_with_graph_contex
         agentic_max_tasks=6,
         agentic_max_parallel_tasks=4,
         agentic_specialist_max_queries=9,
+        agentic_kubernetes_max_queries=17,
     )
     incident = IncidentInput(
         title="Checkout latency",
@@ -100,7 +101,15 @@ async def test_planner_emits_allowlisted_read_only_specialists_with_graph_contex
     ]
     assert all(task.specialist in SPECIALIST_ALLOWLIST for task in plan.tasks)
     assert all(task.read_only is True for task in plan.tasks)
-    assert all(task.max_queries <= 9 for task in plan.tasks)
+    kubernetes = next(
+        task for task in plan.tasks if task.specialist == "kubernetes"
+    )
+    assert kubernetes.max_queries == 17
+    assert all(
+        task.max_queries <= 9
+        for task in plan.tasks
+        if task.specialist != "kubernetes"
+    )
     assert plan.max_parallel_tasks == 4
     assert plan.graph_context.root_entity_id is not None
     assert len(plan.graph_context.entity_ids) == 2
