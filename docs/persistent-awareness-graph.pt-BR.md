@@ -30,7 +30,7 @@ O grafo armazena três famílias de registros:
 
 - `awareness_entities`: estado lógico atual, first/last seen e contador de observações;
 - `awareness_relationships`: relação atual, referências de evidência da observação mais recente, first/last seen e contador;
-- `awareness_observations`: observações imutáveis por incidente para histórico de entidade ou relação.
+- `awareness_observations`: histórico imutável de entidades/relações mais receipts de snapshots de inventário usados para garantir identidade de replay.
 
 O ID das observações de incidente é determinístico a partir de `incidente + alvo`. Observações de inventário autoritativo usam `fonte + snapshot + alvo + ação`. Reprocessar a mesma evidência é idempotente e não aumenta os contadores. Metadata e referências de evidência antigas permanecem em `awareness_observations`; o registro atual da entidade/relação reflete a observação válida mais recente. Entidades e relações também carregam timestamp, fonte e snapshot do tombstone quando um inventário completo e autoritativo comprova que um fato conhecido deixou de ser atual.
 
