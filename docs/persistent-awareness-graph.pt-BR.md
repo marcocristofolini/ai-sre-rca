@@ -51,7 +51,7 @@ A ingestão ocorre no limite de persistência do repositório. Com PostgreSQL, o
 
 ## Reconciliação de topologia
 
-A v0.8 agora classifica entidades e relações persistentes como `fresh` ou `stale` usando `last_seen` e um threshold controlado pelo servidor.
+A v0.8 classifica entidades e relações de topologia como `fresh` ou `stale` usando `last_seen` e um threshold controlado pelo servidor. Fatos temporais imutáveis, como nós `ChangeEvent`, reconciliam como `historical`.
 
 ~~~mermaid
 flowchart LR
@@ -123,7 +123,31 @@ Concluído na branch atual:
 Ainda planejado:
 
 - tombstones autoritativos a partir de reconciliação de inventário completo;
-- mudanças/deploys como eventos temporais first-class;
+- enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
 - métricas e política de retention do grafo;
 - UI de exploração do grafo;
 - contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
+
+
+## Change Events first-class
+
+Evidências coletadas de deployment no Argo CD são projetadas em nós estáveis `ChangeEvent`. O mesmo evento é identificado por aplicação, revisão e horário do evento, então reobservações em incidentes diferentes aumentam o histórico sem duplicar o deploy.
+
+A metadata do evento inclui horário, aplicação, revisão, repositório, serviço/workload alvo e IDs das evidências. Evidência correspondente do GitHub adiciona SHA, mensagem, autor e link do commit.
+
+As relações do evento são propositalmente contextuais:
+
+- `observed_on` → ArgoCDApplication
+- `targets` → Deployment
+- `targets_service` → Service
+- `revision_from` → GitRepository
+
+Essas relações não entram na allow-list de direção de impacto do blast radius. Um deploy recente continua sendo correlação/contexto até que evidência de runtime satisfaça uma hipótese causal determinística.
+
+Consulta temporal:
+
+```text
+GET /api/v1/awareness/changes
+```
+
+Filtros: `cluster` obrigatório, `service`, `namespace`, `since`, `until`, `tenant_id` para principal global e `limit` bounded.
