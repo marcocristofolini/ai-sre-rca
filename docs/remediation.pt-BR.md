@@ -38,7 +38,6 @@ Antes do dry-run, todos estes checks precisam passar:
 
 - remediação explicitamente habilitada;
 - incidente resolvido e com idade máxima de `REMEDIATION_MAX_INCIDENT_AGE_MINUTES`;
-
 - evidência da causa raiz medium ou strong e com sinais de suporte;
 - hipótese raiz presente no incidente como hipótese determinística de playbook confirmada;
 - ID exato da hipótese raiz presente em REMEDIATION_SCALE_HYPOTHESIS_ALLOWLIST;
