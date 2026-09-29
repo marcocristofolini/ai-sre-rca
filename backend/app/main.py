@@ -17,6 +17,7 @@ from app.db.repository import MemoryRepository, SQLRepository
 from app.integrations.demo import DemoTools
 from app.integrations.http_tools import ReadOnlyHTTPTools, UnknownClusterError
 from app.llm.hypotheses import NullHypothesisGenerator, OpenAICompatibleHypothesisGenerator
+from app.llm.planning import NullPlanningAdvisor, OpenAICompatiblePlanningAdvisor
 from app.notifications import NotificationManager
 
 settings = get_settings()
@@ -26,6 +27,11 @@ logger = logging.getLogger(__name__)
 repo = SQLRepository(settings.database_url) if settings.database_url else MemoryRepository()
 tools = DemoTools() if settings.demo_mode else ReadOnlyHTTPTools(settings)
 hypothesis_generator = OpenAICompatibleHypothesisGenerator(settings) if settings.llm_enabled else NullHypothesisGenerator()
+planning_advisor = (
+    OpenAICompatiblePlanningAdvisor(settings)
+    if settings.llm_enabled and settings.agentic_model_planner_enabled
+    else NullPlanningAdvisor()
+)
 auth_manager = AuthManager(settings)
 notification_manager = NotificationManager(settings)
 
@@ -68,6 +74,7 @@ app.state.tools = tools
 app.state.repo = repo
 app.state.auth = auth_manager
 app.state.notifications = notification_manager
+app.state.planning_advisor = planning_advisor
 app.state.engine = InvestigationEngine(
     tools=tools,
     memory=repo,
@@ -92,6 +99,9 @@ async def healthz():
         "persistent_awareness_graph": True,
         "agentic_planner_enabled": settings.agentic_planner_enabled,
         "agentic_execution_enabled": settings.agentic_execution_enabled,
+        "agentic_model_planner_enabled": (
+            settings.llm_enabled and settings.agentic_model_planner_enabled
+        ),
         "awareness_max_traversal_depth": settings.awareness_max_traversal_depth,
         "configured_clusters": sorted(settings.cluster_config),
     }

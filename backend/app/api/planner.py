@@ -48,6 +48,11 @@ async def plan_investigation(
         request.app.state.repo,
         incident=scoped_incident,
         settings=settings,
+        advisor=getattr(
+            request.app.state,
+            "planning_advisor",
+            None,
+        ),
     )
 
     await append_audit(
@@ -58,6 +63,17 @@ async def plan_investigation(
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
+            "planner_origin": plan.planner_origin,
+            "model_requested_specialists": (
+                plan.advisory_trace.requested_specialists
+                if plan.advisory_trace
+                else []
+            ),
+            "model_rejected_specialists": (
+                plan.advisory_trace.rejected_specialists
+                if plan.advisory_trace
+                else []
+            ),
             "specialists": [
                 task.specialist for task in plan.tasks
             ],
@@ -105,6 +121,11 @@ async def execute_agentic_investigation(
         request.app.state.repo,
         incident=scoped_incident,
         settings=settings,
+        advisor=getattr(
+            request.app.state,
+            "planning_advisor",
+            None,
+        ),
     )
     execution = await execute_investigation_plan(
         plan,
@@ -120,6 +141,7 @@ async def execute_agentic_investigation(
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
+            "planner_origin": plan.planner_origin,
             "status": execution.status,
             "specialists": {
                 result.specialist: result.status
@@ -170,6 +192,11 @@ async def investigate_agentically(
         request.app.state.repo,
         incident=scoped_incident,
         settings=settings,
+        advisor=getattr(
+            request.app.state,
+            "planning_advisor",
+            None,
+        ),
     )
     execution = await execute_investigation_plan(
         plan,
@@ -186,6 +213,7 @@ async def investigate_agentically(
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
+            "planner_origin": plan.planner_origin,
             "execution_status": execution.status,
             "evaluation_status": evaluation.status,
             "root_hypothesis_id": (

@@ -7,11 +7,15 @@
 ```mermaid
 flowchart TD
     A[Alertmanager / REST API] --> N[Incident Normalizer]
-    N --> PLAN[Bounded Investigation Planner]
+    N --> EL[Deterministic Eligible Specialists]
     N --> I[Investigation Engine]
 
     PAG[(Persistent Awareness Graph)] --> CTX[Bounded Service Context]
-    CTX --> PLAN
+    CTX --> EL
+    EL --> COMP[Server-side Plan Compiler]
+    EL -. sanitized eligible context .-> MPL[Optional Advisory LLM]
+    MPL -. specialist names + rationale only .-> COMP
+    COMP --> PLAN[Bounded Investigation Plan]
     PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
     PT -->|opt-in| ORCH[Parallel Read-only Specialists]
     ORCH --> SE[Shared Evidence Envelope]
@@ -51,6 +55,31 @@ flowchart TD
 ```
 
 
+
+## Model-assisted planning compiler — v0.8
+
+Model assistance is an optional advisory layer, not a new execution authority. The deterministic planner first decides which specialist branches are eligible. Only that sanitized, bounded context is sent to the model. The response is compiled back through server-owned policy before a task graph exists.
+
+```mermaid
+flowchart LR
+    INC[Incident Identity] --> EL[Deterministic Eligibility]
+    GRAPH[Bounded Awareness Context] --> EL
+    EL --> DET[Deterministic Plan]
+    EL -. sanitized .-> LLM[Optional Advisory LLM]
+    LLM -. names + reasons only .-> COMP[Server-side Compiler]
+    EL --> COMP
+    COMP --> ALLOW[Specialist Allow-list]
+    COMP --> BASE[Mandatory Baseline<br/>Kubernetes / Metrics / Traces when eligible]
+    COMP --> DEP[Typed Dependencies]
+    COMP --> BUD[Server-owned Budgets]
+    ALLOW --> PLAN[Compiled InvestigationPlan]
+    BASE --> PLAN
+    DEP --> PLAN
+    BUD --> PLAN
+    COMP --> AUDIT[Advisory Trace<br/>requested / accepted / rejected / forced]
+```
+
+The model cannot provide a tool name, query, command, budget, dependency or remediation action. Unknown and ineligible names are rejected. Model failure, malformed JSON or advice with no eligible specialist preserves the deterministic plan. The executable plan records whether it was `deterministic` or `model-assisted`.
 
 ## Shared Kubernetes playbook stage — v0.8
 

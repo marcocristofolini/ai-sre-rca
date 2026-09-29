@@ -2,7 +2,7 @@
 
 **Português do Brasil** · [English](agentic-investigation.md)
 
-A v0.8 introduz um Investigation Planner bounded e um executor paralelo experimental de especialistas. O planejamento fica disponível por padrão; a execução dos especialistas está implementada, porém **desabilitada por padrão**, exigindo `AGENTIC_EXECUTION_ENABLED=true`. As duas camadas são read-only e nenhuma delas confirma causa raiz.
+A v0.8 introduz um Investigation Planner bounded e um executor paralelo experimental de especialistas. O planejamento fica disponível por padrão; a execução dos especialistas está implementada, porém **desabilitada por padrão**, exigindo `AGENTIC_EXECUTION_ENABLED=true`. Um planner assistido por modelo opcional também fica desabilitado por padrão e exige `LLM_ENABLED=true` mais `AGENTIC_MODEL_PLANNER_ENABLED=true`. Todas as camadas permanecem read-only e somente o evaluator determinístico pode confirmar causa raiz.
 
 O princípio é:
 
@@ -26,6 +26,32 @@ Ele pode emitir somente estes tipos de tarefa:
 - `changes`
 
 Não existe no schema do plano nome genérico de ferramenta, comando, shell, URL arbitrária ou ação de mutação.
+
+## Compilação opcional assistida por modelo
+
+O modelo nunca cria um `SpecialistTask`. Primeiro, o planner determinístico constrói o conjunto completo de tarefas elegíveis a partir da identidade do incidente, feature flags e contexto do grafo. O modelo recebe apenas contexto sanitizado mais as descrições desses especialistas elegíveis e pode retornar nomes de especialistas com justificativas curtas.
+
+~~~mermaid
+flowchart LR
+    I[Incidente + Contexto Bounded do Grafo] --> EL[Conjunto Determinístico Elegível]
+    EL --> ADV{Model Planner Habilitado?}
+    ADV -->|Não| DP[Plano Determinístico]
+    ADV -->|Sim| LLM[LLM Advisory<br/>somente nomes de especialistas]
+    LLM --> COMP[Compilador no Servidor]
+    EL --> COMP
+    COMP --> AL[Allow-list de Especialistas]
+    COMP --> BASE[Baseline Obrigatório<br/>Kubernetes / Métricas / Traces quando elegíveis]
+    COMP --> DEP[Dependências Tipadas<br/>traces antes de database]
+    COMP --> BUD[Budgets Controlados pelo Servidor]
+    AL --> OUT[InvestigationPlan]
+    BASE --> OUT
+    DEP --> OUT
+    BUD --> OUT
+    COMP --> TRACE[Advisory Trace<br/>requested / accepted / rejected / forced]
+~~~
+
+Nomes desconhecidos ou inelegíveis são rejeitados. Texto produzido pelo modelo nunca substitui objetivos das tarefas, limites de query ou dependências. Se a chamada ao modelo falhar, retornar JSON inválido ou não propor nenhum especialista elegível, o plano determinístico completo é preservado.
+
 ## Fluxo de planejamento
 
 ~~~mermaid
@@ -124,6 +150,9 @@ Defaults atuais no servidor:
 | Configuração | Default |
 | --- | ---: |
 | `AGENTIC_EXECUTION_ENABLED` | false |
+| `AGENTIC_MODEL_PLANNER_ENABLED` | false |
+| `AGENTIC_MODEL_PLANNER_TIMEOUT_SECONDS` | 10 |
+| `AGENTIC_MODEL_PLANNER_MAX_SPECIALISTS` | 6 |
 | `AGENTIC_MAX_TASKS` | 6 |
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
@@ -169,4 +198,4 @@ O resultado inclui `root_cause` determinística somente quando todos esses gates
 
 ## Próxima fase
 
-O próximo passo é aproximar o specialist Kubernetes dos playbooks completos da engine principal, adicionar eventos first-class de deployment/change e uma UI para explorar tanto topologia quanto explanation graphs.
+O trabalho restante de profundidade da v0.8 é adicionar eventos first-class de deployment/change, reconciliação autoritativa de inventário/tombstones e uma UI para explorar topologia e explanation graphs. A próxima geração agentic poderá então usar esses eventos temporais e projeções persistentes do grafo como contexto bounded de planejamento.
