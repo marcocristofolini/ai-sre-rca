@@ -1009,6 +1009,7 @@ class SQLRepository:
             .where(
                 AwarenessEntityRecord.tenant_id == tenant_id,
                 AwarenessEntityRecord.cluster == cluster,
+                AwarenessEntityRecord.tombstoned_at.is_(None),
             )
             .order_by(AwarenessEntityRecord.last_seen.desc())
             .limit(max(1, min(limit, 500)))
@@ -1072,6 +1073,9 @@ class SQLRepository:
             last_seen=row.last_seen,
             last_incident_id=row.last_incident_id,
             observation_count=row.observation_count,
+            tombstoned_at=row.tombstoned_at,
+            tombstone_snapshot_id=row.tombstone_snapshot_id,
+            tombstone_source=row.tombstone_source,
         )
 
     async def get_awareness_neighbors(
