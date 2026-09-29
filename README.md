@@ -19,6 +19,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
 - **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown or stale relationships are visible as context but never traversed as current impact paths.
 - **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
+- **Kubernetes specialist parity with the core engine.** The agentic Kubernetes branch now delegates to the same deterministic stage used by classic RCA, covering eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypotheses and evidence rules.
 - **Typed task dependencies.** Stateful/database investigation is planned only after the trace branch that provides typed dependency identity.
 - **Persistent graph context for planning** with hard server-side limits on context size, task count, parallelism and per-specialist query budgets.
 - **Experimental parallel specialist execution** behind `AGENTIC_EXECUTION_ENABLED=false` by default. Independent branches run concurrently; dependency branches run only after prerequisites complete.
