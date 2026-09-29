@@ -43,9 +43,11 @@ flowchart TD
     AE -. mesmas regras determinísticas de autoridade .-> EV
     LG --> PAG
     PAG --> REC[Reconciliação Fresh / Stale / Historical]
+    PAG --> GH[Graph Health<br/>Contagens + Freshness de Inventário]
     PAG --> SV[Projeções por Serviço]
     PAG --> BR[Blast Radius]
     PAG --> CE[Timeline de Change Events]
+    GH --> API
     REC --> AUI[Awareness Explorer Next.js<br/>Read-only]
     SV --> AUI
     CE --> AUI
@@ -81,6 +83,21 @@ flowchart LR
 ```
 
 O collector nunca infere ownership por convenção de nomes. Uma aresta `owned_by` só é emitida quando existe um único `ownerReference` controlador e seu UID corresponde ao objeto owner observado no snapshot. Scheduling usa `Pod.spec.nodeName`. O roteamento de Service usa selectors exatos contra os labels do Pod template do workload, preservando a topologia mesmo com o workload escalado para zero. Execuções limitadas por namespace separam o inventário de Nodes dos recursos namespaced para que um escopo parcial não afirme deleções Pod-to-Node como autoritativas.
+
+## Graph Health do Awareness Graph — v0.8
+
+Graph Health é uma projeção factual e read-only do estado persistido. Ela não atribui um score sintético de confiabilidade e não usa LLM para inferir se o grafo está saudável.
+
+```mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> STATE[Agregar current / stale / historical / tombstoned]
+    OBS[(Awareness Observations)] --> INV[Último receipt de inventário por source]
+    STATE --> HEALTH[GET /api/v1/awareness/health]
+    INV --> HEALTH
+    HEALTH --> READ[Leitura viewer por tenant/cluster]
+```
+
+`AWARENESS_STALE_AFTER_MINUTES` controla quando fatos ativos do grafo ficam stale. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` controla separadamente quando o snapshot autoritativo mais recente de cada source configurada passa de `current` para `stale`; uma source sem receipt aparece como `missing`.
 
 ## Compilador de planejamento assistido por modelo — v0.8
 
