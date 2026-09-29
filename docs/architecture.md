@@ -72,14 +72,15 @@ flowchart LR
     CRON[CronJob<br/>Forbid overlap] --> LIST[Paginated Kubernetes LIST]
     LIST --> OK{All configured lists complete?}
     OK -->|No| FAIL[Exit non-zero<br/>No snapshot applied]
-    OK -->|Yes| REL[Derive explicit relationships]
+    OK -->|Yes| UID[Verify controller ownerReference UID]
+    UID --> REL[Derive explicit relationships]
     REL --> SNAP[Authoritative snapshot]
     SNAP --> LOCK[Serialized PostgreSQL reconciliation]
     LOCK --> GRAPH[(Persistent Awareness Graph)]
     LOCK --> AUDIT[(Audit events)]
 ```
 
-The collector never infers ownership from naming conventions. It accepts controller `ownerReferences`, `Pod.spec.nodeName`, and exact Service selector matches whose Pod ownership chain resolves to a stable workload. Namespace-scoped runs split Node inventory from namespaced resources so a partial namespace scope cannot claim authoritative Pod-to-Node deletion semantics.
+The collector never infers ownership from naming conventions. An `owned_by` edge is emitted only when a single controller `ownerReference` exists and its UID matches the currently observed owner object. Scheduling uses `Pod.spec.nodeName`. Service routing uses exact Service selectors against workload Pod-template labels, so the topology remains stable even when a workload is scaled to zero. Namespace-scoped runs split Node inventory from namespaced resources so a partial namespace scope cannot claim authoritative Pod-to-Node deletion semantics.
 
 ## Model-assisted planning compiler — v0.8
 
