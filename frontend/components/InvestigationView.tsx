@@ -37,6 +37,7 @@ export default function InvestigationView({ data }: { data: Investigation }) {
           <a className="demoLink" href="/">K8S DEMO</a>
           <a className="demoLink" href="/trace">TRACE DEMO</a>
           <a className="demoLink" href="/stateful/postgresql">STATEFUL DEMO</a>
+          <a className="demoLink" href="/awareness">AWARENESS</a>
           <a className="demoLink" href="/ops">OPS</a>
           <div className="readonly">READ ONLY · EVIDENCE FIRST</div>
         </div>
