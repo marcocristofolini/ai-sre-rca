@@ -3,9 +3,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy import and_, delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.awareness.health import (
+    AwarenessGraphHealth,
+    AwarenessInventorySourceHealth,
+    AwarenessStateCounts,
+    inventory_source_health,
+)
 from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
     InventoryReconciliationResult,
@@ -51,6 +57,16 @@ class InvestigationRepository(Protocol):
         kind: str | None = None,
         limit: int = 500,
     ) -> AwarenessGraphSnapshot: ...
+    async def get_awareness_health(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        stale_after_minutes: int,
+        inventory_max_age_minutes: int,
+        authoritative_sources: frozenset[str],
+        as_of: datetime | None = None,
+    ) -> AwarenessGraphHealth: ...
     async def get_awareness_history(
         self,
         target_id: str,
@@ -396,6 +412,88 @@ class MemoryRepository:
             and (include_tombstoned or item.tombstoned_at is None)
         ]
         return entities, relationships
+
+    async def get_awareness_health(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        stale_after_minutes: int,
+        inventory_max_age_minutes: int,
+        authoritative_sources: frozenset[str],
+        as_of: datetime | None = None,
+    ) -> AwarenessGraphHealth:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        stale_cutoff = now - timedelta(minutes=stale_after_minutes)
+
+        def classify(items) -> AwarenessStateCounts:
+            scoped = [
+                item
+                for item in items
+                if item.tenant_id == tenant_id and item.cluster == cluster
+            ]
+            counts = AwarenessStateCounts(total=len(scoped))
+            for item in scoped:
+                if item.tombstoned_at is not None:
+                    counts.tombstoned += 1
+                    continue
+                if item.metadata.get("temporal_role") == "event":
+                    counts.historical += 1
+                    continue
+                if item.last_seen < stale_cutoff:
+                    counts.stale += 1
+                else:
+                    counts.current += 1
+            return counts
+
+        observations = [
+            item
+            for item in self._awareness_observations.values()
+            if item.tenant_id == tenant_id and item.cluster == cluster
+        ]
+        latest_observation_at = max(
+            (item.observed_at for item in observations),
+            default=None,
+        )
+
+        inventory_sources: list[AwarenessInventorySourceHealth] = []
+        for source in sorted(authoritative_sources):
+            receipts = [
+                item
+                for item in observations
+                if item.target_type == "inventory_snapshot"
+                and item.payload.get("source") == source
+            ]
+            latest = max(
+                receipts,
+                key=lambda item: item.observed_at,
+                default=None,
+            )
+            inventory_sources.append(inventory_source_health(
+                source=source,
+                snapshot_id=(
+                    str(latest.payload.get("snapshot_id"))
+                    if latest is not None
+                    and latest.payload.get("snapshot_id") is not None
+                    else None
+                ),
+                observed_at=latest.observed_at if latest is not None else None,
+                as_of=now,
+                max_age_minutes=inventory_max_age_minutes,
+            ))
+
+        return AwarenessGraphHealth(
+            tenant_id=tenant_id,
+            cluster=cluster,
+            generated_at=now,
+            stale_after_minutes=stale_after_minutes,
+            inventory_max_age_minutes=inventory_max_age_minutes,
+            entities=classify(self._awareness_entities.values()),
+            relationships=classify(self._awareness_relationships.values()),
+            observations_total=len(observations),
+            latest_observation_at=latest_observation_at,
+            inventory_sources=inventory_sources,
+        )
 
     async def reconcile_authoritative_inventory(
         self,
@@ -1297,6 +1395,135 @@ class SQLRepository:
             for row in relationship_rows
         ]
         return entities, relationships
+
+    async def get_awareness_health(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        stale_after_minutes: int,
+        inventory_max_age_minutes: int,
+        authoritative_sources: frozenset[str],
+        as_of: datetime | None = None,
+    ) -> AwarenessGraphHealth:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        stale_cutoff = now - timedelta(minutes=stale_after_minutes)
+
+        def state_statement(record_type):
+            temporal_role = record_type.metadata_json[
+                "temporal_role"
+            ].as_string()
+            nonhistorical = func.coalesce(temporal_role, "") != "event"
+            active = and_(
+                record_type.tombstoned_at.is_(None),
+                nonhistorical,
+            )
+            historical = and_(
+                record_type.tombstoned_at.is_(None),
+                temporal_role == "event",
+            )
+            return select(
+                func.count(record_type.id),
+                func.count(record_type.id).filter(and_(
+                    active,
+                    record_type.last_seen >= stale_cutoff,
+                )),
+                func.count(record_type.id).filter(and_(
+                    active,
+                    record_type.last_seen < stale_cutoff,
+                )),
+                func.count(record_type.id).filter(historical),
+                func.count(record_type.id).filter(
+                    record_type.tombstoned_at.is_not(None)
+                ),
+            ).where(
+                record_type.tenant_id == tenant_id,
+                record_type.cluster == cluster,
+            )
+
+        def counts(row) -> AwarenessStateCounts:
+            return AwarenessStateCounts(
+                total=int(row[0] or 0),
+                current=int(row[1] or 0),
+                stale=int(row[2] or 0),
+                historical=int(row[3] or 0),
+                tombstoned=int(row[4] or 0),
+            )
+
+        async with self.sessions() as session:
+            entity_row = (
+                await session.execute(
+                    state_statement(AwarenessEntityRecord)
+                )
+            ).one()
+            relationship_row = (
+                await session.execute(
+                    state_statement(AwarenessRelationshipRecord)
+                )
+            ).one()
+            observation_row = (
+                await session.execute(
+                    select(
+                        func.count(AwarenessObservationRecord.id),
+                        func.max(AwarenessObservationRecord.observed_at),
+                    ).where(
+                        AwarenessObservationRecord.tenant_id == tenant_id,
+                        AwarenessObservationRecord.cluster == cluster,
+                    )
+                )
+            ).one()
+
+            inventory_sources: list[
+                AwarenessInventorySourceHealth
+            ] = []
+            source_expr = AwarenessObservationRecord.payload[
+                "source"
+            ].as_string()
+            for source in sorted(authoritative_sources):
+                row = (
+                    await session.execute(
+                        select(
+                            AwarenessObservationRecord.observed_at,
+                            AwarenessObservationRecord.payload,
+                        )
+                        .where(
+                            AwarenessObservationRecord.tenant_id == tenant_id,
+                            AwarenessObservationRecord.cluster == cluster,
+                            AwarenessObservationRecord.target_type
+                            == "inventory_snapshot",
+                            source_expr == source,
+                        )
+                        .order_by(
+                            AwarenessObservationRecord.observed_at.desc()
+                        )
+                        .limit(1)
+                    )
+                ).first()
+                payload = row[1] if row is not None else {}
+                inventory_sources.append(inventory_source_health(
+                    source=source,
+                    snapshot_id=(
+                        str(payload.get("snapshot_id"))
+                        if payload.get("snapshot_id") is not None
+                        else None
+                    ),
+                    observed_at=row[0] if row is not None else None,
+                    as_of=now,
+                    max_age_minutes=inventory_max_age_minutes,
+                ))
+
+        return AwarenessGraphHealth(
+            tenant_id=tenant_id,
+            cluster=cluster,
+            generated_at=now,
+            stale_after_minutes=stale_after_minutes,
+            inventory_max_age_minutes=inventory_max_age_minutes,
+            entities=counts(entity_row),
+            relationships=counts(relationship_row),
+            observations_total=int(observation_row[0] or 0),
+            latest_observation_at=observation_row[1],
+            inventory_sources=inventory_sources,
+        )
 
     async def reconcile_authoritative_inventory(
         self,
