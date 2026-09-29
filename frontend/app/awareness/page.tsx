@@ -14,7 +14,12 @@ type Props = {
   }>;
 };
 
-const freshnessOrder: AwarenessFreshness[] = ['fresh', 'stale', 'historical'];
+const freshnessOrder: AwarenessFreshness[] = [
+  'fresh',
+  'stale',
+  'historical',
+  'tombstoned',
+];
 
 function compactId(value: string): string {
   if (value.length <= 18) return value;
@@ -138,6 +143,10 @@ export default async function AwarenessPage({ searchParams }: Props) {
             <span>historical</span>
             <strong>{freshnessCounts.historical}</strong>
           </article>
+          <article className="panel awarenessStat tombstoned">
+            <span>tombstoned</span>
+            <strong>{freshnessCounts.tombstoned}</strong>
+          </article>
           <article className="panel awarenessStat">
             <span>change events</span>
             <strong>{changes.length}</strong>
@@ -188,6 +197,14 @@ export default async function AwarenessPage({ searchParams }: Props) {
                   <div className="awarenessEntityMeta">
                     <span>{entity.observation_count} observations</span>
                     <span>last {formatWhen(entity.last_seen)}</span>
+                    {entity.tombstoned_at && (
+                      <span>
+                        removed {formatWhen(entity.tombstoned_at)}
+                        {entity.tombstone_source
+                          ? ` · ${entity.tombstone_source}`
+                          : ''}
+                      </span>
+                    )}
                     {entity.depth !== undefined && entity.depth !== null && (
                       <span>depth {entity.depth}</span>
                     )}
