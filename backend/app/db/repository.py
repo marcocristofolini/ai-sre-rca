@@ -354,6 +354,224 @@ class MemoryRepository:
         ]
         return entities, relationships
 
+    async def reconcile_authoritative_inventory(
+        self,
+        snapshot: AuthoritativeInventorySnapshot,
+    ) -> InventoryReconciliationResult:
+        entities = materialize_inventory_entities(snapshot)
+        relationships = materialize_inventory_relationships(snapshot)
+        origin = f"inventory:{snapshot.snapshot_id}"
+        result = InventoryReconciliationResult(
+            snapshot_id=snapshot.snapshot_id,
+            source=snapshot.source,
+            tenant_id=snapshot.tenant_id,
+            cluster=snapshot.cluster,
+            observed_at=snapshot.observed_at,
+            resources_observed=len(entities),
+            relationships_observed=len(relationships),
+        )
+
+        def append_observation(
+            target_type: str,
+            target_id: str,
+            action: str,
+            payload: dict,
+        ) -> bool:
+            observation_id = inventory_observation_id(
+                snapshot.snapshot_id,
+                target_type,
+                target_id,
+                action,
+            )
+            if observation_id in self._awareness_observations:
+                result.duplicate_observations += 1
+                return False
+            self._awareness_observations[observation_id] = AwarenessObservation(
+                id=observation_id,
+                tenant_id=snapshot.tenant_id,
+                cluster=snapshot.cluster,
+                incident_id=origin,
+                target_type=target_type,
+                target_id=target_id,
+                observed_at=snapshot.observed_at,
+                payload={
+                    "origin": "authoritative_inventory",
+                    "source": snapshot.source,
+                    "snapshot_id": snapshot.snapshot_id,
+                    "action": action,
+                    **payload,
+                },
+            )
+            return True
+
+        for entity in entities.values():
+            if not append_observation(
+                "entity",
+                entity.id,
+                "observed",
+                {"metadata": entity.metadata},
+            ):
+                continue
+            current = self._awareness_entities.get(entity.id)
+            if current is None:
+                self._awareness_entities[entity.id] = entity.model_copy(deep=True)
+                result.entities_created += 1
+                continue
+
+            current.first_seen = min(current.first_seen, entity.first_seen)
+            current.observation_count += 1
+            if entity.last_seen < current.last_seen:
+                result.skipped_newer_entities += 1
+                continue
+
+            was_tombstoned = current.tombstoned_at is not None
+            if (
+                was_tombstoned
+                and current.tombstoned_at is not None
+                and entity.last_seen >= current.tombstoned_at
+            ):
+                current.tombstoned_at = None
+                current.tombstone_snapshot_id = None
+                current.tombstone_source = None
+                result.entities_reactivated += 1
+            else:
+                result.entities_refreshed += 1
+            current.last_seen = entity.last_seen
+            current.last_incident_id = entity.last_incident_id
+            current.metadata = dict(entity.metadata)
+
+        covered_entity_ids = {
+            item.id
+            for item in self._awareness_entities.values()
+            if item.tenant_id == snapshot.tenant_id
+            and item.cluster == snapshot.cluster
+            and item.metadata.get("temporal_role") != "event"
+            and resource_in_coverage(
+                item.kind,
+                item.namespace,
+                snapshot.coverage,
+            )
+        }
+        newly_tombstoned_entity_ids: set[str] = set()
+        for entity_id in sorted(covered_entity_ids - set(entities)):
+            current = self._awareness_entities[entity_id]
+            if current.last_seen > snapshot.observed_at:
+                result.skipped_newer_entities += 1
+                continue
+            if current.tombstoned_at is not None:
+                continue
+            if not append_observation(
+                "entity",
+                entity_id,
+                "tombstoned",
+                {
+                    "kind": current.kind,
+                    "name": current.name,
+                    "namespace": current.namespace,
+                },
+            ):
+                continue
+            current.tombstoned_at = snapshot.observed_at
+            current.tombstone_snapshot_id = snapshot.snapshot_id
+            current.tombstone_source = snapshot.source
+            newly_tombstoned_entity_ids.add(entity_id)
+            result.entities_tombstoned += 1
+
+        for relationship in relationships.values():
+            if not append_observation(
+                "relationship",
+                relationship.id,
+                "observed",
+                {
+                    "metadata": relationship.metadata,
+                    "relationship": relationship.relationship,
+                },
+            ):
+                continue
+            current = self._awareness_relationships.get(relationship.id)
+            if current is None:
+                self._awareness_relationships[relationship.id] = (
+                    relationship.model_copy(deep=True)
+                )
+                result.relationships_created += 1
+                continue
+
+            current.first_seen = min(
+                current.first_seen,
+                relationship.first_seen,
+            )
+            current.observation_count += 1
+            if relationship.last_seen < current.last_seen:
+                result.skipped_newer_relationships += 1
+                continue
+
+            was_tombstoned = current.tombstoned_at is not None
+            if (
+                was_tombstoned
+                and current.tombstoned_at is not None
+                and relationship.last_seen >= current.tombstoned_at
+            ):
+                current.tombstoned_at = None
+                current.tombstone_snapshot_id = None
+                current.tombstone_source = None
+                result.relationships_reactivated += 1
+            else:
+                result.relationships_refreshed += 1
+            current.last_seen = relationship.last_seen
+            current.last_incident_id = relationship.last_incident_id
+            current.metadata = dict(relationship.metadata)
+            current.evidence_ids = list(relationship.evidence_ids)
+
+        authoritative_relationship_types = set(
+            snapshot.coverage.relationship_types
+        )
+        for current in self._awareness_relationships.values():
+            if (
+                current.tenant_id != snapshot.tenant_id
+                or current.cluster != snapshot.cluster
+                or current.metadata.get("temporal_role") == "event"
+                or current.id in relationships
+                or current.tombstoned_at is not None
+            ):
+                continue
+
+            cascaded = (
+                current.source_id in newly_tombstoned_entity_ids
+                or current.target_id in newly_tombstoned_entity_ids
+            )
+            explicitly_covered = (
+                current.relationship in authoritative_relationship_types
+                and current.source_id in covered_entity_ids
+                and current.target_id in covered_entity_ids
+            )
+            if not cascaded and not explicitly_covered:
+                continue
+            if current.last_seen > snapshot.observed_at:
+                result.skipped_newer_relationships += 1
+                continue
+            if not append_observation(
+                "relationship",
+                current.id,
+                "tombstoned",
+                {
+                    "relationship": current.relationship,
+                    "source_id": current.source_id,
+                    "target_id": current.target_id,
+                    "reason": (
+                        "endpoint_tombstoned"
+                        if cascaded
+                        else "absent_from_authoritative_relationship_inventory"
+                    ),
+                },
+            ):
+                continue
+            current.tombstoned_at = snapshot.observed_at
+            current.tombstone_snapshot_id = snapshot.snapshot_id
+            current.tombstone_source = snapshot.source
+            result.relationships_tombstoned += 1
+
+        return result
+
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
         self._remediation[plan.id] = plan.model_copy(deep=True)
 
