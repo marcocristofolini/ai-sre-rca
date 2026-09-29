@@ -118,16 +118,32 @@ Completed in the current development branch:
 - service-centric bounded graph projections;
 - causal-direction-aware blast-radius traversal;
 - bounded graph context for the Investigation Planner;
-- deterministic shared-envelope evaluation and rejected-hypothesis explanation graph.
+- deterministic shared-envelope evaluation and rejected-hypothesis explanation graph;
+- read-only Awareness Explorer for reconciled topology, service projections and ChangeEvent history.
 
 Still planned:
 
 - authoritative tombstones from full inventory reconciliation;
 - authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
 - graph health metrics and retention policy;
-- UI graph explorer;
 - richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
 
+
+## Read-only Awareness Explorer
+
+The Next.js route `/awareness` consumes only viewer APIs. It can scope by cluster, namespace and service, renders reconciled `fresh` / `stale` / `historical` entity state, shows persisted relationships, and places ChangeEvents on a bounded historical timeline. Service filters switch the topology read to the existing bounded service projection endpoint rather than implementing graph traversal in the browser.
+
+The explorer forwards the same authorization headers as the existing UI and exposes an optional tenant override only for principals that already have global tenant scope. It has no mutation controls and no graph-write endpoint.
+
+~~~mermaid
+flowchart LR
+    UI[Awareness Explorer] --> TOP[GET /awareness/topology]
+    UI --> SVC[GET /awareness/services/service]
+    UI --> CH[GET /awareness/changes]
+    TOP --> PAG[(Persistent Awareness Graph)]
+    SVC --> PAG
+    CH --> PAG
+~~~
 
 ## First-class change events
 
