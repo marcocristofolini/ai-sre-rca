@@ -189,18 +189,16 @@ async def get_change_events(
 ):
     authorize_cluster(principal, cluster)
     tenant = _tenant_scope(principal, tenant_id)
-    if since and until and since > until:
-        raise HTTPException(
-            status_code=422,
-            detail="since must be earlier than or equal to until",
-        )
-    return await query_change_events(
-        request.app.state.repo,
+    try:
+        return await query_change_events(
+            request.app.state.repo,
         tenant_id=tenant,
         cluster=cluster,
         service_name=service,
         namespace=namespace,
         since=since,
-        until=until,
-        limit=limit,
-    )
+            until=until,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
