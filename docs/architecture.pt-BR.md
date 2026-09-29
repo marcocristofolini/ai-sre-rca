@@ -583,12 +583,12 @@ Tipos de relação conhecidos passam por uma allow-list explícita de direção 
 
 ## Investigation Planner Bounded — v0.8
 
-O planner é determinístico e bounded. Ele usa a identidade do incidente, feature flags e um neighborhood bounded do serviço para compilar ramos tipados de especialistas. A execução paralela está implementada como runtime read-only opt-in e fica desabilitada por padrão.
+O planner é determinístico e bounded. Ele usa identidade do incidente, feature flags e um Operational Context Snapshot congelado com topologia, histórico, ChangeEvents e Graph Health bounded para compilar ramos tipados de especialistas. A execução paralela está implementada como runtime read-only opt-in e fica desabilitada por padrão.
 
 ```mermaid
 flowchart TD
     INC[IncidentInput] --> PLAN[Planner Determinístico]
-    PAG[Persistent Awareness Graph] --> CTX[Contexto Bounded de 1 Salto]
+    PAG[Persistent Awareness Graph] --> CTX[Operational Context Congelado]
     CTX --> PLAN
     CFG[Budgets do Servidor + Feature Flags] --> PLAN
 
@@ -622,7 +622,9 @@ Propriedades de segurança do planner:
 
 - existem somente seis tipos allow-listed de tarefas especialistas;
 - toda tarefa é read-only;
-- quantidade de tarefas, contexto do grafo, paralelismo e budget de queries por especialista têm limites no servidor;
+- quantidade de tarefas, profundidade/nós de topologia, alvos de histórico, observações por alvo, mudanças recentes, paralelismo e budget de queries por especialista têm limites no servidor;
+- fatos tombstoned permanecem visíveis no contexto operacional, porém ficam fora de `required_entity_ids` atuais;
+- registros persistentes context-only são rejeitados do scoring causal de hipóteses;
 - database/stateful depende da tarefa de traces para que a identidade da dependência seja tipada antes de consultar telemetria específica;
 - o planner não confirma hipóteses, não anexa evidências, não executa mutações e não contorna o plano de remediação separado;
 - o endpoint de execução recompila o plano no servidor, então grafos de tarefas escritos pelo caller nunca são executados;
