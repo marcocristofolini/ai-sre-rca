@@ -23,8 +23,8 @@ async def run_once() -> int:
 
     repo = SQLRepository(settings.database_url)
     tools = ReadOnlyHTTPTools(settings)
-    await repo.initialize()
     try:
+        await repo.initialize()
         reconciliations = await reconcile_kubernetes_inventory(
             repo,
             tools,
