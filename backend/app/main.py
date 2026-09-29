@@ -97,6 +97,7 @@ async def healthz():
         "notifications_enabled": settings.notifications_enabled,
         "query_budget_enabled": settings.query_budget_enabled,
         "persistent_awareness_graph": True,
+        "persistent_change_events": True,
         "agentic_planner_enabled": settings.agentic_planner_enabled,
         "agentic_execution_enabled": settings.agentic_execution_enabled,
         "agentic_model_planner_enabled": (
