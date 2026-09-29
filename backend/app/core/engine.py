@@ -108,21 +108,10 @@ class InvestigationEngine:
             if hasattr(self.tools, "set_cluster"):
                 cluster_token = self.tools.set_cluster(incident.cluster)
 
-            similar = await self._similar_incidents(incident)
-            alert = incident.alert_name.lower()
-
-            if incident.node and ("nodenotready" in alert or "node-not-ready" in alert or not incident.pod):
-                result = await investigate_node_not_ready(
-                    incident_id=incident_id,
-                    incident=incident,
-                    similar=similar,
-                    tools=self.tools,
-                    hypothesis_generator=self.hypothesis_generator,
-                )
-            elif incident.pod and incident.namespace:
-                result = await self._investigate_pod(incident_id, incident, similar)
-            else:
-                result = self._generic_result(incident_id, incident, similar)
+            result = await self.investigate_kubernetes(
+                incident,
+                incident_id=incident_id,
+            )
 
             result = await enrich_with_trace_causality(
                 result,
@@ -152,6 +141,51 @@ class InvestigationEngine:
                     ))
             if cluster_token is not None and hasattr(self.tools, "reset_cluster"):
                 self.tools.reset_cluster(cluster_token)
+
+    async def investigate_kubernetes(
+        self,
+        incident: IncidentInput,
+        *,
+        incident_id: str | None = None,
+        similar: list[SimilarIncident] | None = None,
+    ) -> InvestigationResult:
+        """Run only the deterministic Kubernetes/infrastructure stage.
+
+        This is the shared authority used by the classic investigation flow and
+        the agentic Kubernetes specialist. It deliberately stops before trace
+        and stateful enrichment so specialist execution cannot duplicate or
+        reorder downstream causal stages.
+        """
+        incident_id = incident_id or f"inc-{uuid4().hex[:12]}"
+        if similar is None:
+            similar = await self._similar_incidents(incident)
+
+        alert = incident.alert_name.lower()
+        if incident.node and (
+            "nodenotready" in alert
+            or "node-not-ready" in alert
+            or not incident.pod
+        ):
+            return await investigate_node_not_ready(
+                incident_id=incident_id,
+                incident=incident,
+                similar=similar,
+                tools=self.tools,
+                hypothesis_generator=self.hypothesis_generator,
+            )
+
+        if incident.pod and incident.namespace:
+            return await self._investigate_pod(
+                incident_id,
+                incident,
+                similar,
+            )
+
+        return self._generic_result(
+            incident_id,
+            incident,
+            similar,
+        )
 
     async def _similar_incidents(self, incident: IncidentInput) -> list[SimilarIncident]:
         if not self.memory:
