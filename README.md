@@ -119,11 +119,15 @@ v0.5.1 tightens stateful RCA correctness after the v0.5 review: invalid stateful
 ```mermaid
 flowchart TD
     A[Alertmanager / API] --> N[Incident Normalizer]
-    N --> P[Bounded Investigation Planner]
+    N --> EL[Deterministic Eligible Specialists]
     N --> E[Investigation Engine]
 
     G[(Persistent Awareness Graph)] --> C[Bounded Service Context]
-    C --> P
+    C --> EL
+    EL --> PC[Server-side Plan Compiler]
+    EL -. sanitized context .-> ADV[Optional Advisory LLM]
+    ADV -. specialist names only .-> PC
+    PC --> P[Bounded Investigation Plan]
     P --> T[Allow-listed Specialist Tasks]
     T -->|opt-in| X[Parallel Read-only Specialists]
     X --> SE[Shared Evidence Envelope]
