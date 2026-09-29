@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from app.agentic.models import (
     InvestigationPlan,
     ModelPlanningAdvice,
     PlannerAdvisoryTrace,
+    PlannerChangeContext,
     PlannerGraphContext,
     SpecialistKind,
     SpecialistTask,
@@ -93,13 +96,42 @@ async def _graph_context(
     except (AwarenessEntityNotFoundError, AmbiguousServiceError):
         return PlannerGraphContext()
 
+    window = timedelta(
+        minutes=settings.change_correlation_window_minutes
+    )
+    recent_events = await repo.list_awareness_change_events(
+        incident.tenant_id,
+        incident.cluster,
+        namespace=incident.namespace,
+        subject_entity_id=projection.root.id,
+        since=incident.starts_at - window,
+        until=incident.starts_at + window,
+        limit=min(20, settings.agentic_max_context_nodes),
+    )
+
     return PlannerGraphContext(
         root_entity_id=projection.root.id,
         entity_ids=[item.id for item in projection.entities],
         relationship_ids=[
             item.id for item in projection.relationships
         ],
-        truncated=projection.truncated,
+        recent_changes=[
+            PlannerChangeContext(
+                id=item.id,
+                event_type=item.event_type,
+                source=item.source,
+                occurred_at=item.occurred_at,
+                revision=item.revision,
+            )
+            for item in recent_events
+        ],
+        truncated=(
+            projection.truncated
+            or len(recent_events) >= min(
+                20,
+                settings.agentic_max_context_nodes,
+            )
+        ),
     )
 
 
