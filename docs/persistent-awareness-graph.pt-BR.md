@@ -32,7 +32,7 @@ O grafo armazena três famílias de registros:
 - `awareness_relationships`: relação atual, referências de evidência da observação mais recente, first/last seen e contador;
 - `awareness_observations`: observações imutáveis por incidente para histórico de entidade ou relação.
 
-O ID de cada observação é determinístico a partir de `incidente + alvo`. Salvar novamente o mesmo incidente é idempotente e não aumenta os contadores. Metadata e referências de evidência antigas permanecem em `awareness_observations`; o registro atual da entidade/relação reflete a observação mais recente.
+O ID das observações de incidente é determinístico a partir de `incidente + alvo`. Observações de inventário autoritativo usam `fonte + snapshot + alvo + ação`. Reprocessar a mesma evidência é idempotente e não aumenta os contadores. Metadata e referências de evidência antigas permanecem em `awareness_observations`; o registro atual da entidade/relação reflete a observação válida mais recente. Entidades e relações também carregam timestamp, fonte e snapshot do tombstone quando um inventário completo e autoritativo comprova que um fato conhecido deixou de ser atual.
 
 ~~~mermaid
 flowchart LR
@@ -51,19 +51,26 @@ A ingestão ocorre no limite de persistência do repositório. Com PostgreSQL, o
 
 ## Reconciliação de topologia
 
-A v0.8 classifica entidades e relações de topologia como `fresh` ou `stale` usando `last_seen` e um threshold controlado pelo servidor. Fatos temporais imutáveis, como nós `ChangeEvent`, reconciliam como `historical`.
+A v0.8 classifica entidades e relações de topologia como `fresh`, `stale` ou `tombstoned`. Fresh/stale vem de `last_seen` e de um threshold controlado pelo servidor. Fatos temporais imutáveis, como nós `ChangeEvent`, reconciliam como `historical`.
 
 ~~~mermaid
 flowchart LR
-    CUR[Estado Atual do Grafo] --> AGE[Comparar last_seen com threshold]
+    INC[Observação Parcial de Incidente] --> CUR[Estado Atual do Grafo]
+    CUR --> AGE[Comparar last_seen com threshold]
     AGE -->|dentro do threshold| F[Fresh]
     AGE -->|mais antigo| S[Stale]
-    OBS[Observações Append-only] --> CUR
-    S --> KEEP[Preservar nó/aresta histórica]
-    KEEP --> NO[Sem deleção inferida]
+    S --> KEEP[Preservar fato sem inferir deleção]
+
+    INV[Inventário Autoritativo Completo] --> SCOPE[Validar fonte + cobertura declarada]
+    SCOPE --> PRESENT[Atualizar fatos presentes]
+    SCOPE --> ABSENT[Fato coberto ausente do snapshot]
+    ABSENT -->|last_seen <= horário do snapshot| T[Tombstoned]
+    ABSENT -->|há observação mais nova| SKIP[Preservar fato mais novo]
 ~~~
 
-O sistema propositalmente **não** infere deleção ou tombstone pela ausência em um incidente posterior. Observações derivadas de incidentes são parciais e não equivalem a snapshots autoritativos do inventário do cluster. Tombstones reais dependem de uma futura fonte de reconciliação de inventário completo.
+Ausência em um incidente nunca é evidência de deleção. Um tombstone só pode nascer de `POST /api/v1/awareness/inventory/reconcile`, que exige papel admin, fonte presente em `AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES`, `complete=true` e cobertura explícita de kinds/namespaces/relações. Recursos fora dessa cobertura não são alterados. Nós ChangeEvent e relações de evento ficam fora da reconciliação de tombstones.
+
+Uma observação posterior, vinda de incidente ou inventário autoritativo, pode reativar um fato tombstoned. Snapshots antigos nunca sobrescrevem nem removem observações mais novas. Fatos tombstoned continuam consultáveis no grafo/histórico para explicação, mas ficam fora da resolução corrente de entidades e da travessia de blast radius.
 
 ## Projeções centradas em serviço
 
@@ -84,7 +91,7 @@ Blast radius não é uma travessia genérica do grafo. Cada tipo de relação po
 | `runs_as` | serviço → workload | workload → serviço |
 | `serves` | workload → serviço | workload → serviço |
 
-Tipos de relação desconhecidos permanecem visíveis nas respostas de topologia, mas nunca são percorridos como caminhos de impacto. Relações classificadas como `stale` também são excluídas da propagação de blast radius atual e retornadas separadamente como IDs de relações stale ignoradas.
+Tipos de relação desconhecidos permanecem visíveis nas respostas de topologia, mas nunca são percorridos como caminhos de impacto. Relações `stale` ou `tombstoned` ficam fora da propagação atual. Uma entidade tombstoned não pode ser usada como origem atual do blast radius e alvos tombstoned não são promovidos como impactos atuais.
 
 ## API
 
@@ -95,9 +102,10 @@ GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
 GET /api/v1/awareness/topology?cluster=<cluster>
 GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
 GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
+POST /api/v1/awareness/inventory/reconcile?cluster=<cluster>
 ~~~
 
-O tenant vem do principal autenticado. Um principal global com `tenant_id="*"` precisa informar explicitamente `tenant_id`; principals comuns não podem consultar outro tenant. A autorização de cluster existente continua obrigatória.
+O tenant vem do principal autenticado. Um principal global com `tenant_id="*"` precisa informar explicitamente `tenant_id`; principals comuns não podem consultar outro tenant. A autorização de cluster existente continua obrigatória. A reconciliação de inventário também exige papel admin e uma fonte autoritativa allow-listed. Toda reconciliação aceita gera registro de auditoria com escopo e contagem de tombstones.
 
 Os limites padrão no servidor são `depth=4`, `nodes=200`, `edges=800`, com threshold de stale em 24 horas. Todos podem ser configurados por Helm/variáveis de ambiente.
 
@@ -105,10 +113,14 @@ Os limites padrão no servidor são `depth=4`, `nodes=200`, `edges=800`, com thr
 
 - nenhuma mutação de infraestrutura é adicionada;
 - nenhum LLM grava fatos diretamente no grafo;
-- somente entidades e relações produzidas pela investigação entram no grafo;
+- evidência de incidente pode adicionar observações, mas o estado de deleção só muda com snapshot completo de uma fonte autoritativa allow-listed;
 - endpoints de aresta desconhecidos são ignorados, nunca inventados;
 - tenant e cluster participam da identidade e de toda consulta;
-- observações históricas permanecem preservadas quando metadata atual muda.
+- observações históricas permanecem preservadas quando metadata atual muda;
+- ausência em incidente nunca cria tombstone;
+- a cobertura do snapshot é explícita e fail-closed;
+- snapshots antigos não podem tombstonar observações mais novas;
+- ChangeEvents são fatos históricos e nunca recebem tombstone de inventário.
 
 ## Próximas fases da v0.8
 
@@ -119,11 +131,11 @@ Concluído na branch atual:
 - blast radius com direção causal explícita;
 - contexto bounded do grafo para o Investigation Planner;
 - avaliação determinística do shared envelope e rejected-hypothesis explanation graph;
-- Awareness Explorer read-only para topologia reconciliada, projeções por serviço e histórico de ChangeEvents.
+- Awareness Explorer read-only para topologia reconciliada, projeções por serviço e histórico de ChangeEvents;
+- reconciliação autoritativa de inventário completo com tombstones first-class, auditoria e semântica de reativação.
 
 Ainda planejado:
 
-- tombstones autoritativos a partir de reconciliação de inventário completo;
 - enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
 - métricas e política de retention do grafo;
 - contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
@@ -131,7 +143,7 @@ Ainda planejado:
 
 ## Awareness Explorer read-only
 
-A rota Next.js `/awareness` consome somente APIs de viewer. Ela permite escopo por cluster, namespace e serviço, renderiza o estado reconciliado `fresh` / `stale` / `historical` das entidades, mostra relações persistidas e posiciona ChangeEvents em uma timeline histórica bounded. Quando um serviço é informado, a leitura de topologia usa o endpoint existente de projeção bounded por serviço em vez de implementar travessia do grafo no browser.
+A rota Next.js `/awareness` consome somente APIs de viewer. Ela permite escopo por cluster, namespace e serviço, renderiza o estado reconciliado `fresh` / `stale` / `historical` / `tombstoned` das entidades, mostra relações persistidas e posiciona ChangeEvents em uma timeline histórica bounded. Quando um serviço é informado, a leitura de topologia usa o endpoint existente de projeção bounded por serviço em vez de implementar travessia do grafo no browser.
 
 O explorer encaminha os mesmos headers de autorização da UI existente e expõe override opcional de tenant apenas para principals que já possuem escopo global de tenant. Não há controles de mutação nem endpoint de escrita no grafo.
 
