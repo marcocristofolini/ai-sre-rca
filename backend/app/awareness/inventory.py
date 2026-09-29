@@ -57,6 +57,22 @@ class InventoryResourceRef(BaseModel):
     name: str = Field(min_length=1, max_length=512)
     namespace: str | None = Field(default=None, max_length=255)
 
+    @field_validator("kind", "name")
+    @classmethod
+    def normalize_required_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("inventory resource identifier cannot be blank")
+        return normalized
+
+    @field_validator("namespace")
+    @classmethod
+    def normalize_namespace(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class InventoryResource(InventoryResourceRef):
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -67,6 +83,14 @@ class InventoryRelationship(BaseModel):
     target: InventoryResourceRef
     relationship: str = Field(min_length=1, max_length=128)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("relationship")
+    @classmethod
+    def normalize_relationship(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("inventory relationship cannot be blank")
+        return normalized
 
 
 class AuthoritativeInventoryRequest(BaseModel):
@@ -109,6 +133,15 @@ class AuthoritativeInventoryRequest(BaseModel):
             raise ValueError("inventory resources must be unique")
 
         for resource in self.resources:
+            if resource.kind.casefold() == "changeevent":
+                raise ValueError(
+                    "ChangeEvent is immutable historical state and cannot be "
+                    "supplied by authoritative topology inventory"
+                )
+            if "temporal_role" in resource.metadata:
+                raise ValueError(
+                    "temporal_role is reserved server metadata"
+                )
             if not resource_in_coverage(
                 resource.kind,
                 resource.namespace,
@@ -123,6 +156,18 @@ class AuthoritativeInventoryRequest(BaseModel):
         relationship_keys: set[tuple[str, str, str]] = set()
         allowed_relationships = set(self.coverage.relationship_types)
         for relationship in self.relationships:
+            if (
+                relationship.source.kind.casefold() == "changeevent"
+                or relationship.target.kind.casefold() == "changeevent"
+            ):
+                raise ValueError(
+                    "ChangeEvent relationships cannot be supplied by "
+                    "authoritative topology inventory"
+                )
+            if "temporal_role" in relationship.metadata:
+                raise ValueError(
+                    "temporal_role is reserved server metadata"
+                )
             if relationship.relationship not in allowed_relationships:
                 raise ValueError(
                     "inventory relationship is not declared authoritative in coverage: "
