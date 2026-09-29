@@ -111,13 +111,17 @@ class OpenAICompatiblePlanningAdvisor:
             ValueError,
             json.JSONDecodeError,
         ):
-            return None
+            return ModelPlanningAdvice(
+                rationale="model planning advisor unavailable or returned invalid JSON"
+            )
 
         requested: list[str] = []
         reasons: dict[str, str] = {}
         raw_items = parsed.get("specialists", [])
         if not isinstance(raw_items, list):
-            return None
+            return ModelPlanningAdvice(
+                rationale="model planning advisor returned an invalid specialists field"
+            )
 
         for item in raw_items[: self.settings.agentic_model_planner_max_specialists]:
             if isinstance(item, str):
@@ -143,7 +147,9 @@ class OpenAICompatiblePlanningAdvisor:
 
         rationale = str(parsed.get("rationale", "")).strip()[:1000]
         if not requested:
-            return None
+            return ModelPlanningAdvice(
+                rationale=rationale or "model planning advisor returned no specialists"
+            )
 
         return ModelPlanningAdvice(
             requested_specialists=requested,
