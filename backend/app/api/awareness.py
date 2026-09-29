@@ -12,6 +12,7 @@ from app.awareness.inventory import (
     InventoryReconciliationResult,
 )
 from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
+from app.schemas import AuditEvent
 from app.awareness.topology import (
     AmbiguousServiceError,
     AwarenessEntityNotFoundError,
@@ -70,9 +71,29 @@ async def reconcile_authoritative_inventory(
         tenant_id=tenant,
         cluster=cluster,
     )
-    return await request.app.state.repo.reconcile_authoritative_inventory(
+    result = await request.app.state.repo.reconcile_authoritative_inventory(
         snapshot
     )
+    await request.app.state.repo.append_audit(AuditEvent(
+        tenant_id=tenant,
+        actor=principal.subject,
+        action="awareness.inventory.reconcile",
+        detail={
+            "cluster": cluster,
+            "source": payload.source,
+            "snapshot_id": payload.snapshot_id,
+            "coverage": payload.coverage.model_dump(),
+            "resources_observed": result.resources_observed,
+            "relationships_observed": result.relationships_observed,
+            "entities_tombstoned": result.entities_tombstoned,
+            "relationships_tombstoned": result.relationships_tombstoned,
+            "skipped_newer_entities": result.skipped_newer_entities,
+            "skipped_newer_relationships": (
+                result.skipped_newer_relationships
+            ),
+        },
+    ))
+    return result
 
 
 @router.get("/graph", response_model=AwarenessGraphSnapshot)
