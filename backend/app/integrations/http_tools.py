@@ -89,20 +89,24 @@ class ReadOnlyHTTPTools:
     ) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         continue_token: str | None = None
+        seen_continue_tokens: set[str] = set()
         while True:
             params: dict[str, Any] = {"limit": page_size}
             if continue_token:
                 params["continue"] = continue_token
             payload = await self._k8s_get(path, params)
             page = payload.get("items")
-            if not isinstance(page, list):
+            metadata = payload.get("metadata")
+            if (
+                not isinstance(page, list)
+                or not isinstance(metadata, dict)
+                or any(not isinstance(item, dict) for item in page)
+            ):
                 raise RuntimeError(
                     f"Kubernetes inventory list was incomplete or invalid: {path}"
                 )
-            items.extend(
-                item for item in page if isinstance(item, dict)
-            )
-            raw_continue = payload.get("metadata", {}).get("continue")
+            items.extend(page)
+            raw_continue = metadata.get("continue")
             continue_token = (
                 str(raw_continue).strip()
                 if raw_continue is not None
@@ -110,6 +114,12 @@ class ReadOnlyHTTPTools:
             )
             if not continue_token:
                 return items
+            if continue_token in seen_continue_tokens:
+                raise RuntimeError(
+                    "Kubernetes inventory pagination repeated continue token: "
+                    f"{path}"
+                )
+            seen_continue_tokens.add(continue_token)
 
     async def list_services(
         self,
