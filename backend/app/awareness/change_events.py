@@ -252,6 +252,9 @@ def augment_with_change_events(
 
         service_name = service.name if service is not None else None
         workload_name = deployment.name if deployment is not None else None
+        repository_name = repo_url or (
+            repository.name if repository is not None else None
+        )
         event_name = (
             f"{application}@{revision[:12]}"
             f"#{occurred_at.strftime('%Y%m%dT%H%M%SZ')}"
@@ -267,7 +270,7 @@ def augment_with_change_events(
                 "occurred_at": occurred_at.isoformat(),
                 "application": application,
                 "revision": revision,
-                "repository": repo_url or None,
+                "repository": repository_name,
                 "service_name": service_name,
                 "workload_kind": "Deployment" if deployment is not None else None,
                 "workload_name": workload_name,
