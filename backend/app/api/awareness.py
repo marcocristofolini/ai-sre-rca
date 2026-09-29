@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import Principal, authorize_cluster, authorize_tenant, require_role
+from app.awareness.change_events import AwarenessChangeEvent, query_change_events
 from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
 from app.awareness.topology import (
     AmbiguousServiceError,
@@ -166,3 +169,38 @@ async def get_blast_radius(
         )
     except AwarenessEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+
+@router.get(
+    "/changes",
+    response_model=list[AwarenessChangeEvent],
+)
+async def get_change_events(
+    cluster: str,
+    request: Request,
+    service: str | None = None,
+    namespace: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    tenant_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    principal: Principal = Depends(require_role("viewer")),
+):
+    authorize_cluster(principal, cluster)
+    tenant = _tenant_scope(principal, tenant_id)
+    if since and until and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="since must be earlier than or equal to until",
+        )
+    return await query_change_events(
+        request.app.state.repo,
+        tenant_id=tenant,
+        cluster=cluster,
+        service_name=service,
+        namespace=namespace,
+        since=since,
+        until=until,
+        limit=limit,
+    )
