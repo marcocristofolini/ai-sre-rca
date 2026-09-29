@@ -50,6 +50,40 @@ flowchart TD
     RCA --> UI[Next.js Investigation UI]
 ```
 
+
+
+## Shared Kubernetes playbook stage — v0.8
+
+The classic investigation path and the agentic Kubernetes specialist now call the same deterministic Kubernetes stage. There is no second simplified Kubernetes RCA implementation to drift from the core engine.
+
+```mermaid
+flowchart LR
+    CLASSIC[Classic Investigation Engine] --> SHARED[Shared Deterministic Kubernetes Stage]
+    AGENTIC[Agentic Kubernetes Specialist] --> SHARED
+
+    SHARED --> EVICT[Eviction / Ephemeral Storage]
+    SHARED --> OOM[OOMKilled]
+    SHARED --> CRASH[CrashLoopBackOff]
+    SHARED --> SCHED[FailedScheduling / Karpenter]
+    SHARED --> HPA[HPA]
+    SHARED --> KEDA[KEDA]
+    SHARED --> NODE[NodeNotReady]
+
+    EVICT --> OUT[Canonical Evidence + Playbook Hypotheses]
+    OOM --> OUT
+    CRASH --> OUT
+    SCHED --> OUT
+    HPA --> OUT
+    KEDA --> OUT
+    NODE --> OUT
+
+    OUT --> CORE[Classic Root-cause Selection]
+    OUT --> ENV[Agentic Shared Evidence Envelope]
+    ENV --> DET[Deterministic Agentic Evaluator]
+```
+
+The agentic wrapper adds a dedicated read-only query budget but does not alter playbook scoring, evidence categories, ownership resolution or hypothesis IDs. A budget-exhausted Kubernetes specialist fails closed and cannot be treated as clean infrastructure context.
+
 ## Investigation lifecycle
 
 ```mermaid
