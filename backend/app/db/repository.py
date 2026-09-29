@@ -86,6 +86,8 @@ class InvestigationRepository(Protocol):
     async def reconcile_authoritative_inventory(
         self,
         snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
     ) -> InventoryReconciliationResult: ...
     async def save_remediation_plan(self, plan: RemediationPlan) -> None: ...
     async def get_remediation_plan(
@@ -113,6 +115,30 @@ class InvestigationRepository(Protocol):
         tenant_id: str | None = None,
     ) -> dict[str, int]: ...
     async def close(self) -> None: ...
+
+
+def _inventory_reconciliation_audit(
+    snapshot: AuthoritativeInventorySnapshot,
+    result: InventoryReconciliationResult,
+    actor: str,
+) -> AuditEvent:
+    return AuditEvent(
+        tenant_id=snapshot.tenant_id,
+        actor=actor,
+        action="awareness.inventory.reconcile",
+        detail={
+            "cluster": snapshot.cluster,
+            "source": snapshot.source,
+            "snapshot_id": snapshot.snapshot_id,
+            "coverage": snapshot.coverage.model_dump(),
+            "resources_observed": result.resources_observed,
+            "relationships_observed": result.relationships_observed,
+            "entities_tombstoned": result.entities_tombstoned,
+            "relationships_tombstoned": result.relationships_tombstoned,
+            "skipped_newer_entities": result.skipped_newer_entities,
+            "skipped_newer_relationships": result.skipped_newer_relationships,
+        },
+    )
 
 
 def incident_fingerprint(incident: IncidentInput, root_cause: str | None = None) -> str:
@@ -374,6 +400,8 @@ class MemoryRepository:
     async def reconcile_authoritative_inventory(
         self,
         snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
     ) -> InventoryReconciliationResult:
         receipt_id = inventory_snapshot_receipt_id(snapshot)
         fingerprint = inventory_snapshot_fingerprint(snapshot)
@@ -626,6 +654,10 @@ class MemoryRepository:
             current.tombstone_source = snapshot.source
             result.relationships_tombstoned += 1
 
+        if actor is not None:
+            self._audit.append(
+                _inventory_reconciliation_audit(snapshot, result, actor)
+            )
         return result
 
     async def save_remediation_plan(self, plan: RemediationPlan) -> None:
@@ -1269,6 +1301,8 @@ class SQLRepository:
     async def reconcile_authoritative_inventory(
         self,
         snapshot: AuthoritativeInventorySnapshot,
+        *,
+        actor: str | None = None,
     ) -> InventoryReconciliationResult:
         entities = materialize_inventory_entities(snapshot)
         relationships = materialize_inventory_relationships(snapshot)
@@ -1617,6 +1651,22 @@ class SQLRepository:
                     row.tombstone_snapshot_id = snapshot.snapshot_id
                     row.tombstone_source = snapshot.source
                     result.relationships_tombstoned += 1
+
+            if actor is not None:
+                audit = _inventory_reconciliation_audit(
+                    snapshot,
+                    result,
+                    actor,
+                )
+                session.add(AuditEventRecord(
+                    id=audit.id,
+                    incident_id=audit.incident_id,
+                    tenant_id=audit.tenant_id,
+                    actor=audit.actor,
+                    action=audit.action,
+                    detail=audit.detail,
+                    created_at=audit.created_at,
+                ))
 
             await session.commit()
         return result
