@@ -224,6 +224,30 @@ async def test_clusterwide_inventory_builds_deterministic_topology():
 
 
 @pytest.mark.asyncio
+async def test_owner_relationship_requires_matching_controller_uid():
+    tools = FakeInventoryTools()
+    tools.data["ReplicaSet"][0]["metadata"]["ownerReferences"][0]["uid"] = (
+        "uid-deleted-checkout"
+    )
+    collector = KubernetesInventoryCollector(tools)
+
+    collection = await collector.collect_cluster(
+        tenant_id="tenant-a",
+        cluster="prod",
+        kinds=["Deployment", "ReplicaSet"],
+        namespaces=["payments"],
+        observed_at=datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc),
+    )
+
+    snapshot = collection.snapshots[0]
+    assert snapshot.coverage.relationship_types == ["owned_by"]
+    assert all(
+        item.relationship != "owned_by"
+        for item in snapshot.relationships
+    )
+
+
+@pytest.mark.asyncio
 async def test_namespace_scoped_inventory_does_not_assert_cross_scope_edges():
     tools = FakeInventoryTools()
     collector = KubernetesInventoryCollector(tools)
@@ -395,6 +419,51 @@ async def test_http_inventory_list_follows_kubernetes_continue_tokens(monkeypatc
             "params": {"limit": 1, "continue": "next-page"},
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_http_inventory_list_fails_closed_on_repeated_continue_token(
+    monkeypatch,
+):
+    tools = ReadOnlyHTTPTools(Settings())
+    calls = 0
+
+    async def fake_get(path: str, params=None):
+        nonlocal calls
+        calls += 1
+        return {
+            "items": [{"metadata": {"name": f"pod-{calls}"}}],
+            "metadata": {"continue": "loop-token"},
+        }
+
+    monkeypatch.setattr(tools, "_k8s_get", fake_get)
+
+    with pytest.raises(
+        RuntimeError,
+        match="pagination repeated continue token",
+    ):
+        await tools.list_pods(page_size=1)
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_http_inventory_list_fails_closed_on_malformed_item(monkeypatch):
+    tools = ReadOnlyHTTPTools(Settings())
+
+    async def fake_get(path: str, params=None):
+        return {
+            "items": [
+                {"metadata": {"name": "pod-a"}},
+                "not-a-kubernetes-object",
+            ],
+            "metadata": {"continue": ""},
+        }
+
+    monkeypatch.setattr(tools, "_k8s_get", fake_get)
+
+    with pytest.raises(RuntimeError, match="inventory list was incomplete"):
+        await tools.list_pods()
 
 
 @pytest.mark.asyncio
