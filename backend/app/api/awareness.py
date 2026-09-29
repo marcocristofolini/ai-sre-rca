@@ -100,6 +100,12 @@ async def list_change_events(
 ):
     authorize_cluster(principal, cluster)
     tenant = _tenant_scope(principal, tenant_id)
+    for label, value in (("since", since), ("until", until)):
+        if value is not None and value.tzinfo is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{label} must include a timezone offset",
+            )
     if since is not None and until is not None and since > until:
         raise HTTPException(
             status_code=422,
