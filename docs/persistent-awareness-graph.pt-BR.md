@@ -144,6 +144,8 @@ As relações do evento são propositalmente contextuais:
 
 Essas relações não entram na allow-list de direção de impacto do blast radius. Um deploy recente continua sendo correlação/contexto até que evidência de runtime satisfaça uma hipótese causal determinística.
 
+A materialização do evento é fail-closed. `application`, `revision` e um timestamp autoritativo da operação do Argo CD são obrigatórios; valores ausentes ou malformados continuam somente como evidência de correlação. Os vínculos com Deployment, Service e GitRepository são adicionados apenas por relações explícitas e não ambíguas `managed_by`, `serves` e `syncs_from` já existentes no grafo da investigação. A implementação nunca usa o primeiro recurso do namespace como evidência de identidade.
+
 Consulta temporal:
 
 ```text
