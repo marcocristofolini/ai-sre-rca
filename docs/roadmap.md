@@ -158,6 +158,7 @@ Persistent Awareness Graph:
 - [x] historical event semantics distinct from fresh/stale topology
 - [x] bounded service/time-window change-event API
 - [x] change-event relationships excluded from causal blast-radius traversal
+- [x] fail-closed change identity plus explicit, unambiguous graph target/repository resolution
 - [ ] persistent graph explorer UI
 
 Agentic investigation foundation:
