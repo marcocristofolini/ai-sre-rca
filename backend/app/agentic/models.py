@@ -145,6 +145,19 @@ class PlannerAdvisoryTrace(BaseModel):
     fallback_reason: str | None = None
 
 
+ScopeField = Literal["pod", "application"]
+
+
+class SpecialistScope(BaseModel):
+    namespace: str | None = None
+    service: str | None = None
+    pod: str | None = None
+    node: str | None = None
+    application: str | None = None
+    graph_resolved_fields: list[ScopeField] = Field(default_factory=list)
+    graph_ambiguous_fields: list[ScopeField] = Field(default_factory=list)
+
+
 class SpecialistTask(BaseModel):
     id: str
     specialist: SpecialistKind
@@ -152,6 +165,7 @@ class SpecialistTask(BaseModel):
     rationale: str
     depends_on: list[str] = Field(default_factory=list)
     required_entity_ids: list[str] = Field(default_factory=list)
+    scope: SpecialistScope = Field(default_factory=SpecialistScope)
     max_queries: int = Field(ge=1, le=100)
     read_only: bool = True
 

@@ -148,6 +148,25 @@ Fatos tombstoned permanecem visíveis para explicação, mas ficam fora de `requ
 
 O contexto possui limites rígidos para quantidade de nós, profundidade do grafo, alvos de histórico, observações por alvo e número de mudanças recentes. O LLM opcional do planner recebe somente uma projeção rasa e sanitizada desse snapshot; continua sem poder criar tarefas, ferramentas, queries, dependências ou verdicts.
 
+## Scoping determinístico dos especialistas — v0.8
+
+O contexto congelado pode restringir leituras live sem virar evidência. O scope dos especialistas é tipado e controlado pelo servidor. Campos explícitos do incidente têm precedência; Pod ou aplicação Argo CD ausentes só podem ser preenchidos a partir de um único candidato fresh em uma projeção completa e não truncada.
+
+```mermaid
+flowchart LR
+    INC[Identidade do Incidente] --> RES[Resolver Determinístico de Scope]
+    OCS[Operational Context Congelado] --> RES
+    RES -->|Pod fresh único| K[Scope Kubernetes + Loki]
+    RES -->|Aplicação Argo fresh única| A[Scope Argo CD]
+    RES -->|ambíguo ou truncado| F[Fail closed<br/>sem alvo inferido]
+    K --> LIVE1[Verificação live Kubernetes / Loki]
+    A --> LIVE2[Verificação live Argo CD]
+    LIVE1 --> EV[Evidência atual tipada]
+    LIVE2 --> EV
+```
+
+A profundidade padrão do contexto operacional passa a 3 para que o grafo bounded do serviço alcance a cadeia Service → Deployment → ReplicaSet → Pod. Um contexto maior nunca autoriza adivinhação: se o budget de nós/arestas truncar a projeção, a resolução de Pod/aplicação derivada do grafo é desabilitada.
+
 ## Compilador de planejamento assistido por modelo — v0.8
 
 A assistência do modelo é uma camada advisory opcional, não uma nova autoridade de execução. Primeiro, o planner determinístico decide quais ramos especialistas são elegíveis. Somente esse contexto sanitizado e bounded é enviado ao modelo. A resposta volta para um compilador controlado pelo servidor antes de existir qualquer grafo de tarefas executável.
@@ -623,6 +642,8 @@ Propriedades de segurança do planner:
 - existem somente seis tipos allow-listed de tarefas especialistas;
 - toda tarefa é read-only;
 - quantidade de tarefas, profundidade/nós de topologia, alvos de histórico, observações por alvo, mudanças recentes, paralelismo e budget de queries por especialista têm limites no servidor;
+- o scope dos especialistas é controlado pelo servidor e identidades derivadas do grafo exigem um único candidato fresh em projeção não truncada;
+- scope ambíguo falha fechado em vez de escolher pela ordem da lista;
 - fatos tombstoned permanecem visíveis no contexto operacional, porém ficam fora de `required_entity_ids` atuais;
 - registros persistentes context-only são rejeitados do scoring causal de hipóteses;
 - database/stateful depende da tarefa de traces para que a identidade da dependência seja tipada antes de consultar telemetria específica;

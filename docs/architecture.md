@@ -148,6 +148,25 @@ Tombstoned facts remain visible for explanation but are excluded from the task `
 
 The context is hard-bounded by node count, graph depth, number of history targets, observations per target and recent-change count. The optional planner LLM receives only a shallow sanitized projection of this snapshot; it still cannot create tasks, tools, queries, dependencies or verdicts.
 
+## Deterministic specialist scoping — v0.8
+
+The frozen context can narrow live reads without becoming evidence. Specialist scope is server-owned and typed. Explicit incident fields win; missing Pod or Argo CD application identity can be filled only from one fresh candidate in a complete, non-truncated graph projection.
+
+```mermaid
+flowchart LR
+    INC[Incident Identity] --> RES[Deterministic Scope Resolver]
+    OCS[Frozen Operational Context] --> RES
+    RES -->|unique fresh Pod| K[Kubernetes + Loki scope]
+    RES -->|unique fresh Argo app| A[Argo CD scope]
+    RES -->|ambiguous or truncated| F[Fail closed<br/>no inferred target]
+    K --> LIVE1[Live Kubernetes / Loki verification]
+    A --> LIVE2[Live Argo CD verification]
+    LIVE1 --> EV[Current typed evidence]
+    LIVE2 --> EV
+```
+
+The default operational-context depth is 3 so the bounded service graph can reach Service → Deployment → ReplicaSet → Pod ownership chains. A larger context never authorizes a guess: if the node/edge budget truncates the projection, graph-derived Pod/application resolution is disabled.
+
 ## Model-assisted planning compiler — v0.8
 
 Model assistance is an optional advisory layer, not a new execution authority. The deterministic planner first decides which specialist branches are eligible. Only that sanitized, bounded context is sent to the model. The response is compiled back through server-owned policy before a task graph exists.
@@ -623,6 +642,8 @@ Planner safety properties:
 - only six allow-listed specialist task kinds exist;
 - every task is read-only;
 - task count, topology depth/nodes, history targets, observations per target, recent changes, parallelism and per-specialist query budget are server bounded;
+- specialist scope is server-owned and graph-derived identities require one fresh candidate in a non-truncated projection;
+- ambiguous graph scope fails closed instead of selecting by list order;
 - tombstoned facts remain visible in operational context but are excluded from current `required_entity_ids`;
 - context-only persistent records are rejected from causal hypothesis scoring;
 - database/stateful work depends on the trace task so dependency identity is typed before dependency telemetry is queried;

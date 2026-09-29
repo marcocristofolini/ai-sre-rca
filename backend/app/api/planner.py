@@ -77,6 +77,10 @@ async def plan_investigation(
             "specialists": [
                 task.specialist for task in plan.tasks
             ],
+            "specialist_scopes": {
+                task.specialist: task.scope.model_dump(mode="json")
+                for task in plan.tasks
+            },
             "graph_context_nodes": len(plan.graph_context.entity_ids),
             "graph_context_tombstones": sum(
                 item.freshness == "tombstoned"

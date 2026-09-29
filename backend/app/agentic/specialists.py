@@ -359,6 +359,23 @@ def _result(
         started_at=started_at,
         finished_at=datetime.now(timezone.utc),
     )
+def _scoped_incident(
+    task: SpecialistTask,
+    incident: IncidentInput,
+) -> IncidentInput:
+    updates = {
+        key: value
+        for key, value in {
+            "namespace": task.scope.namespace,
+            "service": task.scope.service,
+            "pod": task.scope.pod,
+            "node": task.scope.node,
+        }.items()
+        if value is not None
+    }
+    return incident.model_copy(update=updates)
+
+
 async def _kubernetes(
     task: SpecialistTask,
     incident: IncidentInput,
@@ -368,6 +385,7 @@ async def _kubernetes(
     """Run the exact deterministic Kubernetes stage used by the core engine."""
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
+    scoped_incident = _scoped_incident(task, incident)
     proxy = KubernetesBudgetedTools(tools, budget)
     engine = InvestigationEngine(
         tools=proxy,
@@ -377,7 +395,7 @@ async def _kubernetes(
 
     try:
         result = await engine.investigate_kubernetes(
-            incident,
+            scoped_incident,
             incident_id=f"agentic-kubernetes-{uuid4().hex[:12]}",
             similar=[],
         )
@@ -413,7 +431,8 @@ async def _metrics(
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
     evidence: list[Evidence] = []
-    if not incident.service:
+    service = task.scope.service or incident.service
+    if not service:
         return _result(
             task,
             budget,
@@ -424,7 +443,7 @@ async def _metrics(
     try:
         budget.consume("service_graph")
         edges = await tools.service_graph(
-            incident.service,
+            service,
             incident.starts_at,
         )
         if edges:
@@ -433,10 +452,10 @@ async def _metrics(
                 category="agentic-service-graph-red",
                 summary=(
                     f"Service graph returned {len(edges)} RED edges "
-                    f"around {incident.service}."
+                    f"around {service}."
                 ),
                 facts={
-                    "service": incident.service,
+                    "service": service,
                     "edge_count": len(edges),
                     "edges": [
                         {
@@ -470,7 +489,9 @@ async def _logs(
 ) -> SpecialistResult:
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
-    if not incident.namespace or not incident.pod:
+    namespace = task.scope.namespace or incident.namespace
+    pod = task.scope.pod or incident.pod
+    if not namespace or not pod:
         return _result(
             task,
             budget,
@@ -482,8 +503,8 @@ async def _logs(
 
     evidence: list[Evidence] = []
     query = (
-        f'{{namespace="{quoted_string(incident.namespace)}",'
-        f' pod="{quoted_string(incident.pod)}"}}'
+        f'{{namespace="{quoted_string(namespace)}",'
+        f' pod="{quoted_string(pod)}"}}'
     ).replace(", ", ",")
     try:
         budget.consume("loki_query_range")
@@ -507,8 +528,8 @@ async def _logs(
                     f"across {len(streams)} stream(s) for the incident pod."
                 ),
                 facts={
-                    "namespace": incident.namespace,
-                    "pod": incident.pod,
+                    "namespace": namespace,
+                    "pod": pod,
                     "stream_count": len(streams),
                     "entry_count": entry_count,
                     "stream_labels": [
@@ -537,7 +558,8 @@ async def _traces(
 ) -> SpecialistResult:
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
-    if not incident.service:
+    scoped_incident = _scoped_incident(task, incident)
+    if not scoped_incident.service:
         return _result(
             task,
             budget,
@@ -546,13 +568,13 @@ async def _traces(
         )
 
     scaffold = _scaffold(
-        incident,
+        scoped_incident,
         entities=[
             Entity(
-                id=f"service:{incident.service}",
+                id=f"service:{scoped_incident.service}",
                 kind="Service",
-                name=incident.service,
-                namespace=incident.namespace,
+                name=scoped_incident.service,
+                namespace=scoped_incident.namespace,
             )
         ],
     )
@@ -648,11 +670,7 @@ async def _changes(
 ) -> SpecialistResult:
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
-    app_name = (
-        incident.labels.get("argocd_app")
-        or incident.labels.get("app.kubernetes.io/instance")
-        or incident.service
-    )
+    app_name = task.scope.application
     evidence: list[Evidence] = []
     if not app_name and not operational_context.recent_changes:
         return _result(
@@ -798,6 +816,12 @@ def _context_references(
         f"inventory:{item.source}:{item.freshness}"
         for item in context.inventory_sources
     )
+    for field in task.scope.graph_resolved_fields:
+        value = getattr(task.scope, field)
+        if value:
+            refs.append(f"scope:{field}:{value}")
+    for field in task.scope.graph_ambiguous_fields:
+        refs.append(f"scope-ambiguous:{field}")
     return list(dict.fromkeys(refs))[:100]
 
 

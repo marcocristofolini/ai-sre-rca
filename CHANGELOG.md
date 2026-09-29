@@ -36,6 +36,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Planner context retrieval from the Persistent Awareness Graph.
 - Frozen agentic Operational Context Snapshot combining bounded reconciled topology, target history, recent ChangeEvents, Graph Health and authoritative inventory-source freshness.
 - Operational context is copied into the InvestigationPlan, propagated to specialists and preserved in the Shared Evidence Envelope for one consistent graph view per run.
+- Typed server-owned specialist scope can resolve a missing Pod or Argo CD application only from a unique fresh entity in a non-truncated persistent topology.
+- Graph-resolved Pod scope narrows live Kubernetes and Loki reads; graph-resolved application scope narrows live Argo CD verification.
+- Ambiguous or truncated graph scope fails closed and never selects the first matching Pod/application.
 - Changes specialist can consume persisted ChangeEvents as weak `context_only` context without treating them as fresh causal evidence.
 - Planner audit records bounded operational-context counts, truncation state and inventory-source freshness.
 - Planner audit events and investigator-role enforcement.
@@ -85,6 +88,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Missing support or contradiction references fail closed and prevent root-cause selection.
 - Persistent operational records marked `context_only` are removed from causal scoring; a hypothesis that attempts to rely on them fails closed as invalid evidence.
 - Tombstoned entities remain available to the frozen operational snapshot for explanation but are excluded from current task-required entity IDs.
+- Graph-derived specialist scope is query narrowing only; live source verification is still required before current evidence exists.
 - A planned higher-precedence Kubernetes specialist that does not complete blocks downstream trace/stateful promotion, preventing absence-by-failure from being treated as clean infrastructure evidence.
 - Kubernetes specialist budget exhaustion is fail-closed; partial infrastructure collection cannot be treated as a clean Kubernetes result.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
