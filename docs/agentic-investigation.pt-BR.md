@@ -198,4 +198,4 @@ O resultado inclui `root_cause` determinística somente quando todos esses gates
 
 ## Próxima fase
 
-O trabalho restante de profundidade da v0.8 é adicionar eventos first-class de deployment/change, reconciliação autoritativa de inventário/tombstones e uma UI para explorar topologia e explanation graphs. A próxima geração agentic poderá então usar esses eventos temporais e projeções persistentes do grafo como contexto bounded de planejamento.
+Os eventos first-class de deployment/change e o explorer read-only do Persistent Awareness Graph agora fazem parte da v0.8. O gap restante da fundação do grafo é a reconciliação autoritativa de inventário completo/tombstones. A próxima geração agentic poderá usar eventos temporais e projeções persistentes mais ricos como contexto bounded de planejamento sem tratar correlação visível na UI como prova causal.
