@@ -450,6 +450,11 @@ def evaluate_shared_evidence(
     evidence_by_id = {
         item.id: item for item in verified_evidence
     }
+    context_only_ids = {
+        item.id
+        for item in verified_evidence
+        if item.facts.get("context_only") is True
+    }
     precedence_blockers = _direct_kubernetes_blockers(
         verified_evidence
     )
@@ -476,13 +481,28 @@ def evaluate_shared_evidence(
         original_support = list(hypothesis.supporting_evidence)
         original_contradict = list(hypothesis.contradicting_evidence)
         hypothesis.supporting_evidence = [
-            item for item in original_support if item in evidence_by_id
+            item
+            for item in original_support
+            if item in evidence_by_id and item not in context_only_ids
         ]
         hypothesis.contradicting_evidence = [
-            item for item in original_contradict if item in evidence_by_id
+            item
+            for item in original_contradict
+            if item in evidence_by_id and item not in context_only_ids
         ]
 
         reasons: list[str] = []
+        context_only_references = sorted(
+            (
+                set(original_support)
+                | set(original_contradict)
+            ).intersection(context_only_ids)
+        )
+        if context_only_references:
+            reasons.append(
+                "persistent operational context is context-only and cannot "
+                "score or confirm a causal hypothesis"
+            )
         missing_support = sorted(
             set(original_support) - set(hypothesis.supporting_evidence)
         )
