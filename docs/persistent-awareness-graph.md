@@ -70,7 +70,7 @@ flowchart LR
 
 Absence from an incident is never deletion evidence. A tombstone can only come from `POST /api/v1/awareness/inventory/reconcile`, requires the admin role, a source in `AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES`, `complete=true`, and explicit kind/namespace/relationship coverage. Resources outside that declared coverage are untouched. ChangeEvent nodes and event relationships are excluded from inventory tombstoning.
 
-A newer incident or authoritative inventory observation can reactivate a tombstoned fact. Older snapshots can never overwrite or delete a newer graph observation. Tombstoned facts remain queryable in the graph/history for explanation, but current entity resolution and blast-radius traversal exclude them.
+A newer incident or authoritative inventory observation can reactivate a tombstoned fact. Older snapshots can never overwrite or delete a newer graph observation. The tuple `tenant + cluster + source + snapshot_id` is immutable: replaying identical content is idempotent, while reusing that identity with different content is rejected as a conflict. Tombstoned facts remain queryable in the graph/history for explanation, but current entity resolution and blast-radius traversal exclude them.
 
 ## Service-centric projections
 
