@@ -378,6 +378,7 @@ class MemoryRepository:
             payload: dict,
         ) -> bool:
             observation_id = inventory_observation_id(
+                snapshot.source,
                 snapshot.snapshot_id,
                 target_type,
                 target_id,
@@ -1191,6 +1192,7 @@ class SQLRepository:
                 payload: dict,
             ) -> bool:
                 observation_id = inventory_observation_id(
+                    snapshot.source,
                     snapshot.snapshot_id,
                     target_type,
                     target_id,
