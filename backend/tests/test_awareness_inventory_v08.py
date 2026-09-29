@@ -161,6 +161,33 @@ def authoritative_snapshot(
     )
 
 
+def test_inventory_request_rejects_naive_authoritative_timestamp():
+    with pytest.raises(ValidationError):
+        AuthoritativeInventoryRequest(
+            snapshot_id="snap-naive",
+            source="kubernetes",
+            observed_at=datetime(2026, 9, 29, 10, 0),
+            complete=True,
+            coverage=InventoryCoverage(
+                kinds=["Service"],
+                namespaces=["payments"],
+            ),
+            resources=[],
+        )
+
+
+def test_inventory_coverage_normalizes_declared_scope():
+    coverage = InventoryCoverage(
+        kinds=[" Service ", "Deployment"],
+        namespaces=[" payments "],
+        relationship_types=[" serves "],
+    )
+
+    assert coverage.kinds == ["Service", "Deployment"]
+    assert coverage.namespaces == ["payments"]
+    assert coverage.relationship_types == ["serves"]
+
+
 def test_inventory_request_rejects_incomplete_snapshot():
     with pytest.raises(ValidationError):
         AuthoritativeInventoryRequest(
@@ -458,3 +485,43 @@ async def test_snapshot_id_reuse_with_different_content_is_rejected():
     )
     with pytest.raises(InventorySnapshotConflictError):
         await repo.reconcile_authoritative_inventory(conflicting)
+
+
+
+@pytest.mark.asyncio
+async def test_long_snapshot_identity_stays_within_sql_incident_id_boundary():
+    repo = MemoryRepository()
+    now = datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc)
+    await repo.save(make_result("inc-initial", created_at=now))
+    snapshot_id = "s" * 128
+
+    await repo.reconcile_authoritative_inventory(
+        authoritative_snapshot(
+            snapshot_id,
+            observed_at=now + timedelta(minutes=10),
+            include_deployment=True,
+        )
+    )
+
+    service = (
+        await repo.find_awareness_entities(
+            "tenant-a",
+            "prod",
+            name="checkout",
+            kind="Service",
+        )
+    )[0]
+    history = await repo.get_awareness_history(
+        service.id,
+        "tenant-a",
+        "prod",
+    )
+    inventory_observation = next(
+        item
+        for item in history
+        if item.payload.get("origin") == "authoritative_inventory"
+    )
+
+    assert len(inventory_observation.incident_id) <= 64
+    assert service.last_incident_id == inventory_observation.incident_id
+    assert inventory_observation.payload["snapshot_id"] == snapshot_id
