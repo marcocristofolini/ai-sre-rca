@@ -451,7 +451,13 @@ class MemoryRepository:
 
             current.first_seen = min(current.first_seen, entity.first_seen)
             current.observation_count += 1
-            if entity.last_seen < current.last_seen:
+            current_boundary = current.last_seen
+            if (
+                current.tombstoned_at is not None
+                and current.tombstoned_at > current_boundary
+            ):
+                current_boundary = current.tombstoned_at
+            if entity.last_seen < current_boundary:
                 result.skipped_newer_entities += 1
                 continue
 
@@ -532,7 +538,13 @@ class MemoryRepository:
                 relationship.first_seen,
             )
             current.observation_count += 1
-            if relationship.last_seen < current.last_seen:
+            current_boundary = current.last_seen
+            if (
+                current.tombstoned_at is not None
+                and current.tombstoned_at > current_boundary
+            ):
+                current_boundary = current.tombstoned_at
+            if relationship.last_seen < current_boundary:
                 result.skipped_newer_relationships += 1
                 continue
 
@@ -1215,6 +1227,25 @@ class SQLRepository:
         )
 
         async with self.sessions() as session:
+            # Serialize authoritative snapshots for one source/scope. This keeps
+            # concurrent retries idempotent and prevents two different snapshots
+            # from interleaving tombstone/current-state writes.
+            lock_scope = "\x1f".join(
+                (
+                    "awareness-inventory",
+                    snapshot.tenant_id,
+                    snapshot.cluster,
+                    snapshot.source,
+                )
+            )
+            await session.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtextextended(:scope, 0))"
+                ),
+                {"scope": lock_scope},
+            )
+
             receipt_id = inventory_snapshot_receipt_id(snapshot)
             fingerprint = inventory_snapshot_fingerprint(snapshot)
             existing_receipt = await session.get(
@@ -1312,7 +1343,13 @@ class SQLRepository:
 
                 record.first_seen = min(record.first_seen, entity.first_seen)
                 record.observation_count += 1
-                if entity.last_seen < record.last_seen:
+                current_boundary = record.last_seen
+                if (
+                    record.tombstoned_at is not None
+                    and record.tombstoned_at > current_boundary
+                ):
+                    current_boundary = record.tombstoned_at
+                if entity.last_seen < current_boundary:
                     result.skipped_newer_entities += 1
                     continue
                 was_tombstoned = record.tombstoned_at is not None
@@ -1419,7 +1456,13 @@ class SQLRepository:
                     relationship.first_seen,
                 )
                 record.observation_count += 1
-                if relationship.last_seen < record.last_seen:
+                current_boundary = record.last_seen
+                if (
+                    record.tombstoned_at is not None
+                    and record.tombstoned_at > current_boundary
+                ):
+                    current_boundary = record.tombstoned_at
+                if relationship.last_seen < current_boundary:
                     result.skipped_newer_relationships += 1
                     continue
                 was_tombstoned = record.tombstoned_at is not None
