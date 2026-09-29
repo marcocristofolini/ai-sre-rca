@@ -70,7 +70,7 @@ flowchart LR
 
 Ausência em um incidente nunca é evidência de deleção. Um tombstone só pode nascer de `POST /api/v1/awareness/inventory/reconcile`, que exige papel admin, fonte presente em `AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES`, `complete=true` e cobertura explícita de kinds/namespaces/relações. Recursos fora dessa cobertura não são alterados. Nós ChangeEvent e relações de evento ficam fora da reconciliação de tombstones.
 
-Uma observação posterior, vinda de incidente ou inventário autoritativo, pode reativar um fato tombstoned. Snapshots antigos nunca sobrescrevem nem removem observações mais novas. Fatos tombstoned continuam consultáveis no grafo/histórico para explicação, mas ficam fora da resolução corrente de entidades e da travessia de blast radius.
+Uma observação posterior, vinda de incidente ou inventário autoritativo, pode reativar um fato tombstoned. Snapshots antigos nunca sobrescrevem nem removem observações mais novas. A tupla `tenant + cluster + source + snapshot_id` é imutável: repetir o mesmo conteúdo é idempotente, enquanto reutilizar essa identidade com conteúdo diferente retorna conflito. Fatos tombstoned continuam consultáveis no grafo/histórico para explicação, mas ficam fora da resolução corrente de entidades e da travessia de blast radius.
 
 ## Projeções centradas em serviço
 
