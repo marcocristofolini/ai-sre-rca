@@ -9,6 +9,10 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Tenant- and cluster-scoped current graph state plus append-only temporal observations.
 - Idempotent graph ingestion whenever an investigation is persisted.
 - Viewer APIs for graph snapshots, target history and reconciled topology.
+- First-class `ChangeEvent` graph nodes derived from Argo CD deployment evidence and matching GitHub revision evidence.
+- Stable deployment-event identity across repeated incidents, with observation counts instead of duplicate event nodes.
+- `historical` reconciliation semantics for immutable event nodes/edges, distinct from fresh/stale topology state.
+- Bounded `GET /api/v1/awareness/changes` timeline API with service, namespace and time-window filters.
 - Fresh/stale topology reconciliation from last_seen without inferring unsafe tombstones.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
 - Graph-backed blast radius with an allow-listed relationship impact-direction model.
@@ -61,12 +65,13 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Kubernetes specialist budget exhaustion is fail-closed; partial infrastructure collection cannot be treated as a clean Kubernetes result.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
+- ChangeEvent relationships are context-only and are deliberately absent from the causal impact-direction allow-list; temporal proximity alone cannot promote a deploy into root cause.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
 ### Planned
 - Authoritative tombstones from full inventory reconciliation.
-- Persistent graph explorer UI and first-class deployment/change event nodes.
+- Persistent graph explorer UI.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 
