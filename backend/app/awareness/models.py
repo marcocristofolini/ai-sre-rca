@@ -87,7 +87,7 @@ class AwarenessObservation(BaseModel):
     tenant_id: str
     cluster: str
     incident_id: str
-    target_type: Literal["entity", "relationship"]
+    target_type: Literal["entity", "relationship", "inventory_snapshot"]
     target_id: str
     observed_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
