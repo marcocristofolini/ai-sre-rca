@@ -22,6 +22,7 @@ def _obj(
     owner: tuple[str, str] | None = None,
     node: str | None = None,
     selector: dict[str, str] | None = None,
+    template_labels: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     metadata: dict[str, Any] = {
         "name": name,
@@ -45,6 +46,10 @@ def _obj(
         spec["nodeName"] = node
     if selector:
         spec["selector"] = selector
+    if template_labels:
+        spec["template"] = {
+            "metadata": {"labels": dict(template_labels)}
+        }
     return {
         "apiVersion": "v1",
         "metadata": metadata,
@@ -65,7 +70,12 @@ class FakeInventoryTools:
                     selector={"app": "checkout"},
                 )
             ],
-            "Deployment": [_obj("checkout")],
+            "Deployment": [
+                _obj(
+                    "checkout",
+                    template_labels={"app": "checkout"},
+                )
+            ],
             "StatefulSet": [],
             "DaemonSet": [],
             "ReplicaSet": [
@@ -398,3 +408,56 @@ async def test_http_inventory_list_fails_closed_on_incomplete_payload(monkeypatc
 
     with pytest.raises(RuntimeError, match="inventory list was incomplete"):
         await tools.list_deployments()
+
+
+
+@pytest.mark.asyncio
+async def test_service_relationship_survives_scale_to_zero_without_pods():
+    tools = FakeInventoryTools()
+    tools.data["Pod"] = []
+    collector = KubernetesInventoryCollector(tools)
+
+    collection = await collector.collect_cluster(
+        tenant_id="tenant-a",
+        cluster="prod",
+        kinds=["Service", "Deployment"],
+        namespaces=["payments"],
+        observed_at=datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc),
+    )
+
+    snapshot = collection.snapshots[0]
+    assert snapshot.coverage.relationship_types == ["serves"]
+    serves = [
+        item
+        for item in snapshot.relationships
+        if item.relationship == "serves"
+    ]
+    assert len(serves) == 1
+    assert serves[0].source.kind == "Deployment"
+    assert serves[0].source.name == "checkout"
+    assert serves[0].target.kind == "Service"
+    assert serves[0].target.name == "checkout"
+
+
+@pytest.mark.asyncio
+async def test_multiple_inventory_clusters_require_explicit_cluster_registry():
+    tools = FakeInventoryTools()
+    repo = MemoryRepository()
+    settings = Settings(
+        awareness_inventory_clusters="prod-a,prod-b",
+        awareness_inventory_tenant_id="tenant-a",
+        awareness_inventory_kinds="Service,Deployment",
+        cluster_config_json="{}",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="multiple AWARENESS_INVENTORY_CLUSTERS require",
+    ):
+        await reconcile_kubernetes_inventory(
+            repo,
+            tools,
+            settings,
+        )
+
+    assert repo._audit == []
