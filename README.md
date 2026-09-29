@@ -20,6 +20,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Authoritative inventory tombstones** from complete admin-only snapshots supplied by allow-listed sources, with explicit coverage, newer-observation protection, reactivation semantics and append-only audit/history.
 - **Automatic Kubernetes inventory reconciliation** through an opt-in read-only CronJob that paginates complete resource lists, rejects malformed or non-progressing pagination, verifies controller ownership by Kubernetes UID, derives deterministic selector/scheduling relationships, and submits snapshots through the same guarded tombstone contract.
 - **Awareness Graph Health** with factual tenant/cluster counts for current, stale, historical and tombstoned entity/relationship state, total/latest observation data and per-authoritative-source snapshot freshness. No composite health score or LLM-derived status is introduced.
+- **Explanation-safe Awareness retention** with admin-only dry-run by default, configurable observation/tombstone windows, immutable inventory receipts preserved indefinitely, and at least the latest observation retained for every entity/relationship target.
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
 - **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown, stale or tombstoned relationships are visible as context but never traversed as current impact paths.
 - **Historical change timeline semantics.** Change events and their event edges are context-only, reconcile as `historical`, and are never added to the blast-radius causal allow-list.
@@ -45,6 +46,7 @@ GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 GET  /api/v1/awareness/changes
+POST /api/v1/awareness/retention/purge
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate

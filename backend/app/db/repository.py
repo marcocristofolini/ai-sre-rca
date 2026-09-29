@@ -12,6 +12,7 @@ from app.awareness.health import (
     AwarenessStateCounts,
     inventory_source_health,
 )
+from app.awareness.retention import AwarenessRetentionResult
 from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
     InventoryReconciliationResult,
@@ -124,6 +125,17 @@ class InvestigationRepository(Protocol):
     ) -> list[RemediationPlan]: ...
     async def append_audit(self, event: AuditEvent) -> None: ...
     async def list_audit(self, incident_id: str, tenant_id: str) -> list[AuditEvent]: ...
+    async def purge_awareness_retention(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        observation_days: int,
+        tombstone_days: int,
+        actor: str | None = None,
+        dry_run: bool = True,
+        as_of: datetime | None = None,
+    ) -> AwarenessRetentionResult: ...
     async def purge_expired(
         self,
         incident_days: int,
@@ -153,6 +165,38 @@ def _inventory_reconciliation_audit(
             "relationships_tombstoned": result.relationships_tombstoned,
             "skipped_newer_entities": result.skipped_newer_entities,
             "skipped_newer_relationships": result.skipped_newer_relationships,
+        },
+    )
+
+
+def _awareness_retention_audit(
+    result: AwarenessRetentionResult,
+    actor: str,
+) -> AuditEvent:
+    return AuditEvent(
+        tenant_id=result.tenant_id,
+        actor=actor,
+        action="awareness.retention.purge",
+        detail={
+            "cluster": result.cluster,
+            "observation_retention_days": result.observation_retention_days,
+            "tombstone_retention_days": result.tombstone_retention_days,
+            "observations_deleted": result.observations_deleted,
+            "latest_observations_preserved": (
+                result.latest_observations_preserved
+            ),
+            "inventory_receipts_preserved": (
+                result.inventory_receipts_preserved
+            ),
+            "tombstoned_relationships_deleted": (
+                result.tombstoned_relationships_deleted
+            ),
+            "tombstoned_entities_deleted": (
+                result.tombstoned_entities_deleted
+            ),
+            "tombstoned_entities_blocked": (
+                result.tombstoned_entities_blocked
+            ),
         },
     )
 
@@ -808,6 +852,133 @@ class MemoryRepository:
             for event in self._audit
             if event.incident_id == incident_id and event.tenant_id == tenant_id
         ]
+
+    async def purge_awareness_retention(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        observation_days: int,
+        tombstone_days: int,
+        actor: str | None = None,
+        dry_run: bool = True,
+        as_of: datetime | None = None,
+    ) -> AwarenessRetentionResult:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        observation_cutoff = now - timedelta(
+            days=max(1, observation_days)
+        )
+        tombstone_cutoff = now - timedelta(days=max(1, tombstone_days))
+
+        scoped_observations = [
+            item
+            for item in self._awareness_observations.values()
+            if item.tenant_id == tenant_id and item.cluster == cluster
+        ]
+        latest_by_target: dict[tuple[str, str], AwarenessObservation] = {}
+        for item in scoped_observations:
+            if item.target_type == "inventory_snapshot":
+                continue
+            key = (item.target_type, item.target_id)
+            current = latest_by_target.get(key)
+            if current is None or (
+                item.observed_at,
+                item.id,
+            ) > (
+                current.observed_at,
+                current.id,
+            ):
+                latest_by_target[key] = item
+
+        latest_ids = {item.id for item in latest_by_target.values()}
+        observation_ids = {
+            item.id
+            for item in scoped_observations
+            if item.target_type != "inventory_snapshot"
+            and item.observed_at < observation_cutoff
+            and item.id not in latest_ids
+        }
+        latest_preserved = sum(
+            1
+            for item in latest_by_target.values()
+            if item.observed_at < observation_cutoff
+        )
+        receipts_preserved = sum(
+            1
+            for item in scoped_observations
+            if item.target_type == "inventory_snapshot"
+        )
+
+        relationship_ids = {
+            item.id
+            for item in self._awareness_relationships.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and item.tombstoned_at is not None
+            and item.tombstoned_at < tombstone_cutoff
+        }
+        remaining_relationships = [
+            item
+            for item in self._awareness_relationships.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and item.id not in relationship_ids
+        ]
+
+        old_tombstoned_entities = [
+            item
+            for item in self._awareness_entities.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and item.tombstoned_at is not None
+            and item.tombstoned_at < tombstone_cutoff
+        ]
+        entity_ids = {
+            item.id
+            for item in old_tombstoned_entities
+            if not any(
+                relationship.source_id == item.id
+                or relationship.target_id == item.id
+                for relationship in remaining_relationships
+            )
+        }
+        blocked_entities = len(old_tombstoned_entities) - len(entity_ids)
+
+        result = AwarenessRetentionResult(
+            tenant_id=tenant_id,
+            cluster=cluster,
+            dry_run=dry_run,
+            as_of=now,
+            observation_retention_days=max(1, observation_days),
+            tombstone_retention_days=max(1, tombstone_days),
+            observation_cutoff=observation_cutoff,
+            tombstone_cutoff=tombstone_cutoff,
+            observations_eligible=len(observation_ids),
+            observations_deleted=0 if dry_run else len(observation_ids),
+            latest_observations_preserved=latest_preserved,
+            inventory_receipts_preserved=receipts_preserved,
+            tombstoned_relationships_eligible=len(relationship_ids),
+            tombstoned_relationships_deleted=(
+                0 if dry_run else len(relationship_ids)
+            ),
+            tombstoned_entities_eligible=len(entity_ids),
+            tombstoned_entities_deleted=0 if dry_run else len(entity_ids),
+            tombstoned_entities_blocked=blocked_entities,
+        )
+
+        if dry_run:
+            return result
+
+        for observation_id in observation_ids:
+            self._awareness_observations.pop(observation_id, None)
+        for relationship_id in relationship_ids:
+            self._awareness_relationships.pop(relationship_id, None)
+        for entity_id in entity_ids:
+            self._awareness_entities.pop(entity_id, None)
+
+        if actor is not None:
+            self._audit.append(_awareness_retention_audit(result, actor))
+        return result
 
     async def purge_expired(
         self,
@@ -2017,6 +2188,226 @@ class SQLRepository:
             )
             for row in rows
         ]
+
+    async def purge_awareness_retention(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        observation_days: int,
+        tombstone_days: int,
+        actor: str | None = None,
+        dry_run: bool = True,
+        as_of: datetime | None = None,
+    ) -> AwarenessRetentionResult:
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        observation_days = max(1, observation_days)
+        tombstone_days = max(1, tombstone_days)
+        observation_cutoff = now - timedelta(days=observation_days)
+        tombstone_cutoff = now - timedelta(days=tombstone_days)
+
+        ranked_observations = (
+            select(
+                AwarenessObservationRecord.id.label("id"),
+                AwarenessObservationRecord.target_type.label("target_type"),
+                AwarenessObservationRecord.observed_at.label("observed_at"),
+                func.row_number().over(
+                    partition_by=(
+                        AwarenessObservationRecord.target_type,
+                        AwarenessObservationRecord.target_id,
+                    ),
+                    order_by=(
+                        AwarenessObservationRecord.observed_at.desc(),
+                        AwarenessObservationRecord.id.desc(),
+                    ),
+                ).label("retention_rank"),
+            )
+            .where(
+                AwarenessObservationRecord.tenant_id == tenant_id,
+                AwarenessObservationRecord.cluster == cluster,
+            )
+            .subquery()
+        )
+        observation_candidate_ids = select(
+            ranked_observations.c.id
+        ).where(
+            ranked_observations.c.target_type != "inventory_snapshot",
+            ranked_observations.c.observed_at < observation_cutoff,
+            ranked_observations.c.retention_rank > 1,
+        )
+        latest_old_statement = select(func.count()).select_from(
+            ranked_observations
+        ).where(
+            ranked_observations.c.target_type != "inventory_snapshot",
+            ranked_observations.c.observed_at < observation_cutoff,
+            ranked_observations.c.retention_rank == 1,
+        )
+
+        relationship_candidate_ids = select(
+            AwarenessRelationshipRecord.id
+        ).where(
+            AwarenessRelationshipRecord.tenant_id == tenant_id,
+            AwarenessRelationshipRecord.cluster == cluster,
+            AwarenessRelationshipRecord.tombstoned_at.is_not(None),
+            AwarenessRelationshipRecord.tombstoned_at < tombstone_cutoff,
+        )
+        remaining_relationship_exists = (
+            select(AwarenessRelationshipRecord.id)
+            .where(
+                AwarenessRelationshipRecord.tenant_id == tenant_id,
+                AwarenessRelationshipRecord.cluster == cluster,
+                or_(
+                    AwarenessRelationshipRecord.source_id
+                    == AwarenessEntityRecord.id,
+                    AwarenessRelationshipRecord.target_id
+                    == AwarenessEntityRecord.id,
+                ),
+                AwarenessRelationshipRecord.id.not_in(
+                    relationship_candidate_ids
+                ),
+            )
+            .exists()
+        )
+        old_tombstoned_entity_scope = (
+            AwarenessEntityRecord.tenant_id == tenant_id,
+            AwarenessEntityRecord.cluster == cluster,
+            AwarenessEntityRecord.tombstoned_at.is_not(None),
+            AwarenessEntityRecord.tombstoned_at < tombstone_cutoff,
+        )
+        entity_candidate_ids = select(AwarenessEntityRecord.id).where(
+            *old_tombstoned_entity_scope,
+            ~remaining_relationship_exists,
+        )
+
+        async with self.sessions() as session:
+            observations_eligible = int(
+                (
+                    await session.scalar(
+                        select(func.count()).select_from(
+                            observation_candidate_ids.subquery()
+                        )
+                    )
+                )
+                or 0
+            )
+            latest_preserved = int(
+                (await session.scalar(latest_old_statement)) or 0
+            )
+            receipts_preserved = int(
+                (
+                    await session.scalar(
+                        select(func.count()).select_from(
+                            AwarenessObservationRecord
+                        ).where(
+                            AwarenessObservationRecord.tenant_id == tenant_id,
+                            AwarenessObservationRecord.cluster == cluster,
+                            AwarenessObservationRecord.target_type
+                            == "inventory_snapshot",
+                        )
+                    )
+                )
+                or 0
+            )
+            relationships_eligible = int(
+                (
+                    await session.scalar(
+                        select(func.count()).select_from(
+                            relationship_candidate_ids.subquery()
+                        )
+                    )
+                )
+                or 0
+            )
+            old_entities = int(
+                (
+                    await session.scalar(
+                        select(func.count()).select_from(
+                            AwarenessEntityRecord
+                        ).where(*old_tombstoned_entity_scope)
+                    )
+                )
+                or 0
+            )
+            entities_eligible = int(
+                (
+                    await session.scalar(
+                        select(func.count()).select_from(
+                            entity_candidate_ids.subquery()
+                        )
+                    )
+                )
+                or 0
+            )
+
+            result = AwarenessRetentionResult(
+                tenant_id=tenant_id,
+                cluster=cluster,
+                dry_run=dry_run,
+                as_of=now,
+                observation_retention_days=observation_days,
+                tombstone_retention_days=tombstone_days,
+                observation_cutoff=observation_cutoff,
+                tombstone_cutoff=tombstone_cutoff,
+                observations_eligible=observations_eligible,
+                observations_deleted=0,
+                latest_observations_preserved=latest_preserved,
+                inventory_receipts_preserved=receipts_preserved,
+                tombstoned_relationships_eligible=relationships_eligible,
+                tombstoned_relationships_deleted=0,
+                tombstoned_entities_eligible=entities_eligible,
+                tombstoned_entities_deleted=0,
+                tombstoned_entities_blocked=max(
+                    0,
+                    old_entities - entities_eligible,
+                ),
+            )
+
+            if dry_run:
+                return result
+
+            observations_result = await session.execute(
+                delete(AwarenessObservationRecord).where(
+                    AwarenessObservationRecord.id.in_(
+                        observation_candidate_ids
+                    )
+                )
+            )
+            relationships_result = await session.execute(
+                delete(AwarenessRelationshipRecord).where(
+                    AwarenessRelationshipRecord.id.in_(
+                        relationship_candidate_ids
+                    )
+                )
+            )
+            entities_result = await session.execute(
+                delete(AwarenessEntityRecord).where(
+                    AwarenessEntityRecord.id.in_(entity_candidate_ids)
+                )
+            )
+
+            result.observations_deleted = int(
+                observations_result.rowcount or 0
+            )
+            result.tombstoned_relationships_deleted = int(
+                relationships_result.rowcount or 0
+            )
+            result.tombstoned_entities_deleted = int(
+                entities_result.rowcount or 0
+            )
+
+            if actor is not None:
+                audit = _awareness_retention_audit(result, actor)
+                session.add(AuditEventRecord(
+                    id=audit.id,
+                    incident_id=audit.incident_id,
+                    tenant_id=audit.tenant_id,
+                    actor=audit.actor,
+                    action=audit.action,
+                    detail=audit.detail,
+                    created_at=audit.created_at,
+                ))
+            await session.commit()
+        return result
 
     async def purge_expired(
         self,

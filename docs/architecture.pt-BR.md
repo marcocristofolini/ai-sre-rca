@@ -99,6 +99,26 @@ flowchart LR
 
 `AWARENESS_STALE_AFTER_MINUTES` controla quando fatos ativos do grafo ficam stale. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` controla separadamente quando o snapshot autoritativo mais recente de cada source configurada passa de `current` para `stale`; uma source sem receipt aparece como `missing`.
 
+## Retention do Awareness Graph — v0.8
+
+A retention é explícita, admin-only e roda em dry-run por padrão. Nesta fase ela nunca remove receipts autoritativos de snapshot, pois esses receipts protegem a identidade imutável do snapshot e a detecção de conflito em replays. Observações históricas de entidades/relações só ficam elegíveis depois da janela configurada e quando não são a observação mais recente daquele alvo.
+
+```mermaid
+flowchart LR
+    ADMIN[Requisição admin] --> PREVIEW{dry_run?}
+    PREVIEW -->|Sim| COUNT[Somente contar elegíveis]
+    PREVIEW -->|Não| OLD[Observações antigas redundantes]
+    OLD --> KEEP[Preservar última observação por alvo]
+    OLD --> RECEIPT[Preservar todos os receipts de inventário]
+    KEEP --> PURGE[Remover histórico elegível]
+    RECEIPT --> PURGE
+    PURGE --> REL[Remover relações tombstoned expiradas]
+    REL --> ENT[Remover entidades tombstoned expiradas<br/>somente sem relação sobrevivente]
+    ENT --> AUDIT[Auditoria transacional do purge]
+```
+
+`AWARENESS_OBSERVATION_RETENTION_DAYS` tem padrão 90 e `AWARENESS_TOMBSTONE_RETENTION_DAYS` tem padrão 30. O endpoint usa a mesma fronteira de autorização por tenant/cluster das APIs do grafo.
+
 ## Compilador de planejamento assistido por modelo — v0.8
 
 A assistência do modelo é uma camada advisory opcional, não uma nova autoridade de execução. Primeiro, o planner determinístico decide quais ramos especialistas são elegíveis. Somente esse contexto sanitizado e bounded é enviado ao modelo. A resposta volta para um compilador controlado pelo servidor antes de existir qualquer grafo de tarefas executável.

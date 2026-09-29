@@ -151,6 +151,18 @@ POST /api/v1/system/retention/purge
 
 Manual purge follows the authenticated tenant boundary. A tenant admin purges only expired incidents and audit records from that tenant. Platform-wide purge is available only to a principal whose tenant claim is explicitly `*`.
 
+Awareness Graph retention is intentionally separate and cluster-scoped:
+
+```text
+AWARENESS_OBSERVATION_RETENTION_DAYS=90
+AWARENESS_TOMBSTONE_RETENTION_DAYS=30
+
+POST /api/v1/awareness/retention/purge?cluster=prod-us&dry_run=true
+POST /api/v1/awareness/retention/purge?cluster=prod-us&dry_run=false
+```
+
+The endpoint requires admin authorization. Preview is the default and performs no write. Executed purges preserve all authoritative inventory snapshot receipts plus the latest observation per graph target, remove expired tombstoned relationships before entities, and refuse to delete a tombstoned entity while a relationship still references it.
+
 ## Source capabilities
 
 ```text

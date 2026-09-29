@@ -119,6 +119,38 @@ flowchart LR
     R --> H
 ~~~
 
+## Retention segura para explicabilidade
+
+A retention do Awareness Graph é separada da retention de incidentes/auditoria porque receipts de inventário e observações históricas do grafo possuem requisitos mais fortes de identidade e explicação.
+
+`POST /api/v1/awareness/retention/purge?cluster=<cluster>` exige papel admin e usa `dry_run=true` por padrão. Duas janelas independentes controlam a elegibilidade:
+
+- `AWARENESS_OBSERVATION_RETENTION_DAYS=90` para observações redundantes de entidades/relações;
+- `AWARENESS_TOMBSTONE_RETENTION_DAYS=30` para linhas tombstoned do estado corrente.
+
+As regras de segurança são mais rígidas que um delete apenas por idade:
+
+- todo receipt `inventory_snapshot` é preservado, mantendo replay/idempotência e detecção de conteúdo conflitante para snapshots;
+- a observação mais recente de cada entidade/relação é preservada mesmo quando mais antiga que a janela;
+- relações tombstoned expiradas são removidas antes das entidades tombstoned expiradas;
+- uma entidade tombstoned só é removida quando nenhuma relação sobrevivente ainda a referencia;
+- dry-run não remove dados e não gera evento de auditoria de purge;
+- um purge executado é auditado na mesma transação do repositório que realiza as deleções.
+
+~~~mermaid
+flowchart TD
+    AGE[Linhas mais antigas que o cutoff] --> TYPE{Tipo de registro}
+    TYPE -->|inventory_snapshot| KEEP1[Sempre preservar]
+    TYPE -->|observação de entidade/relação| LAST{É a última do alvo?}
+    LAST -->|Sim| KEEP2[Preservar mínimo explicável]
+    LAST -->|Não| DEL[Elegível para remoção]
+
+    TREL[Relação tombstoned expirada] --> DELREL[Remover relação]
+    TENT[Entidade tombstoned expirada] --> REF{Alguma relação sobrevivente?}
+    REF -->|Sim| BLOCK[Preservar entidade]
+    REF -->|Não| DELENT[Remover entidade]
+~~~
+
 ## Projeções centradas em serviço
 
 A projeção resolve a entidade canônica exata do tipo `Service` e percorre um neighborhood topológico sob budgets rígidos de profundidade, nós e arestas. Se o mesmo nome de serviço existir em mais de um namespace, o caller precisa informar o namespace em vez de receber uma correspondência arbitrária.
@@ -151,6 +183,7 @@ GET /api/v1/awareness/topology?cluster=<cluster>
 GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
 GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
 POST /api/v1/awareness/inventory/reconcile?cluster=<cluster>
+POST /api/v1/awareness/retention/purge?cluster=<cluster>&dry_run=true
 ~~~
 
 O tenant vem do principal autenticado. Um principal global com `tenant_id="*"` precisa informar explicitamente `tenant_id`; principals comuns não podem consultar outro tenant. A autorização de cluster existente continua obrigatória. A reconciliação de inventário também exige papel admin e uma fonte autoritativa allow-listed. Toda reconciliação aceita gera registro de auditoria com escopo e contagem de tombstones.
@@ -185,7 +218,7 @@ Concluído na branch atual:
 Ainda planejado:
 
 - enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
-- política de retention de observações/tombstones com mínimos seguros para explicação;
+- execução agendada de retention do Awareness Graph independente do startup da API;
 - contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
 
 

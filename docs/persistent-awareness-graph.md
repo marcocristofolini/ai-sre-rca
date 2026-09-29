@@ -119,6 +119,38 @@ flowchart LR
     R --> H
 ~~~
 
+## Explanation-safe retention
+
+Awareness retention is deliberately separate from incident/audit retention because inventory receipts and graph-history observations have stronger identity and explanation requirements.
+
+`POST /api/v1/awareness/retention/purge?cluster=<cluster>` requires the admin role and defaults to `dry_run=true`. Two independent windows control eligibility:
+
+- `AWARENESS_OBSERVATION_RETENTION_DAYS=90` for redundant entity/relationship observations;
+- `AWARENESS_TOMBSTONE_RETENTION_DAYS=30` for tombstoned current-state rows.
+
+Safety rules are stricter than a simple age-based delete:
+
+- every `inventory_snapshot` receipt is preserved, so snapshot replay/idempotency and conflicting-content detection remain intact;
+- the latest entity/relationship observation for every target is preserved even when older than the retention window;
+- expired tombstoned relationships are removed before expired tombstoned entities;
+- a tombstoned entity is removed only when no surviving relationship still references it;
+- dry-run performs no deletion and emits no purge audit event;
+- an executed purge is audited in the same repository transaction as the deletion.
+
+~~~mermaid
+flowchart TD
+    AGE[Rows older than retention cutoff] --> TYPE{Record type}
+    TYPE -->|inventory_snapshot| KEEP1[Always preserve]
+    TYPE -->|entity/relationship observation| LAST{Latest for target?}
+    LAST -->|Yes| KEEP2[Preserve explanation minimum]
+    LAST -->|No| DEL[Eligible for deletion]
+
+    TREL[Expired tombstoned relationship] --> DELREL[Delete relationship]
+    TENT[Expired tombstoned entity] --> REF{Any surviving relationship?}
+    REF -->|Yes| BLOCK[Keep entity]
+    REF -->|No| DELENT[Delete entity]
+~~~
+
 ## Service-centric projections
 
 A service projection resolves the exact canonical `Service` entity and walks an undirected topology neighborhood under hard depth/node/edge budgets. If the same service name exists in multiple namespaces, the caller must provide a namespace rather than receiving an arbitrary match.
@@ -151,6 +183,7 @@ GET /api/v1/awareness/topology?cluster=<cluster>
 GET /api/v1/awareness/services/<service_name>?cluster=<cluster>&namespace=<ns>&depth=2
 GET /api/v1/awareness/blast-radius/<target_id>?cluster=<cluster>&depth=3
 POST /api/v1/awareness/inventory/reconcile?cluster=<cluster>
+POST /api/v1/awareness/retention/purge?cluster=<cluster>&dry_run=true
 ~~~
 
 The tenant comes from the authenticated principal. A platform principal with `tenant_id="*"` must explicitly provide `tenant_id`; ordinary principals cannot request another tenant. Existing cluster authorization is enforced before graph access. Inventory reconciliation additionally requires the admin role and an allow-listed authoritative source. Every accepted reconciliation is written to the audit log with its scope and tombstone counts.
@@ -185,7 +218,7 @@ Completed in the current development branch:
 Still planned:
 
 - authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
-- awareness observation/tombstone retention policy with explanation-safe minimums;
+- scheduled awareness-retention execution independent from API startup;
 - richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
 
 

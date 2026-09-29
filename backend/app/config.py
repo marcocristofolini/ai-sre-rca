@@ -53,6 +53,16 @@ class Settings(BaseSettings):
         ge=1,
         le=10080,
     )
+    awareness_observation_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+    )
+    awareness_tombstone_retention_days: int = Field(
+        default=30,
+        ge=1,
+        le=3650,
+    )
     awareness_authoritative_inventory_sources: str = "kubernetes"
     awareness_inventory_tenant_id: str = "default"
     awareness_inventory_clusters: str = ""
