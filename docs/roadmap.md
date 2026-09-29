@@ -177,5 +177,8 @@ Agentic investigation foundation:
 - [x] Kubernetes direct-signal precedence gate blocks downstream promotion
 - [x] higher-precedence specialist completeness gate prevents absence-by-failure promotion
 - [x] composed `/planner/investigate` endpoint with deterministic verdict
-- [ ] Kubernetes specialist parity with the full infrastructure playbook engine
+- [x] Kubernetes specialist parity with the full infrastructure playbook engine
+- [x] shared Kubernetes stage reused by classic and agentic investigation paths
+- [x] eviction, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter, HPA, KEDA and NodeNotReady parity regressions
+- [x] dedicated Kubernetes specialist budget layered under the global query budget
 - [ ] optional model-assisted planning compiled through the specialist allow-list
