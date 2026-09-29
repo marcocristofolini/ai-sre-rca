@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # topology and blast-radius queries cannot expand without server limits.
     awareness_stale_after_minutes: int = Field(default=1440, ge=1, le=10080)
     awareness_authoritative_inventory_sources: str = "kubernetes"
+    awareness_inventory_tenant_id: str = "default"
+    awareness_inventory_clusters: str = ""
+    awareness_inventory_namespaces: str = ""
+    awareness_inventory_kinds: str = (
+        "Service,Deployment,StatefulSet,DaemonSet,ReplicaSet,Pod,Node"
+    )
+    awareness_inventory_page_size: int = Field(default=500, ge=50, le=5000)
     awareness_max_traversal_depth: int = Field(default=4, ge=1, le=8)
     awareness_max_traversal_nodes: int = Field(default=200, ge=10, le=2000)
     awareness_max_traversal_edges: int = Field(default=800, ge=10, le=8000)
@@ -202,6 +209,31 @@ class Settings(BaseSettings):
             for item in self.awareness_authoritative_inventory_sources.split(",")
             if item.strip()
         )
+
+    @property
+    def awareness_inventory_cluster_list(self) -> list[str]:
+        return list(dict.fromkeys(
+            item.strip()
+            for item in self.awareness_inventory_clusters.split(",")
+            if item.strip()
+        ))
+
+    @property
+    def awareness_inventory_namespace_list(self) -> list[str] | None:
+        values = list(dict.fromkeys(
+            item.strip()
+            for item in self.awareness_inventory_namespaces.split(",")
+            if item.strip()
+        ))
+        return values or None
+
+    @property
+    def awareness_inventory_kind_list(self) -> list[str]:
+        return list(dict.fromkeys(
+            item.strip()
+            for item in self.awareness_inventory_kinds.split(",")
+            if item.strip()
+        ))
 
     @property
     def remediation_allowed_action_set(self) -> frozenset[str]:
