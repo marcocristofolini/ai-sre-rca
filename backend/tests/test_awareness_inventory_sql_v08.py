@@ -11,7 +11,6 @@ from sqlalchemy import text
 from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
     InventoryCoverage,
-    InventoryResource,
 )
 from app.awareness.topology import reconcile_snapshot
 from app.db.repository import SQLRepository
@@ -161,18 +160,11 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
             observed_at=now + timedelta(minutes=10),
             complete=True,
             coverage=InventoryCoverage(
-                kinds=["Service", "Deployment"],
+                kinds=["Deployment"],
                 namespaces=["payments"],
-                relationship_types=["serves"],
+                relationship_types=[],
             ),
-            resources=[
-                InventoryResource(
-                    kind="Service",
-                    name="checkout",
-                    namespace="payments",
-                    metadata={"inventory": "kubernetes"},
-                )
-            ],
+            resources=[],
             relationships=[],
             tenant_id=tenant_id,
             cluster=cluster,
@@ -216,11 +208,16 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
         assert serves.freshness == "tombstoned"
         assert deployment.tombstone_snapshot_id == snapshot_id
 
-        service = next(
-            item for item in graph.entities if item.kind == "Service"
+        limited = await repo.get_awareness_graph(
+            tenant_id,
+            cluster,
+            limit=1,
         )
+        assert len(limited.entities) == 1
+        assert limited.entities[0].id == deployment.id
+
         history = await repo.get_awareness_history(
-            service.id,
+            deployment.id,
             tenant_id,
             cluster,
         )
