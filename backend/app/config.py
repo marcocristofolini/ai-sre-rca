@@ -196,6 +196,14 @@ class Settings(BaseSettings):
         }
 
     @property
+    def awareness_authoritative_inventory_source_set(self) -> frozenset[str]:
+        return frozenset(
+            item.strip()
+            for item in self.awareness_authoritative_inventory_sources.split(",")
+            if item.strip()
+        )
+
+    @property
     def remediation_allowed_action_set(self) -> frozenset[str]:
         return frozenset(
             item.strip()
