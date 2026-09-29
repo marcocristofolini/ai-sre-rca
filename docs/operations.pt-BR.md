@@ -151,6 +151,18 @@ POST /api/v1/system/retention/purge
 
 O purge manual respeita o tenant autenticado. Um admin de tenant remove somente incidentes e registros de auditoria expirados daquele tenant. O purge global só é permitido para um principal cujo claim de tenant seja explicitamente `*`.
 
+A retention do Awareness Graph é propositalmente separada e possui escopo por cluster:
+
+```text
+AWARENESS_OBSERVATION_RETENTION_DAYS=90
+AWARENESS_TOMBSTONE_RETENTION_DAYS=30
+
+POST /api/v1/awareness/retention/purge?cluster=prod-us&dry_run=true
+POST /api/v1/awareness/retention/purge?cluster=prod-us&dry_run=false
+```
+
+O endpoint exige autorização admin. Preview é o padrão e não realiza escrita. Purges executados preservam todos os receipts autoritativos de snapshot e a observação mais recente de cada alvo do grafo, removem relações tombstoned expiradas antes das entidades e recusam apagar uma entidade tombstoned enquanto alguma relação ainda a referencia.
+
 ## Health/capabilities por fonte
 
 ```text
