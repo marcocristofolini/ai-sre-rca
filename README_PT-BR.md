@@ -18,6 +18,7 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Estado atual + observações append-only** com ingestão idempotente.
 - **Reconciliação de topologia** que classifica registros observados como `fresh` ou `stale` usando `last_seen`, enquanto dados incompletos de incidentes nunca implicam deleção.
 - **Tombstones por inventário autoritativo** gerados somente por snapshots completos, admin-only e vindos de fontes allow-listed, com cobertura explícita, proteção contra snapshots antigos, reativação e histórico/auditoria append-only.
+- **Reconciliação automática do inventário Kubernetes** por um CronJob read-only opt-in que pagina listas completas de recursos, deriva somente relações explícitas de owner/selector/scheduling e envia snapshots pelo mesmo contrato protegido de tombstones.
 - **Projeções centradas em serviço** com budgets de profundidade, nós e arestas.
 - **Blast radius baseado no grafo** com direção causal explícita por tipo de relação. Relações desconhecidas, stale ou tombstoned continuam visíveis como contexto, mas nunca viram caminhos de impacto atual.
 - **Semântica histórica para mudanças.** Change Events e suas arestas são apenas contexto, reconciliam como `historical` e nunca entram na allow-list causal do blast radius.
