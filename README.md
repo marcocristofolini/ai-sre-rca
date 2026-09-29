@@ -150,6 +150,9 @@ flowchart TD
     G --> S[Service Projections]
     G --> B[Blast Radius]
     G --> CE[Change Event Timeline]
+    R --> AUI[Read-only Awareness Explorer]
+    S --> AUI
+    CE --> AUI
 
     L --> D[Deterministic Evaluator]
     V -. same authority rules .-> D
@@ -180,6 +183,7 @@ Open:
 - Stateful Kafka demo: `http://localhost:3000/stateful/kafka`
 - Stateful Redis demo: `http://localhost:3000/stateful/redis`
 - Operational health/RBAC UI: `http://localhost:3000/ops`
+- Persistent Awareness Graph explorer: `http://localhost:3000/awareness?cluster=prod-us-east-1`
 - Reconciled topology API: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - Service topology API: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
