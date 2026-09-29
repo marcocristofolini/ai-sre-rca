@@ -305,8 +305,18 @@ def _status_for(
 ) -> tuple[str, str]:
     if budget.exhausted:
         return "budget_exhausted", "specialist query budget exhausted"
-    if evidence or structured_count:
+    live_evidence = [
+        item
+        for item in evidence
+        if item.facts.get("context_only") is not True
+    ]
+    if live_evidence or structured_count:
         return "completed", ""
+    if evidence:
+        return (
+            "skipped",
+            "only bounded persistent operational context was available",
+        )
     return "skipped", "no scoped evidence was available"
 
 
@@ -643,7 +653,8 @@ async def _changes(
         or incident.labels.get("app.kubernetes.io/instance")
         or incident.service
     )
-    if not app_name:
+    evidence: list[Evidence] = []
+    if not app_name and not operational_context.recent_changes:
         return _result(
             task,
             budget,
@@ -651,7 +662,6 @@ async def _changes(
             reason="Argo CD application identity is unavailable",
         )
 
-    evidence: list[Evidence] = []
     if operational_context.recent_changes:
         recent = operational_context.recent_changes[:10]
         evidence.append(Evidence(
@@ -679,6 +689,17 @@ async def _changes(
             raw_reference="awareness://persistent-change-context",
             strength="weak",
         ))
+    if not app_name:
+        return _result(
+            task,
+            budget,
+            started_at=started,
+            evidence=evidence,
+            reason=(
+                "persistent change context is available but live Argo CD "
+                "application identity is unavailable"
+            ),
+        )
     try:
         budget.consume("argocd_application")
         app = await tools.argocd_application(app_name)
@@ -687,6 +708,7 @@ async def _changes(
                 task,
                 budget,
                 started_at=started,
+                evidence=evidence,
                 reason=f"Argo CD application not found: {app_name}",
             )
 
