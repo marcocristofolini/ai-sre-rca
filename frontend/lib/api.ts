@@ -224,7 +224,7 @@ export async function fetchCapabilities(cluster: string): Promise<CapabilityRepo
   return res.json();
 }
 
-export type AwarenessFreshness = 'fresh' | 'stale' | 'historical';
+export type AwarenessFreshness = 'fresh' | 'stale' | 'historical' | 'tombstoned';
 
 export type AwarenessEntity = {
   id: string;
@@ -238,6 +238,9 @@ export type AwarenessEntity = {
   last_seen: string;
   last_incident_id: string;
   observation_count: number;
+  tombstoned_at?: string | null;
+  tombstone_snapshot_id?: string | null;
+  tombstone_source?: string | null;
   freshness: AwarenessFreshness;
   age_seconds: number;
   stale_since?: string | null;
@@ -257,6 +260,9 @@ export type AwarenessRelationship = {
   last_seen: string;
   last_incident_id: string;
   observation_count: number;
+  tombstoned_at?: string | null;
+  tombstone_snapshot_id?: string | null;
+  tombstone_source?: string | null;
   freshness: AwarenessFreshness;
   age_seconds: number;
   stale_since?: string | null;
