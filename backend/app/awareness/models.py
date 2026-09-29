@@ -75,12 +75,30 @@ class AwarenessRelationship(BaseModel):
     observation_count: int = 1
 
 
+class AwarenessChangeEvent(BaseModel):
+    id: str
+    tenant_id: str
+    cluster: str
+    event_type: Literal["deployment_sync", "source_commit"]
+    source: Literal["argocd", "github"]
+    occurred_at: datetime
+    namespace: str | None = None
+    revision: str | None = None
+    subject_entity_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    incident_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    observation_count: int = 1
+    first_observed_at: datetime
+    last_observed_at: datetime
+
+
 class AwarenessObservation(BaseModel):
     id: str
     tenant_id: str
     cluster: str
     incident_id: str
-    target_type: Literal["entity", "relationship"]
+    target_type: Literal["entity", "relationship", "change_event"]
     target_id: str
     observed_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
@@ -188,3 +206,159 @@ def canonicalize_investigation(
         ))
 
     return entities, relationships, observations
+
+
+
+def canonical_change_event_id(
+    tenant_id: str,
+    cluster: str,
+    *,
+    event_type: str,
+    source: str,
+    identity: str,
+    occurred_at: datetime,
+) -> str:
+    normalized = occurred_at.astimezone(timezone.utc).isoformat()
+    return _stable_id(
+        "ac",
+        tenant_id,
+        cluster,
+        event_type,
+        source,
+        identity,
+        normalized,
+    )
+
+
+def extract_change_events(
+    result: InvestigationResult,
+) -> list[AwarenessChangeEvent]:
+    """Compile immutable operational change events from verified RCA evidence.
+
+    Events are temporal context only. They are persisted separately from graph
+    entities/relationships and are never interpreted as causal impact edges.
+    """
+
+    tenant_id = result.incident.tenant_id
+    cluster = result.incident.cluster
+    local_to_canonical = {
+        entity.id: canonical_entity_id(tenant_id, cluster, entity)
+        for entity in result.entities
+    }
+
+    service_ids = sorted(
+        canonical_id
+        for entity in result.entities
+        if entity.kind.lower() == "service"
+        for canonical_id in [local_to_canonical[entity.id]]
+    )
+    deployment_ids = sorted(
+        canonical_id
+        for entity in result.entities
+        if entity.kind.lower() == "deployment"
+        for canonical_id in [local_to_canonical[entity.id]]
+    )
+    argocd_ids = sorted(
+        canonical_id
+        for entity in result.entities
+        if entity.kind.lower() == "argocdapplication"
+        for canonical_id in [local_to_canonical[entity.id]]
+    )
+    git_ids = sorted(
+        canonical_id
+        for entity in result.entities
+        if entity.kind.lower() == "gitrepository"
+        for canonical_id in [local_to_canonical[entity.id]]
+    )
+
+    events: list[AwarenessChangeEvent] = []
+    for evidence in result.evidence:
+        if evidence.source == "argocd" and evidence.category == "change-correlation":
+            application = str(evidence.facts.get("application") or "argocd")
+            revision = str(evidence.facts.get("revision") or "") or None
+            identity = "|".join([
+                application,
+                revision or "unknown",
+            ])
+            subject_ids = sorted(set([
+                *deployment_ids,
+                *service_ids,
+                *argocd_ids,
+                *git_ids,
+            ]))
+            events.append(AwarenessChangeEvent(
+                id=canonical_change_event_id(
+                    tenant_id,
+                    cluster,
+                    event_type="deployment_sync",
+                    source="argocd",
+                    identity=identity,
+                    occurred_at=evidence.observed_at,
+                ),
+                tenant_id=tenant_id,
+                cluster=cluster,
+                event_type="deployment_sync",
+                source="argocd",
+                occurred_at=evidence.observed_at,
+                namespace=result.incident.namespace,
+                revision=revision,
+                subject_entity_ids=subject_ids,
+                evidence_ids=[evidence.id],
+                incident_ids=[result.incident_id],
+                metadata={
+                    "application": application,
+                    "repo_url": evidence.facts.get("repo_url"),
+                    "sync_status": evidence.facts.get("sync_status"),
+                    "health": evidence.facts.get("health"),
+                    "operation_phase": evidence.facts.get("operation_phase"),
+                    "delta_minutes": evidence.facts.get("delta_minutes"),
+                    "raw_reference": evidence.raw_reference,
+                },
+                first_observed_at=result.created_at,
+                last_observed_at=result.created_at,
+            ))
+            continue
+
+        if evidence.source == "github" and evidence.category == "source-change":
+            revision = str(
+                evidence.facts.get("sha")
+                or evidence.facts.get("revision")
+                or ""
+            ) or None
+            if not revision:
+                continue
+            subject_ids = sorted(set([
+                *deployment_ids,
+                *service_ids,
+                *git_ids,
+            ]))
+            events.append(AwarenessChangeEvent(
+                id=canonical_change_event_id(
+                    tenant_id,
+                    cluster,
+                    event_type="source_commit",
+                    source="github",
+                    identity=revision,
+                    occurred_at=evidence.observed_at,
+                ),
+                tenant_id=tenant_id,
+                cluster=cluster,
+                event_type="source_commit",
+                source="github",
+                occurred_at=evidence.observed_at,
+                namespace=result.incident.namespace,
+                revision=revision,
+                subject_entity_ids=subject_ids,
+                evidence_ids=[evidence.id],
+                incident_ids=[result.incident_id],
+                metadata={
+                    "message": evidence.facts.get("message"),
+                    "author": evidence.facts.get("author"),
+                    "url": evidence.facts.get("url"),
+                    "raw_reference": evidence.raw_reference,
+                },
+                first_observed_at=result.created_at,
+                last_observed_at=result.created_at,
+            ))
+
+    return events
