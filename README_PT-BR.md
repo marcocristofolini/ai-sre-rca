@@ -27,6 +27,7 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Shared evidence envelope** com verificação da integridade das evidências. Hipóteses branch-local são advisory-only e a resposta de execução propositalmente não possui campo `root_cause`.
 - **Avaliador determinístico do shared envelope** que recalcula scores apenas com evidências verificadas, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes, falha de forma fechada quando um specialist de maior precedência não conclui e gera um explanation graph das hipóteses descartadas.
 - **Três superfícies agentic distintas:** `plan` compila, `execute` apenas coleta evidências read-only dos especialistas e `investigate` executa ambos mais a avaliação determinística. Somente `investigate` pode retornar um verdict de causa raiz.
+- **Planejamento assistido por modelo opcional**, desabilitado por padrão. O LLM pode sugerir somente nomes de especialistas e justificativas; o servidor intersecta essa sugestão com a allow-list existente, gates determinísticos de elegibilidade, ramos obrigatórios de baseline e budgets/dependências controlados pelo servidor antes de qualquer tarefa existir.
 
 APIs atuais da v0.8:
 
@@ -41,7 +42,7 @@ POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
 ```
 
-O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas é um runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. O novo caminho `/investigate` então revalida o shared envelope, recalcula scores determinísticos, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph antes de permitir um verdict de causa raiz. O LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
+O planner continua sendo a superfície de preview/compilação. A execução paralela de especialistas é um runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. Quando `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`, um modelo advisory pode priorizar ramos opcionais, porém as tarefas executáveis continuam sendo compiladas exclusivamente a partir de templates controlados pelo servidor. Kubernetes, métricas e traces permanecem obrigatórios sempre que forem deterministicamente elegíveis; escolhas desconhecidas ou inelegíveis são rejeitadas e respostas inválidas/falhas do modelo preservam o plano determinístico. O caminho `/investigate` então revalida o shared envelope, recalcula scores determinísticos, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph antes de permitir um verdict de causa raiz. O LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md) · [Investigação Agentic](docs/agentic-investigation.pt-BR.md).
 
