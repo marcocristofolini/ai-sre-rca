@@ -275,7 +275,6 @@ def reconcile_snapshot(
     snapshot: AwarenessGraphSnapshot,
     *,
     stale_after_minutes: int,
-    include_tombstoned: bool = True,
     as_of: datetime | None = None,
 ) -> ReconciledGraphSnapshot:
     now = as_of or datetime.now(timezone.utc)
@@ -394,6 +393,7 @@ async def build_service_topology(
     max_nodes: int,
     max_edges: int,
     stale_after_minutes: int,
+    include_tombstoned: bool = True,
     as_of: datetime | None = None,
 ) -> ServiceTopologyProjection:
     candidates = await repo.find_awareness_entities(
