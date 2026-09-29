@@ -20,6 +20,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
 - **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown or stale relationships are visible as context but never traversed as current impact paths.
 - **Historical change timeline semantics.** Change events and their event edges are context-only, reconcile as `historical`, and are never added to the blast-radius causal allow-list.
+- **Read-only Awareness Explorer at `/awareness`** with cluster/namespace/service scoping, reconciled entity freshness, stored relationships and the bounded ChangeEvent timeline. It reuses the existing viewer authorization and server-side API client without introducing graph-write controls.
 - **Bounded Investigation Planner** that emits only allow-listed read-only specialist tasks: Kubernetes, metrics, logs, traces, database and changes.
 - **Kubernetes specialist parity with the core engine.** The agentic Kubernetes branch now delegates to the same deterministic stage used by classic RCA, covering eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter capacity, HPA, KEDA and NodeNotReady with identical playbook hypotheses and evidence rules.
 - **Shared Kubernetes root-priority policy + fail-closed partial branches.** Classic and agentic paths use the same specificity ordering, and hypotheses from a non-completed specialist can never be selected.
