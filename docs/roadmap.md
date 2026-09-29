@@ -179,6 +179,11 @@ Agentic investigation foundation:
 - [x] bounded per-target graph history and incident-window ChangeEvents in agentic context
 - [x] Graph Health and authoritative inventory-source freshness in agentic context
 - [x] context-only persistent facts blocked from causal hypothesis scoring
+- [x] typed server-owned specialist scope
+- [x] unique fresh Pod resolution from complete persistent topology
+- [x] unique fresh Argo CD application resolution from complete persistent topology
+- [x] graph ambiguity/truncation fails closed instead of selecting an arbitrary specialist target
+- [x] graph-resolved scope narrows live Kubernetes/Loki/Argo CD reads while live verification remains mandatory
 - [x] deterministic hypothesis verification remains the root-cause authority
 - [x] opt-in parallel specialist execution in dependency-aware waves
 - [x] per-specialist read-only execution contracts and result envelopes
