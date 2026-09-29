@@ -66,6 +66,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.
 - Blast radius never traverses unknown or stale relationships.
 - ChangeEvent relationships are context-only and are deliberately absent from the causal impact-direction allow-list; temporal proximity alone cannot promote a deploy into root cause.
+- ChangeEvent materialization fails closed when application/revision identity or the authoritative operation timestamp is missing/malformed.
+- Deployment, Service and GitRepository event links are created only from explicit unambiguous graph relationships; namespace/list ordering is never used as identity evidence.
 - Incident-derived graph absence is not treated as deletion; authoritative tombstones remain future work.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 
