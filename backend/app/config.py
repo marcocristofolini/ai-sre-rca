@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # Persistent Awareness Graph. Traversal is intentionally bounded so
     # topology and blast-radius queries cannot expand without server limits.
     awareness_stale_after_minutes: int = Field(default=1440, ge=1, le=10080)
+    awareness_authoritative_inventory_sources: str = "kubernetes"
     awareness_max_traversal_depth: int = Field(default=4, ge=1, le=8)
     awareness_max_traversal_nodes: int = Field(default=200, ge=10, le=2000)
     awareness_max_traversal_edges: int = Field(default=800, ge=10, le=8000)
