@@ -83,7 +83,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Deployment, Service and GitRepository event links are created only from explicit unambiguous graph relationships; namespace/list ordering is never used as identity evidence.
 - Incident-derived graph absence is never treated as deletion; only complete snapshots from configured authoritative sources can create tombstones.
 - Inventory reconciliation fails closed on incomplete snapshots, out-of-scope resources, non-authoritative relationship types and snapshots older than a newer graph observation.
-- Automatic Kubernetes inventory collection aborts before reconciliation if any configured list or page is incomplete, invalid or unavailable.
+- Automatic Kubernetes inventory collection aborts before reconciliation if any configured list or page is incomplete, invalid, unavailable or repeats a continuation token.
+- Kubernetes `owned_by` inventory edges require a single controller ownerReference whose UID matches the currently observed owner object, preventing name reuse from creating false controller links.
 - Namespace-scoped inventory never asserts Pod-to-Node tombstones across a cluster-scoped Node boundary; cluster-wide scheduling edges require a complete cluster-wide pass.
 - Immutable ChangeEvent nodes/edges are excluded from inventory tombstoning.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
