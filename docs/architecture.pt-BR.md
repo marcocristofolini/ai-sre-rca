@@ -83,6 +83,7 @@ flowchart LR
 ```
 
 O wrapper agentic adiciona um budget read-only próprio, mas não altera scoring dos playbooks, categorias de evidência, resolução de ownership ou IDs de hipóteses. Um specialist Kubernetes com budget esgotado falha fechado e não pode ser interpretado como contexto de infraestrutura saudável.
+A política de prioridade de causa raiz também é compartilhada: quando múltiplas hipóteses Kubernetes estão confirmadas, o evaluator agentic aplica a mesma ordem de especificidade por cenário usada pelo seletor clássico. Qualquer candidate vindo de um specialist que não concluiu é bloqueado antes da seleção.
 
 ## Ciclo de investigação
 
