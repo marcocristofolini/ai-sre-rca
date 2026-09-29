@@ -580,3 +580,41 @@ async def test_current_service_projection_excludes_authoritative_tombstones():
         item.relationship == "serves"
         for item in current.relationships
     )
+
+
+
+@pytest.mark.asyncio
+async def test_older_authoritative_presence_cannot_reactivate_newer_tombstone():
+    repo = MemoryRepository()
+    now = datetime(2026, 9, 29, 10, 0, tzinfo=timezone.utc)
+    await repo.save(make_result("inc-initial", created_at=now))
+
+    await repo.reconcile_authoritative_inventory(
+        authoritative_snapshot(
+            "snap-delete-newer",
+            observed_at=now + timedelta(minutes=20),
+            include_deployment=False,
+        )
+    )
+    replay = await repo.reconcile_authoritative_inventory(
+        authoritative_snapshot(
+            "snap-presence-older",
+            observed_at=now + timedelta(minutes=10),
+            include_deployment=True,
+        )
+    )
+
+    graph = await repo.get_awareness_graph("tenant-a", "prod")
+    deployment = next(item for item in graph.entities if item.kind == "Deployment")
+    serves = next(
+        item
+        for item in graph.relationships
+        if item.relationship == "serves"
+    )
+
+    assert deployment.tombstoned_at == now + timedelta(minutes=20)
+    assert serves.tombstoned_at == now + timedelta(minutes=20)
+    assert replay.entities_reactivated == 0
+    assert replay.relationships_reactivated == 0
+    assert replay.skipped_newer_entities >= 1
+    assert replay.skipped_newer_relationships >= 1
