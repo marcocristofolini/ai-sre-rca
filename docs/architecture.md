@@ -83,6 +83,7 @@ flowchart LR
 ```
 
 The agentic wrapper adds a dedicated read-only query budget but does not alter playbook scoring, evidence categories, ownership resolution or hypothesis IDs. A budget-exhausted Kubernetes specialist fails closed and cannot be treated as clean infrastructure context.
+The root-priority policy is shared as well: when multiple Kubernetes hypotheses are confirmed, the agentic evaluator applies the same scenario-specific specificity ordering used by the classic selector. Any candidate from a non-completed specialist is blocked before selection.
 
 ## Investigation lifecycle
 
