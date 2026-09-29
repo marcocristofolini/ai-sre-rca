@@ -53,6 +53,27 @@ spec:
 {{- with .Values.networkPolicy.backendEgress }}
 {{ toYaml . | indent 4 }}
 {{- end }}
+{{- if .Values.inventoryCollector.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-inventory-collector
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}-inventory-collector
+  policyTypes: ["Egress"]
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- with .Values.networkPolicy.inventoryCollectorEgress }}
+{{ toYaml . | indent 4 }}
+{{- end }}
+{{- end }}
 {{- if .Values.remediator.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
