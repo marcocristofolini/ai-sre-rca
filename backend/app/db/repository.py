@@ -61,35 +61,6 @@ class InvestigationRepository(Protocol):
         until: datetime | None = None,
         limit: int = 100,
     ) -> list[AwarenessChangeEvent]: ...
-    async def list_awareness_change_events(
-        self,
-        tenant_id: str,
-        cluster: str,
-        *,
-        namespace: str | None = None,
-        event_type: str | None = None,
-        subject_entity_id: str | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
-        limit: int = 100,
-    ) -> list[AwarenessChangeEvent]:
-        items = [
-            item.model_copy(deep=True)
-            for item in self._awareness_change_events.values()
-            if item.tenant_id == tenant_id
-            and item.cluster == cluster
-            and (namespace is None or item.namespace == namespace)
-            and (event_type is None or item.event_type == event_type)
-            and (
-                subject_entity_id is None
-                or subject_entity_id in item.subject_entity_ids
-            )
-            and (since is None or item.occurred_at >= since)
-            and (until is None or item.occurred_at <= until)
-        ]
-        items.sort(key=lambda item: item.occurred_at, reverse=True)
-        return items[:max(1, min(limit, 1000))]
-
     async def find_awareness_entities(
         self,
         tenant_id: str,
@@ -325,6 +296,35 @@ class MemoryRepository:
             and item.cluster == cluster
         ]
         items.sort(key=lambda item: item.observed_at, reverse=True)
+        return items[:max(1, min(limit, 1000))]
+
+    async def list_awareness_change_events(
+        self,
+        tenant_id: str,
+        cluster: str,
+        *,
+        namespace: str | None = None,
+        event_type: str | None = None,
+        subject_entity_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> list[AwarenessChangeEvent]:
+        items = [
+            item.model_copy(deep=True)
+            for item in self._awareness_change_events.values()
+            if item.tenant_id == tenant_id
+            and item.cluster == cluster
+            and (namespace is None or item.namespace == namespace)
+            and (event_type is None or item.event_type == event_type)
+            and (
+                subject_entity_id is None
+                or subject_entity_id in item.subject_entity_ids
+            )
+            and (since is None or item.occurred_at >= since)
+            and (until is None or item.occurred_at <= until)
+        ]
+        items.sort(key=lambda item: item.occurred_at, reverse=True)
         return items[:max(1, min(limit, 1000))]
 
     async def find_awareness_entities(
