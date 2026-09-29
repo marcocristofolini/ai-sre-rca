@@ -308,7 +308,9 @@ def _specialist_scope(
             "Pod",
             namespace=incident.namespace,
         )
-        if len(pod_candidates) == 1:
+        if context.truncated and context.root_entity_id is not None:
+            ambiguous.append("pod")
+        elif len(pod_candidates) == 1:
             pod = pod_candidates[0].name
             resolved.append("pod")
         elif len(pod_candidates) > 1:
@@ -324,14 +326,16 @@ def _specialist_scope(
             context,
             "ArgoCDApplication",
         )
-        if len(application_candidates) == 1:
+        if context.truncated and context.root_entity_id is not None:
+            ambiguous.append("application")
+        elif len(application_candidates) == 1:
             application = application_candidates[0].name
             resolved.append("application")
         elif len(application_candidates) > 1:
             ambiguous.append("application")
         else:
-            # Preserve legacy service-name lookup only when the persistent
-            # graph has no competing Argo CD application identity.
+            # Preserve legacy service-name lookup only when the complete
+            # bounded topology has no Argo CD application identity.
             application = incident.service
 
     return SpecialistScope(
