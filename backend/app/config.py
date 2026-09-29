@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     agentic_max_parallel_tasks: int = Field(default=4, ge=1, le=8)
     agentic_max_context_nodes: int = Field(default=50, ge=1, le=500)
     agentic_specialist_max_queries: int = Field(default=12, ge=1, le=50)
+    agentic_kubernetes_max_queries: int = Field(default=30, ge=1, le=80)
 
     # Guarded remediation plane. Disabled by default and intentionally uses
     # a separate cluster credential registry from the read-only investigator.
