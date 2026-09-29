@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from app.agentic.models import (
     InvestigationPlan,
+    ModelPlanningAdvice,
+    PlannerAdvisoryTrace,
     PlannerGraphContext,
     SpecialistKind,
     SpecialistTask,
@@ -12,6 +14,7 @@ from app.awareness.topology import (
     build_service_topology,
 )
 from app.config import Settings
+from app.llm.planning import PlanningAdvisor
 from app.schemas import IncidentInput
 
 
@@ -22,6 +25,15 @@ SPECIALIST_ALLOWLIST: tuple[SpecialistKind, ...] = (
     "traces",
     "database",
     "changes",
+)
+
+# These branches form the evidence baseline whenever they are deterministically
+# eligible. Model advice may prioritize/prune optional branches, but it cannot
+# suppress infrastructure, quantitative metrics or distributed causality.
+MODEL_ASSISTED_BASELINE: tuple[SpecialistKind, ...] = (
+    "kubernetes",
+    "metrics",
+    "traces",
 )
 
 
@@ -91,13 +103,12 @@ async def _graph_context(
     )
 
 
-async def build_investigation_plan(
-    repo,
+def _eligible_tasks(
     *,
     incident: IncidentInput,
+    context: PlannerGraphContext,
     settings: Settings,
-) -> InvestigationPlan:
-    context = await _graph_context(repo, incident, settings)
+) -> list[SpecialistTask]:
     tasks: list[SpecialistTask] = []
     context_ids = context.entity_ids[: settings.agentic_max_context_nodes]
 
@@ -105,7 +116,9 @@ async def build_investigation_plan(
         _append_task(
             tasks,
             specialist="kubernetes",
-            objective="Validate runtime, ownership, scheduling, controller and node signals.",
+            objective=(
+                "Validate runtime, ownership, scheduling, controller and node signals."
+            ),
             rationale=(
                 "The incident identifies Kubernetes-scoped runtime resources."
             ),
@@ -128,7 +141,9 @@ async def build_investigation_plan(
         _append_task(
             tasks,
             specialist="logs",
-            objective="Search bounded log windows for error signatures and runtime context.",
+            objective=(
+                "Search bounded log windows for error signatures and runtime context."
+            ),
             rationale=(
                 "The incident has enough namespace/resource identity for scoped log queries."
             ),
@@ -140,7 +155,9 @@ async def build_investigation_plan(
         _append_task(
             tasks,
             specialist="traces",
-            objective="Reconstruct distributed causal paths from representative traces.",
+            objective=(
+                "Reconstruct distributed causal paths from representative traces."
+            ),
             rationale=(
                 "A service identity is present and trace analysis is enabled."
             ),
@@ -189,9 +206,14 @@ async def build_investigation_plan(
             required_entity_ids=context_ids,
         )
 
-    tasks = tasks[: settings.agentic_max_tasks]
+    return tasks
+
+
+def _normalize_dependencies(
+    tasks: list[SpecialistTask],
+) -> list[SpecialistTask]:
     valid_ids = {task.id for task in tasks}
-    normalized_tasks = [
+    return [
         task.model_copy(update={
             "depends_on": [
                 dependency
@@ -202,15 +224,180 @@ async def build_investigation_plan(
         for task in tasks
     ]
 
+
+def _compile_model_advice(
+    eligible_tasks: list[SpecialistTask],
+    advice: ModelPlanningAdvice,
+    *,
+    settings: Settings,
+) -> tuple[list[SpecialistTask], PlannerAdvisoryTrace, bool]:
+    by_kind = {task.specialist: task for task in eligible_tasks}
+    requested = [
+        str(item).strip().lower()
+        for item in advice.requested_specialists
+        if str(item).strip()
+    ]
+
+    forced: list[SpecialistKind] = [
+        kind
+        for kind in MODEL_ASSISTED_BASELINE
+        if kind in by_kind
+    ]
+    accepted: list[SpecialistKind] = []
+    rejected: list[str] = []
+    seen: set[str] = set()
+
+    for raw in requested:
+        if raw in seen:
+            continue
+        seen.add(raw)
+        if raw not in SPECIALIST_ALLOWLIST:
+            rejected.append(raw)
+            continue
+        kind = raw
+        if kind not in by_kind:
+            rejected.append(raw)
+            continue
+        accepted.append(kind)
+
+    if not accepted:
+        return (
+            _normalize_dependencies(
+                eligible_tasks[: settings.agentic_max_tasks]
+            ),
+            PlannerAdvisoryTrace(
+                requested_specialists=requested,
+                accepted_specialists=[],
+                rejected_specialists=sorted(set(rejected)),
+                forced_specialists=[
+                    kind
+                    for kind in forced
+                    if kind in by_kind
+                ],
+                rationale=advice.rationale,
+                fallback_reason=(
+                    "model advice contained no eligible specialist; "
+                    "deterministic plan preserved"
+                ),
+            ),
+            False,
+        )
+
+    # Database execution has a typed dependency on traces. The model cannot
+    # remove or rewrite that dependency.
+    if "database" in accepted and "traces" in by_kind and "traces" not in forced:
+        forced.append("traces")
+
+    selected_kinds: list[SpecialistKind] = []
+    for kind in [*forced, *accepted]:
+        if kind in by_kind and kind not in selected_kinds:
+            selected_kinds.append(kind)
+
+    selected_kinds = selected_kinds[: settings.agentic_max_tasks]
+    selected_set = set(selected_kinds)
+
+    # A task that was otherwise valid but did not fit the server-side task
+    # budget is reported as rejected rather than silently disappearing.
+    for kind in accepted:
+        if kind not in selected_set:
+            rejected.append(kind)
+
+    selected_tasks = [
+        by_kind[kind].model_copy(deep=True)
+        for kind in selected_kinds
+    ]
+    selected_tasks = _normalize_dependencies(selected_tasks)
+
+    # Fail closed if a dependency would be lost by a pathological task budget.
+    selected_ids = {task.id for task in selected_tasks}
+    filtered: list[SpecialistTask] = []
+    for task in selected_tasks:
+        if all(dependency in selected_ids for dependency in task.depends_on):
+            filtered.append(task)
+        else:
+            rejected.append(task.specialist)
+
+    filtered_kinds = {task.specialist for task in filtered}
+    return (
+        filtered,
+        PlannerAdvisoryTrace(
+            requested_specialists=requested,
+            accepted_specialists=[
+                kind
+                for kind in accepted
+                if kind in filtered_kinds
+            ],
+            rejected_specialists=sorted(set(rejected)),
+            forced_specialists=[
+                kind
+                for kind in forced
+                if kind in filtered_kinds
+            ],
+            rationale=advice.rationale,
+        ),
+        True,
+    )
+
+
+async def build_investigation_plan(
+    repo,
+    *,
+    incident: IncidentInput,
+    settings: Settings,
+    advisor: PlanningAdvisor | None = None,
+) -> InvestigationPlan:
+    context = await _graph_context(repo, incident, settings)
+    eligible = _eligible_tasks(
+        incident=incident,
+        context=context,
+        settings=settings,
+    )
+    deterministic_tasks = _normalize_dependencies(
+        eligible[: settings.agentic_max_tasks]
+    )
+
+    tasks = deterministic_tasks
+    planner_origin: str = "deterministic"
+    advisory_trace: PlannerAdvisoryTrace | None = None
+
+    if settings.agentic_model_planner_enabled and advisor is not None:
+        try:
+            advice = await advisor.advise(
+                incident,
+                context,
+                eligible,
+            )
+        except Exception as exc:
+            advice = None
+            advisory_trace = PlannerAdvisoryTrace(
+                fallback_reason=(
+                    "model planning advisor failed; deterministic plan preserved "
+                    f"({type(exc).__name__})"
+                )
+            )
+
+        if advice is not None:
+            compiled, trace, used_model = _compile_model_advice(
+                eligible,
+                advice,
+                settings=settings,
+            )
+            tasks = compiled
+            advisory_trace = trace
+            if used_model:
+                planner_origin = "model-assisted"
+
     return InvestigationPlan(
         tenant_id=incident.tenant_id,
         cluster=incident.cluster,
         incident=incident,
+        planner_origin=planner_origin,
+        advisory_trace=advisory_trace,
         graph_context=context,
-        tasks=normalized_tasks,
+        tasks=tasks,
         max_parallel_tasks=min(
             settings.agentic_max_parallel_tasks,
-            max(1, len(normalized_tasks)),
+            max(1, len(tasks)),
         ),
         max_tasks=settings.agentic_max_tasks,
     )
