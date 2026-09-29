@@ -125,6 +125,9 @@ jobs:
             --set inventoryCollector.enabled=true \
             --set inventoryCollector.existingSecret=ai-sre-inventory-secrets \
             --set 'inventoryCollector.clusters[0]=prod-us-east-1' \
+            --set awarenessRetention.enabled=true \
+            --set awarenessRetention.existingSecret=ai-sre-retention-secrets \
+            --set 'awarenessRetention.clusters[0]=prod-us-east-1' \
             --set remediator.enabled=true \
             --set remediator.existingSecret=ai-sre-remediator-secrets \
             --set 'remediator.targetNamespaces[0]=payments' \
@@ -134,6 +137,9 @@ jobs:
           grep -q "name: ai-sre-rca-inventory-collector" /tmp/ai-sre-rca-hardened.yaml
           grep -q "concurrencyPolicy: Forbid" /tmp/ai-sre-rca-hardened.yaml
           grep -q "app.inventory.worker" /tmp/ai-sre-rca-hardened.yaml
+          grep -q "name: ai-sre-rca-awareness-retention" /tmp/ai-sre-rca-hardened.yaml
+          grep -q "app.awareness.retention_worker" /tmp/ai-sre-rca-hardened.yaml
+          grep -q "automountServiceAccountToken: false" /tmp/ai-sre-rca-hardened.yaml
           grep -Eq 'name: "?ai-sre-secrets"?' /tmp/ai-sre-rca-hardened.yaml
           grep -Eq 'name: "?ai-sre-remediator-secrets"?' /tmp/ai-sre-rca-hardened.yaml
           grep -q "name: ai-sre-rca-remediator" /tmp/ai-sre-rca-hardened.yaml
@@ -166,6 +172,24 @@ jobs:
             exit 1
           fi
           grep -q "inventoryCollector.existingSecret is required" /tmp/ai-sre-rca-invalid-inventory-secret.err
+
+          if helm template ai-sre-rca helm/ai-sre-rca \
+            --set awarenessRetention.enabled=true \
+            --set awarenessRetention.existingSecret=ai-sre-retention-secrets \
+            >/tmp/ai-sre-rca-invalid-retention.yaml 2>/tmp/ai-sre-rca-invalid-retention.err; then
+            echo "Expected Helm to reject retention worker without cluster scope" >&2
+            exit 1
+          fi
+          grep -q "awarenessRetention.clusters must contain at least one" /tmp/ai-sre-rca-invalid-retention.err
+
+          if helm template ai-sre-rca helm/ai-sre-rca \
+            --set awarenessRetention.enabled=true \
+            --set 'awarenessRetention.clusters[0]=prod-us-east-1' \
+            >/tmp/ai-sre-rca-invalid-retention-secret.yaml 2>/tmp/ai-sre-rca-invalid-retention-secret.err; then
+            echo "Expected Helm to reject retention worker without a dedicated Secret" >&2
+            exit 1
+          fi
+          grep -q "awarenessRetention.existingSecret is required" /tmp/ai-sre-rca-invalid-retention-secret.err
 
 
   smoke:
