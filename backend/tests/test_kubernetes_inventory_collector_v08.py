@@ -11,6 +11,7 @@ from app.awareness.kubernetes_inventory import (
 )
 from app.config import Settings
 from app.db.repository import MemoryRepository
+from app.integrations.http_tools import ReadOnlyHTTPTools
 
 
 def _obj(
@@ -269,6 +270,7 @@ async def test_partial_collection_never_reconciles_or_tombstones():
     assert graph.entities == []
     assert graph.relationships == []
     assert repo._audit == []
+    assert tools.current_cluster is None
 
 
 @pytest.mark.asyncio
@@ -345,3 +347,54 @@ async def test_inventory_rejects_unsupported_kind_before_reconciliation():
             kinds=["Secret"],
             namespaces=None,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_http_inventory_list_follows_kubernetes_continue_tokens(monkeypatch):
+    tools = ReadOnlyHTTPTools(Settings())
+    calls: list[dict[str, Any]] = []
+
+    async def fake_get(path: str, params=None):
+        calls.append({"path": path, "params": dict(params or {})})
+        if not params or not params.get("continue"):
+            return {
+                "items": [{"metadata": {"name": "pod-a"}}],
+                "metadata": {"continue": "next-page"},
+            }
+        return {
+            "items": [{"metadata": {"name": "pod-b"}}],
+            "metadata": {"continue": ""},
+        }
+
+    monkeypatch.setattr(tools, "_k8s_get", fake_get)
+
+    items = await tools.list_pods(page_size=1)
+
+    assert [item["metadata"]["name"] for item in items] == [
+        "pod-a",
+        "pod-b",
+    ]
+    assert calls == [
+        {
+            "path": "/api/v1/pods",
+            "params": {"limit": 1},
+        },
+        {
+            "path": "/api/v1/pods",
+            "params": {"limit": 1, "continue": "next-page"},
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_http_inventory_list_fails_closed_on_incomplete_payload(monkeypatch):
+    tools = ReadOnlyHTTPTools(Settings())
+
+    async def fake_get(path: str, params=None):
+        return {}
+
+    monkeypatch.setattr(tools, "_k8s_get", fake_get)
+
+    with pytest.raises(RuntimeError, match="inventory list was incomplete"):
+        await tools.list_deployments()
