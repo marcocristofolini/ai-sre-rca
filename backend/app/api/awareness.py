@@ -13,7 +13,6 @@ from app.awareness.inventory import (
     InventorySnapshotConflictError,
 )
 from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
-from app.schemas import AuditEvent
 from app.awareness.topology import (
     AmbiguousServiceError,
     AwarenessEntityNotFoundError,
@@ -74,29 +73,11 @@ async def reconcile_authoritative_inventory(
     )
     try:
         result = await request.app.state.repo.reconcile_authoritative_inventory(
-            snapshot
+            snapshot,
+            actor=principal.subject,
         )
     except InventorySnapshotConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await request.app.state.repo.append_audit(AuditEvent(
-        tenant_id=tenant,
-        actor=principal.subject,
-        action="awareness.inventory.reconcile",
-        detail={
-            "cluster": cluster,
-            "source": payload.source,
-            "snapshot_id": payload.snapshot_id,
-            "coverage": payload.coverage.model_dump(),
-            "resources_observed": result.resources_observed,
-            "relationships_observed": result.relationships_observed,
-            "entities_tombstoned": result.entities_tombstoned,
-            "relationships_tombstoned": result.relationships_tombstoned,
-            "skipped_newer_entities": result.skipped_newer_entities,
-            "skipped_newer_relationships": (
-                result.skipped_newer_relationships
-            ),
-        },
-    ))
     return result
 
 
