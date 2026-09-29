@@ -141,6 +141,7 @@ async def execute_agentic_investigation(
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
+            "planner_origin": plan.planner_origin,
             "status": execution.status,
             "specialists": {
                 result.specialist: result.status
@@ -212,6 +213,7 @@ async def investigate_agentically(
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
+            "planner_origin": plan.planner_origin,
             "execution_status": execution.status,
             "evaluation_status": evaluation.status,
             "root_hypothesis_id": (
