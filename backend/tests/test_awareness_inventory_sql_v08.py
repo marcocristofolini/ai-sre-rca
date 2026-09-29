@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 
 from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
@@ -91,6 +92,52 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
     assert TEST_DATABASE_URL is not None
     repo = SQLRepository(TEST_DATABASE_URL)
     await repo.initialize()
+
+    # Simulate a pre-tombstone persistent volume and verify the lightweight
+    # forward migration restores both columns and their declared indexes.
+    async with repo.engine.begin() as conn:
+        for table in ("awareness_entities", "awareness_relationships"):
+            for column in (
+                "tombstoned_at",
+                "tombstone_snapshot_id",
+                "tombstone_source",
+            ):
+                await conn.execute(text(
+                    f"ALTER TABLE {table} DROP COLUMN IF EXISTS {column} CASCADE"
+                ))
+    await repo.initialize()
+
+    async with repo.engine.begin() as conn:
+        for table in ("awareness_entities", "awareness_relationships"):
+            columns = {
+                row[0]
+                for row in (
+                    await conn.execute(text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = :table"
+                    ), {"table": table})
+                ).all()
+            }
+            assert {
+                "tombstoned_at",
+                "tombstone_snapshot_id",
+                "tombstone_source",
+            }.issubset(columns)
+            index_names = {
+                row[0]
+                for row in (
+                    await conn.execute(text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = 'public' AND tablename = :table"
+                    ), {"table": table})
+                ).all()
+            }
+            assert {
+                f"ix_{table}_tombstoned_at",
+                f"ix_{table}_tombstone_snapshot_id",
+                f"ix_{table}_tombstone_source",
+            }.issubset(index_names)
+
     suffix = uuid4().hex[:10]
     tenant_id = f"tenant-sql-{suffix}"
     cluster = f"prod-sql-{suffix}"
