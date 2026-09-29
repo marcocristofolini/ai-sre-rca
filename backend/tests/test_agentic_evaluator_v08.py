@@ -12,7 +12,7 @@ from app.auth import Principal
 from app.config import Settings
 from app.db.repository import MemoryRepository
 from app.integrations.demo import StatefulDemoTools, TraceDemoTools
-from app.schemas import IncidentInput
+from app.schemas import Evidence, IncidentInput
 
 
 def service_incident() -> IncidentInput:
@@ -309,4 +309,53 @@ async def test_downstream_promotion_is_blocked_when_kubernetes_context_failed():
     assert any(
         node.id == "gate:specialist-context"
         for node in evaluation.explanation_graph.nodes
+    )
+
+
+@pytest.mark.asyncio
+async def test_context_only_evidence_cannot_confirm_causal_hypothesis():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_execution_enabled=True,
+        query_budget_enabled=False,
+    )
+    plan = await build_investigation_plan(
+        repo,
+        incident=service_incident(),
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=StatefulDemoTools("postgresql"),
+        settings=settings,
+    )
+
+    context = Evidence(
+        source="awareness",
+        category="agentic-persistent-change-context",
+        summary="Persistent graph context only",
+        facts={"context_only": True},
+        strength="strong",
+    )
+    execution.shared_evidence.evidence.append(context)
+    database = next(
+        item
+        for item in execution.specialist_results
+        if item.specialist == "database" and item.hypotheses
+    )
+    candidate = database.hypotheses[0]
+    candidate.supporting_evidence = [context.id]
+    candidate.contradicting_evidence = []
+
+    evaluation = evaluate_shared_evidence(execution)
+
+    evaluated = next(
+        item
+        for item in evaluation.evaluated_hypotheses
+        if item.id == candidate.id
+    )
+    assert evaluated.decision == "invalid_evidence"
+    assert any(
+        "context-only" in reason
+        for reason in evaluated.reasons
     )
