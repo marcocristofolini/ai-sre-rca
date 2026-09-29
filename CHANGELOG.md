@@ -34,6 +34,10 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Planner budgets for maximum tasks, parallelism, graph context nodes and queries per specialist.
 - Explicit traces -> database/stateful task dependency so stateful checks require typed dependency identity.
 - Planner context retrieval from the Persistent Awareness Graph.
+- Frozen agentic Operational Context Snapshot combining bounded reconciled topology, target history, recent ChangeEvents, Graph Health and authoritative inventory-source freshness.
+- Operational context is copied into the InvestigationPlan, propagated to specialists and preserved in the Shared Evidence Envelope for one consistent graph view per run.
+- Changes specialist can consume persisted ChangeEvents as weak `context_only` context without treating them as fresh causal evidence.
+- Planner audit records bounded operational-context counts, truncation state and inventory-source freshness.
 - Planner audit events and investigator-role enforcement.
 - Experimental opt-in parallel specialist execution in dependency-aware waves.
 - Typed read-only specialist execution contracts for Kubernetes, metrics, logs, traces, stateful dependencies and changes.
@@ -79,6 +83,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - The execution endpoint recompiles the plan server-side rather than accepting executable plans from callers.
 - The evaluator does not trust specialist-local `confirmed` state; it recalculates score and causal eligibility from the integrity-verified envelope.
 - Missing support or contradiction references fail closed and prevent root-cause selection.
+- Persistent operational records marked `context_only` are removed from causal scoring; a hypothesis that attempts to rely on them fails closed as invalid evidence.
+- Tombstoned entities remain available to the frozen operational snapshot for explanation but are excluded from current task-required entity IDs.
 - A planned higher-precedence Kubernetes specialist that does not complete blocks downstream trace/stateful promotion, preventing absence-by-failure from being treated as clean infrastructure evidence.
 - Kubernetes specialist budget exhaustion is fail-closed; partial infrastructure collection cannot be treated as a clean Kubernetes result.
 - `/execute` remains evidence-only; only `/investigate` can emit a deterministic root-cause verdict.

@@ -95,6 +95,22 @@ class Settings(BaseSettings):
     agentic_max_tasks: int = Field(default=6, ge=1, le=12)
     agentic_max_parallel_tasks: int = Field(default=4, ge=1, le=8)
     agentic_max_context_nodes: int = Field(default=50, ge=1, le=500)
+    agentic_context_depth: int = Field(default=2, ge=1, le=4)
+    agentic_context_max_history_targets: int = Field(
+        default=12,
+        ge=1,
+        le=50,
+    )
+    agentic_context_history_per_target: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+    )
+    agentic_context_change_limit: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+    )
     agentic_specialist_max_queries: int = Field(default=12, ge=1, le=50)
     agentic_kubernetes_max_queries: int = Field(default=30, ge=1, le=80)
 

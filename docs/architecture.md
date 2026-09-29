@@ -13,14 +13,15 @@ flowchart TD
     KINV[Kubernetes API Inventory] --> KCRON[Read-only Inventory CronJob]
     KCRON --> KSNAP[Complete Authoritative Snapshots]
     KSNAP --> PAG[(Persistent Awareness Graph)]
-    PAG --> CTX[Bounded Service Context]
-    CTX --> EL
+    PAG --> OCS[Frozen Operational Context Snapshot]
+    OCS --> EL
     EL --> COMP[Server-side Plan Compiler]
     EL -. sanitized eligible context .-> MPL[Optional Advisory LLM]
     MPL -. specialist names + rationale only .-> COMP
     COMP --> PLAN[Bounded Investigation Plan]
     PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
     PT -->|opt-in| ORCH[Parallel Read-only Specialists]
+    OCS --> ORCH
     ORCH --> SE[Shared Evidence Envelope]
     SE --> AE[Deterministic Agentic Evaluator]
     AE --> XG[Explanation Graph]
@@ -47,6 +48,9 @@ flowchart TD
     PAG --> SV[Service Projections]
     PAG --> BR[Blast Radius]
     PAG --> CE[Change Event Timeline]
+    REC --> OCS
+    GH --> OCS
+    CE --> OCS
     GH --> API
     REC --> AUI[Next.js Awareness Explorer<br/>Read-only]
     SV --> AUI
@@ -119,6 +123,30 @@ flowchart LR
 ```
 
 `AWARENESS_OBSERVATION_RETENTION_DAYS` defaults to 90 and `AWARENESS_TOMBSTONE_RETENTION_DAYS` defaults to 30. The retention endpoint is scoped by the same tenant/cluster authorization boundary as the graph APIs. The optional scheduler calls the same repository contract directly with explicit tenant/cluster scope, a dedicated database Secret and `automountServiceAccountToken: false`.
+
+## Agentic Operational Context Snapshot — v0.8
+
+The agentic planner no longer receives only entity/relationship IDs from a one-hop projection. It freezes a bounded operational snapshot that combines reconciled topology, recent graph history, ChangeEvents and Graph Health before task compilation.
+
+```mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> T[Topology<br/>fresh / stale / historical / tombstoned]
+    PAG --> H[Bounded observations]
+    PAG --> C[Recent ChangeEvents]
+    GH[Graph Health] --> S[Frozen Operational Context]
+    T --> S
+    H --> S
+    C --> S
+    S --> PLAN[InvestigationPlan]
+    PLAN --> SPEC[Read-only specialists]
+    S --> ENV[Shared Evidence Envelope]
+    SPEC --> ENV
+    ENV --> DET[Deterministic Evaluator]
+```
+
+Tombstoned facts remain visible for explanation but are excluded from the task `required_entity_ids`. Persistent ChangeEvents consumed during execution are marked `context_only`. The evaluator explicitly removes context-only references from causal scoring, so persistent context can narrow investigation and preserve continuity without becoming root-cause authority.
+
+The context is hard-bounded by node count, graph depth, number of history targets, observations per target and recent-change count. The optional planner LLM receives only a shallow sanitized projection of this snapshot; it still cannot create tasks, tools, queries, dependencies or verdicts.
 
 ## Model-assisted planning compiler — v0.8
 
@@ -555,12 +583,12 @@ Known relationship types are compiled through an explicit impact-direction allow
 
 ## Bounded Investigation Planner — v0.8
 
-The planner is deterministic and bounded. It uses incident identity, feature flags and a bounded service neighborhood to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
+The planner is deterministic and bounded. It uses incident identity, feature flags and a frozen Operational Context Snapshot containing bounded topology, history, ChangeEvents and Graph Health to compile typed specialist branches. Parallel specialist execution is implemented as an opt-in read-only runtime and is disabled by default.
 
 ```mermaid
 flowchart TD
     INC[IncidentInput] --> PLAN[Deterministic Planner]
-    PAG[Persistent Awareness Graph] --> CTX[Bounded 1-hop Context]
+    PAG[Persistent Awareness Graph] --> CTX[Frozen Operational Context]
     CTX --> PLAN
     CFG[Server Budgets + Feature Flags] --> PLAN
 
@@ -594,7 +622,9 @@ Planner safety properties:
 
 - only six allow-listed specialist task kinds exist;
 - every task is read-only;
-- task count, graph context, parallelism and per-specialist query budget are server bounded;
+- task count, topology depth/nodes, history targets, observations per target, recent changes, parallelism and per-specialist query budget are server bounded;
+- tombstoned facts remain visible in operational context but are excluded from current `required_entity_ids`;
+- context-only persistent records are rejected from causal hypothesis scoring;
 - database/stateful work depends on the trace task so dependency identity is typed before dependency telemetry is queried;
 - the planner cannot confirm hypotheses, attach evidence, invoke mutation or bypass the separate remediation plane;
 - the execution endpoint recompiles the plan server-side, so caller-authored task graphs are never executed;

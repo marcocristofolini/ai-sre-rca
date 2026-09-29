@@ -12,6 +12,80 @@ from app.llm.hypotheses import _sanitize_for_llm
 from app.schemas import IncidentInput
 
 
+def _model_graph_context(
+    graph_context: PlannerGraphContext,
+) -> dict[str, object]:
+    # Keep the model payload shallow so the generic sanitizer preserves the
+    # bounded values while avoiding arbitrary persistent metadata.
+    return {
+        "root_entity_id": graph_context.root_entity_id,
+        "current_entity_ids": graph_context.entity_ids,
+        "current_relationship_ids": graph_context.relationship_ids,
+        "entity_states": [
+            (
+                f"{item.kind}:{item.namespace or '-'}:{item.name}:"
+                f"{item.freshness}:depth={item.depth}"
+            )
+            for item in graph_context.entities
+        ],
+        "relationship_states": [
+            (
+                f"{item.relationship}:{item.source_id}->{item.target_id}:"
+                f"{item.freshness}"
+            )
+            for item in graph_context.relationships
+        ],
+        "recent_changes": [
+            (
+                f"{item.occurred_at.isoformat()}:{item.application}:"
+                f"{item.revision or '-'}:{item.workload_kind or '-'}:"
+                f"{item.workload_name or '-'}"
+            )
+            for item in graph_context.recent_changes
+        ],
+        "history": [
+            (
+                f"{item.observed_at.isoformat()}:{item.target_type}:"
+                f"{item.target_id}:{item.action or '-'}:{item.origin or '-'}"
+            )
+            for item in graph_context.observations
+        ],
+        "inventory_sources": {
+            item.source: item.freshness
+            for item in graph_context.inventory_sources
+        },
+        "graph_health": {
+            "entities_total": graph_context.graph_health.entities.total,
+            "entities_current": graph_context.graph_health.entities.current,
+            "entities_stale": graph_context.graph_health.entities.stale,
+            "entities_historical": (
+                graph_context.graph_health.entities.historical
+            ),
+            "entities_tombstoned": (
+                graph_context.graph_health.entities.tombstoned
+            ),
+            "relationships_total": (
+                graph_context.graph_health.relationships.total
+            ),
+            "relationships_current": (
+                graph_context.graph_health.relationships.current
+            ),
+            "relationships_stale": (
+                graph_context.graph_health.relationships.stale
+            ),
+            "relationships_historical": (
+                graph_context.graph_health.relationships.historical
+            ),
+            "relationships_tombstoned": (
+                graph_context.graph_health.relationships.tombstoned
+            ),
+            "observations_total": graph_context.graph_health.observations_total,
+        },
+        "topology_truncated": graph_context.truncated,
+        "history_truncated": graph_context.history_truncated,
+    }
+
+
 class PlanningAdvisor(Protocol):
     async def advise(
         self,
@@ -51,7 +125,7 @@ class OpenAICompatiblePlanningAdvisor:
     ) -> ModelPlanningAdvice | None:
         context = _sanitize_for_llm({
             "incident": incident.model_dump(mode="json"),
-            "graph_context": graph_context.model_dump(mode="json"),
+            "graph_context": _model_graph_context(graph_context),
             "eligible_specialists": [
                 {
                     "kind": task.specialist,

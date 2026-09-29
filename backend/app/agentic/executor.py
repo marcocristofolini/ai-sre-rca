@@ -92,6 +92,7 @@ def _shared_envelope(
         plan_id=plan.id,
         tenant_id=plan.tenant_id,
         cluster=plan.cluster,
+        operational_context=plan.graph_context.model_copy(deep=True),
         evidence=evidence,
         entities=_merge_entities(results),
         graph_edges=_merge_edges(results),
@@ -124,6 +125,7 @@ async def execute_investigation_plan(
                 tools=tools,
                 settings=settings,
                 prior_results=dict(results_by_id),
+                operational_context=plan.graph_context,
             )
 
     try:

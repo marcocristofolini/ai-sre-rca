@@ -13,14 +13,15 @@ flowchart TD
     KINV[Inventário da API Kubernetes] --> KCRON[CronJob Read-only de Inventário]
     KCRON --> KSNAP[Snapshots Autoritativos Completos]
     KSNAP --> PAG[(Persistent Awareness Graph)]
-    PAG --> CTX[Contexto Bounded do Serviço]
-    CTX --> EL
+    PAG --> OCS[Operational Context Snapshot Congelado]
+    OCS --> EL
     EL --> COMP[Compilador de Plano no Servidor]
     EL -. contexto elegível sanitizado .-> MPL[LLM Advisory Opcional]
     MPL -. somente nomes + justificativas .-> COMP
     COMP --> PLAN[Investigation Plan Bounded]
     PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
     PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
+    OCS --> ORCH
     ORCH --> SE[Shared Evidence Envelope]
     SE --> AE[Avaliador Agentic Determinístico]
     AE --> XG[Explanation Graph]
@@ -47,6 +48,9 @@ flowchart TD
     PAG --> SV[Projeções por Serviço]
     PAG --> BR[Blast Radius]
     PAG --> CE[Timeline de Change Events]
+    REC --> OCS
+    GH --> OCS
+    CE --> OCS
     GH --> API
     REC --> AUI[Awareness Explorer Next.js<br/>Read-only]
     SV --> AUI
@@ -119,6 +123,30 @@ flowchart LR
 ```
 
 `AWARENESS_OBSERVATION_RETENTION_DAYS` tem padrão 90 e `AWARENESS_TOMBSTONE_RETENTION_DAYS` tem padrão 30. O endpoint usa a mesma fronteira de autorização por tenant/cluster das APIs do grafo. O scheduler opcional chama o mesmo contrato do repositório diretamente com escopo explícito de tenant/cluster, Secret dedicado de banco e `automountServiceAccountToken: false`.
+
+## Operational Context Snapshot agentic — v0.8
+
+O planner agentic não recebe mais somente IDs de entidades/relações vindos de uma projeção de um salto. Antes de compilar as tarefas, ele congela um snapshot operacional bounded que combina topologia reconciliada, histórico recente do grafo, ChangeEvents e Graph Health.
+
+```mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> T[Topologia<br/>fresh / stale / historical / tombstoned]
+    PAG --> H[Observações bounded]
+    PAG --> C[ChangeEvents recentes]
+    GH[Graph Health] --> S[Operational Context Congelado]
+    T --> S
+    H --> S
+    C --> S
+    S --> PLAN[InvestigationPlan]
+    PLAN --> SPEC[Especialistas read-only]
+    S --> ENV[Shared Evidence Envelope]
+    SPEC --> ENV
+    ENV --> DET[Avaliador Determinístico]
+```
+
+Fatos tombstoned permanecem visíveis para explicação, mas ficam fora de `required_entity_ids` das tarefas. ChangeEvents persistidos consumidos durante a execução são marcados como `context_only`. O evaluator remove explicitamente referências context-only do scoring causal, portanto o contexto persistente pode orientar a investigação e preservar continuidade sem virar autoridade de causa raiz.
+
+O contexto possui limites rígidos para quantidade de nós, profundidade do grafo, alvos de histórico, observações por alvo e número de mudanças recentes. O LLM opcional do planner recebe somente uma projeção rasa e sanitizada desse snapshot; continua sem poder criar tarefas, ferramentas, queries, dependências ou verdicts.
 
 ## Compilador de planejamento assistido por modelo — v0.8
 
@@ -555,12 +583,12 @@ Tipos de relação conhecidos passam por uma allow-list explícita de direção 
 
 ## Investigation Planner Bounded — v0.8
 
-O planner é determinístico e bounded. Ele usa a identidade do incidente, feature flags e um neighborhood bounded do serviço para compilar ramos tipados de especialistas. A execução paralela está implementada como runtime read-only opt-in e fica desabilitada por padrão.
+O planner é determinístico e bounded. Ele usa identidade do incidente, feature flags e um Operational Context Snapshot congelado com topologia, histórico, ChangeEvents e Graph Health bounded para compilar ramos tipados de especialistas. A execução paralela está implementada como runtime read-only opt-in e fica desabilitada por padrão.
 
 ```mermaid
 flowchart TD
     INC[IncidentInput] --> PLAN[Planner Determinístico]
-    PAG[Persistent Awareness Graph] --> CTX[Contexto Bounded de 1 Salto]
+    PAG[Persistent Awareness Graph] --> CTX[Operational Context Congelado]
     CTX --> PLAN
     CFG[Budgets do Servidor + Feature Flags] --> PLAN
 
@@ -594,7 +622,9 @@ Propriedades de segurança do planner:
 
 - existem somente seis tipos allow-listed de tarefas especialistas;
 - toda tarefa é read-only;
-- quantidade de tarefas, contexto do grafo, paralelismo e budget de queries por especialista têm limites no servidor;
+- quantidade de tarefas, profundidade/nós de topologia, alvos de histórico, observações por alvo, mudanças recentes, paralelismo e budget de queries por especialista têm limites no servidor;
+- fatos tombstoned permanecem visíveis no contexto operacional, porém ficam fora de `required_entity_ids` atuais;
+- registros persistentes context-only são rejeitados do scoring causal de hipóteses;
 - database/stateful depende da tarefa de traces para que a identidade da dependência seja tipada antes de consultar telemetria específica;
 - o planner não confirma hipóteses, não anexa evidências, não executa mutações e não contorna o plano de remediação separado;
 - o endpoint de execução recompila o plano no servidor, então grafos de tarefas escritos pelo caller nunca são executados;

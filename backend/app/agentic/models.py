@@ -29,11 +29,104 @@ SpecialistKind = Literal[
 ]
 
 
+ContextFreshness = Literal[
+    "fresh",
+    "stale",
+    "historical",
+    "tombstoned",
+]
+
+
+class PlannerContextEntity(BaseModel):
+    id: str
+    kind: str
+    name: str
+    namespace: str | None = None
+    freshness: ContextFreshness
+    depth: int | None = None
+    last_seen: datetime
+    tombstoned_at: datetime | None = None
+
+
+class PlannerContextRelationship(BaseModel):
+    id: str
+    source_id: str
+    target_id: str
+    relationship: str
+    freshness: ContextFreshness
+    last_seen: datetime
+    tombstoned_at: datetime | None = None
+
+
+class PlannerContextObservation(BaseModel):
+    id: str
+    target_type: Literal["entity", "relationship"]
+    target_id: str
+    incident_id: str
+    observed_at: datetime
+    action: str | None = None
+    origin: str | None = None
+
+
+class PlannerContextChange(BaseModel):
+    entity_id: str
+    application: str
+    revision: str | None = None
+    service_name: str | None = None
+    workload_kind: str | None = None
+    workload_name: str | None = None
+    occurred_at: datetime
+
+
+class PlannerInventorySourceContext(BaseModel):
+    source: str
+    freshness: Literal["current", "stale", "missing"]
+    snapshot_id: str | None = None
+    observed_at: datetime | None = None
+    age_seconds: int | None = None
+
+
+class PlannerStateCounts(BaseModel):
+    total: int = 0
+    current: int = 0
+    stale: int = 0
+    historical: int = 0
+    tombstoned: int = 0
+
+
+class PlannerGraphHealthContext(BaseModel):
+    entities: PlannerStateCounts = Field(
+        default_factory=PlannerStateCounts
+    )
+    relationships: PlannerStateCounts = Field(
+        default_factory=PlannerStateCounts
+    )
+    observations_total: int = 0
+    latest_observation_at: datetime | None = None
+
+
 class PlannerGraphContext(BaseModel):
     root_entity_id: str | None = None
     entity_ids: list[str] = Field(default_factory=list)
     relationship_ids: list[str] = Field(default_factory=list)
+    entities: list[PlannerContextEntity] = Field(default_factory=list)
+    relationships: list[PlannerContextRelationship] = Field(
+        default_factory=list
+    )
+    observations: list[PlannerContextObservation] = Field(
+        default_factory=list
+    )
+    recent_changes: list[PlannerContextChange] = Field(
+        default_factory=list
+    )
+    inventory_sources: list[PlannerInventorySourceContext] = Field(
+        default_factory=list
+    )
+    graph_health: PlannerGraphHealthContext = Field(
+        default_factory=PlannerGraphHealthContext
+    )
     truncated: bool = False
+    history_truncated: bool = False
 
 
 class ModelPlanningAdvice(BaseModel):
@@ -93,6 +186,7 @@ class SpecialistResult(BaseModel):
     task_id: str
     specialist: SpecialistKind
     status: SpecialistExecutionStatus
+    context_references: list[str] = Field(default_factory=list)
     evidence: list["Evidence"] = Field(default_factory=list)
     entities: list["Entity"] = Field(default_factory=list)
     graph_edges: list["GraphEdge"] = Field(default_factory=list)
@@ -115,6 +209,9 @@ class SharedEvidenceEnvelope(BaseModel):
     plan_id: str
     tenant_id: str
     cluster: str
+    operational_context: PlannerGraphContext = Field(
+        default_factory=PlannerGraphContext
+    )
     evidence: list["Evidence"] = Field(default_factory=list)
     entities: list["Entity"] = Field(default_factory=list)
     graph_edges: list["GraphEdge"] = Field(default_factory=list)

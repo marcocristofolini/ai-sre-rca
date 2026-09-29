@@ -14,7 +14,11 @@ The planner consumes:
 
 - the normalized incident;
 - server configuration and feature flags;
-- a bounded one-hop service projection from the Persistent Awareness Graph when a service identity is available.
+- a bounded service neighborhood from the Persistent Awareness Graph;
+- reconciled current, stale, historical and tombstoned topology state;
+- bounded append-only observation history for selected graph targets;
+- recent service-scoped ChangeEvents around the incident window;
+- Graph Health counts and authoritative inventory-source freshness.
 
 It can emit only these specialist task types:
 
@@ -27,13 +31,40 @@ It can emit only these specialist task types:
 
 There is no generic tool name, command string, shell field, arbitrary URL or mutation action in the plan schema.
 
+## Frozen Operational Context Snapshot
+
+The planner freezes the persistent context into the `InvestigationPlan` before execution. The executor passes the same snapshot to every specialist and copies it into the Shared Evidence Envelope, so the investigation cannot silently switch to a different graph view halfway through a run.
+
+~~~mermaid
+flowchart LR
+    PAG[(Persistent Awareness Graph)] --> TOPO[Bounded topology<br/>fresh / stale / historical / tombstoned]
+    PAG --> HIST[Bounded target history]
+    PAG --> CH[Recent ChangeEvents]
+    GH[Graph Health + inventory freshness] --> SNAP[Frozen Operational Context Snapshot]
+    TOPO --> SNAP
+    HIST --> SNAP
+    CH --> SNAP
+    SNAP --> PLAN[InvestigationPlan]
+    PLAN --> K[Kubernetes]
+    PLAN --> M[Metrics]
+    PLAN --> L[Logs]
+    PLAN --> T[Traces]
+    PLAN --> D[Database]
+    PLAN --> C[Changes]
+    SNAP --> ENV[Shared Evidence Envelope]
+~~~
+
+The snapshot is context, not a root-cause authority. Tombstoned entities remain visible for explanation but are excluded from `required_entity_ids`. Persistent ChangeEvents are emitted as `context_only` evidence when the changes specialist consumes them. Context-only evidence is explicitly removed from hypothesis scoring, so a historical deployment, tombstone or stale graph fact cannot confirm a causal hypothesis by itself.
+
+The snapshot is bounded by `AGENTIC_MAX_CONTEXT_NODES`, `AGENTIC_CONTEXT_DEPTH`, `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS`, `AGENTIC_CONTEXT_HISTORY_PER_TARGET` and `AGENTIC_CONTEXT_CHANGE_LIMIT`.
+
 ## Optional model-assisted compilation
 
 The model never creates a `SpecialistTask`. The deterministic planner first builds the complete eligible task set from incident identity, feature flags and graph context. The model sees only sanitized context plus those eligible specialist descriptions and may return specialist names with short rationales.
 
 ~~~mermaid
 flowchart LR
-    I[Incident + Bounded Graph Context] --> EL[Deterministic Eligible Task Set]
+    I[Incident + Frozen Operational Context] --> EL[Deterministic Eligible Task Set]
     EL --> ADV{Model Planner Enabled?}
     ADV -->|No| DP[Deterministic Plan]
     ADV -->|Yes| LLM[Advisory LLM<br/>specialist names only]
@@ -57,7 +88,7 @@ Unknown or ineligible specialist names are rejected. Model-provided text never r
 ~~~mermaid
 flowchart TD
     I[IncidentInput] --> P[Bounded Investigation Planner]
-    G[Persistent Awareness Graph] --> C[Bounded Service Context]
+    G[Persistent Awareness Graph] --> C[Frozen Operational Context]
     C --> P
     S[Server-side Budgets] --> P
 
@@ -156,6 +187,10 @@ The current server-side defaults are:
 | `AGENTIC_MAX_TASKS` | 6 |
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
+| `AGENTIC_CONTEXT_DEPTH` | 2 |
+| `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS` | 12 |
+| `AGENTIC_CONTEXT_HISTORY_PER_TARGET` | 2 |
+| `AGENTIC_CONTEXT_CHANGE_LIMIT` | 20 |
 | `AGENTIC_SPECIALIST_MAX_QUERIES` | 12 |
 | `AGENTIC_KUBERNETES_MAX_QUERIES` | 30 |
 

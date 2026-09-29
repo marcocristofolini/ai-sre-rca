@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from app.agentic.models import (
     InvestigationPlan,
     ModelPlanningAdvice,
     PlannerAdvisoryTrace,
+    PlannerContextChange,
+    PlannerContextEntity,
+    PlannerContextObservation,
+    PlannerContextRelationship,
     PlannerGraphContext,
+    PlannerGraphHealthContext,
+    PlannerInventorySourceContext,
+    PlannerStateCounts,
     SpecialistKind,
     SpecialistTask,
 )
+from app.awareness.change_events import query_change_events
 from app.awareness.topology import (
     AmbiguousServiceError,
     AwarenessEntityNotFoundError,
@@ -66,13 +76,82 @@ def _append_task(
     ))
 
 
+def _state_counts(value) -> PlannerStateCounts:
+    return PlannerStateCounts(
+        total=value.total,
+        current=value.current,
+        stale=value.stale,
+        historical=value.historical,
+        tombstoned=value.tombstoned,
+    )
+
+
 async def _graph_context(
     repo,
     incident: IncidentInput,
     settings: Settings,
 ) -> PlannerGraphContext:
+    health = await repo.get_awareness_health(
+        tenant_id=incident.tenant_id,
+        cluster=incident.cluster,
+        stale_after_minutes=settings.awareness_stale_after_minutes,
+        inventory_max_age_minutes=settings.awareness_inventory_max_age_minutes,
+        authoritative_sources=(
+            settings.awareness_authoritative_inventory_source_set
+        ),
+    )
+    base = PlannerGraphContext(
+        inventory_sources=[
+            PlannerInventorySourceContext(
+                source=item.source,
+                freshness=item.freshness,
+                snapshot_id=item.snapshot_id,
+                observed_at=item.observed_at,
+                age_seconds=item.age_seconds,
+            )
+            for item in health.inventory_sources
+        ],
+        graph_health=PlannerGraphHealthContext(
+            entities=_state_counts(health.entities),
+            relationships=_state_counts(health.relationships),
+            observations_total=health.observations_total,
+            latest_observation_at=health.latest_observation_at,
+        ),
+    )
+
+    recent_changes: list[PlannerContextChange] = []
+    if incident.service:
+        changes = await query_change_events(
+            repo,
+            tenant_id=incident.tenant_id,
+            cluster=incident.cluster,
+            service_name=incident.service,
+            namespace=incident.namespace,
+            since=(
+                incident.starts_at
+                - timedelta(
+                    minutes=settings.change_correlation_window_minutes
+                )
+            ),
+            until=incident.starts_at + timedelta(minutes=5),
+            limit=settings.agentic_context_change_limit,
+        )
+        recent_changes = [
+            PlannerContextChange(
+                entity_id=item.entity_id,
+                application=item.application,
+                revision=item.revision,
+                service_name=item.service_name,
+                workload_kind=item.workload_kind,
+                workload_name=item.workload_name,
+                occurred_at=item.occurred_at,
+            )
+            for item in changes
+        ]
+        base.recent_changes = recent_changes
+
     if not incident.service:
-        return PlannerGraphContext()
+        return base
 
     try:
         projection = await build_service_topology(
@@ -81,28 +160,117 @@ async def _graph_context(
             cluster=incident.cluster,
             service_name=incident.service,
             namespace=incident.namespace,
-            requested_depth=1,
-            max_depth=min(1, settings.awareness_max_traversal_depth),
+            requested_depth=settings.agentic_context_depth,
+            max_depth=min(
+                settings.agentic_context_depth,
+                settings.awareness_max_traversal_depth,
+            ),
             max_nodes=min(
                 settings.agentic_max_context_nodes,
                 settings.awareness_max_traversal_nodes,
             ),
             max_edges=settings.awareness_max_traversal_edges,
             stale_after_minutes=settings.awareness_stale_after_minutes,
-            include_tombstoned=False,
+            include_tombstoned=True,
         )
     except (AwarenessEntityNotFoundError, AmbiguousServiceError):
-        return PlannerGraphContext()
+        return base
 
-    return PlannerGraphContext(
-        root_entity_id=projection.root.id,
-        entity_ids=[item.id for item in projection.entities],
-        relationship_ids=[
-            item.id for item in projection.relationships
+    entities = [
+        PlannerContextEntity(
+            id=item.id,
+            kind=item.kind,
+            name=item.name,
+            namespace=item.namespace,
+            freshness=item.freshness,
+            depth=item.depth,
+            last_seen=item.last_seen,
+            tombstoned_at=item.tombstoned_at,
+        )
+        for item in projection.entities
+    ]
+    relationships = [
+        PlannerContextRelationship(
+            id=item.id,
+            source_id=item.source_id,
+            target_id=item.target_id,
+            relationship=item.relationship,
+            freshness=item.freshness,
+            last_seen=item.last_seen,
+            tombstoned_at=item.tombstoned_at,
+        )
+        for item in projection.relationships
+    ]
+
+    target_candidates: list[tuple[str, str]] = [
+        ("entity", projection.root.id),
+        *[
+            ("entity", item.id)
+            for item in projection.entities
+            if item.id != projection.root.id
         ],
-        truncated=projection.truncated,
-    )
+        *[
+            ("relationship", item.id)
+            for item in projection.relationships
+        ],
+    ]
+    max_targets = settings.agentic_context_max_history_targets
+    selected_targets = target_candidates[:max_targets]
+    observations: list[PlannerContextObservation] = []
+    history_truncated = len(target_candidates) > len(selected_targets)
 
+    for target_type, target_id in selected_targets:
+        history = await repo.get_awareness_history(
+            target_id=target_id,
+            tenant_id=incident.tenant_id,
+            cluster=incident.cluster,
+            limit=settings.agentic_context_history_per_target,
+        )
+        if len(history) >= settings.agentic_context_history_per_target:
+            history_truncated = True
+        observations.extend(
+            PlannerContextObservation(
+                id=item.id,
+                target_type=target_type,
+                target_id=item.target_id,
+                incident_id=item.incident_id,
+                observed_at=item.observed_at,
+                action=(
+                    str(item.payload.get("action"))
+                    if item.payload.get("action") is not None
+                    else None
+                ),
+                origin=(
+                    str(item.payload.get("origin"))
+                    if item.payload.get("origin") is not None
+                    else None
+                ),
+            )
+            for item in history
+            if item.target_type in {"entity", "relationship"}
+        )
+
+    return base.model_copy(update={
+        "root_entity_id": projection.root.id,
+        # Preserve the original planner contract: required entity/relationship
+        # IDs are current-or-historical context, never tombstoned facts.
+        "entity_ids": [
+            item.id
+            for item in projection.entities
+            if item.freshness != "tombstoned"
+        ],
+        "relationship_ids": [
+            item.id
+            for item in projection.relationships
+            if item.freshness != "tombstoned"
+        ],
+        "entities": entities,
+        "relationships": relationships,
+        "observations": observations,
+        "recent_changes": recent_changes,
+        "truncated": projection.truncated,
+        "history_truncated": history_truncated,
+    })
 
 def _eligible_tasks(
     *,
