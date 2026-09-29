@@ -377,30 +377,13 @@ class KubernetesInventoryCollector:
                     metadata={"basis": "spec.nodeName"},
                 )
 
-        def stable_owner(
-            pod_key: tuple[str, str, str],
-        ) -> tuple[str, str, str] | None:
-            current = pod_key
-            seen: set[tuple[str, str, str]] = set()
-            for _ in range(6):
-                if current in seen:
-                    return None
-                seen.add(current)
-                owner = owner_by_child.get(current)
-                if owner is None:
-                    return None
-                owner_resource = resources_by_key.get(owner)
-                if owner_resource is None:
-                    return None
-                if owner_resource.kind in SERVICE_TARGET_KINDS:
-                    return owner
-                current = owner
-            return None
-
-        pods = [
+        workloads = [
             (key, item)
             for key, item in raw_by_key.items()
-            if key[0] == "pod" and key in resources_by_key
+            if (
+                key in resources_by_key
+                and resources_by_key[key].kind in SERVICE_TARGET_KINDS
+            )
         ]
         for service_key, item in raw_by_key.items():
             if service_key[0] != "service":
@@ -411,19 +394,16 @@ class KubernetesInventoryCollector:
             selector = (item.get("spec") or {}).get("selector")
             if not isinstance(selector, dict) or not selector:
                 continue
-            for pod_key, pod_item in pods:
-                pod = resources_by_key[pod_key]
-                if pod.namespace != service.namespace:
+            for workload_key, workload_item in workloads:
+                workload = resources_by_key[workload_key]
+                if workload.namespace != service.namespace:
                     continue
-                labels = (pod_item.get("metadata") or {}).get("labels") or {}
+                template = (workload_item.get("spec") or {}).get("template") or {}
+                labels = (template.get("metadata") or {}).get("labels") or {}
                 if not isinstance(labels, dict):
                     continue
                 if not _selector_matches(selector, labels):
                     continue
-                workload_key = stable_owner(pod_key)
-                if workload_key is None:
-                    continue
-                workload = resources_by_key[workload_key]
                 key = (workload_key, "serves", service_key)
                 relationships[key] = InventoryRelationship(
                     source=InventoryResourceRef(
@@ -438,7 +418,7 @@ class KubernetesInventoryCollector:
                     ),
                     relationship="serves",
                     metadata={
-                        "basis": "service.selector",
+                        "basis": "service.selector+workload.podTemplate",
                         "selector": dict(selector),
                     },
                 )
@@ -457,11 +437,7 @@ class KubernetesInventoryCollector:
             or ("ReplicaSet" in kinds and "Deployment" in kinds)
         ):
             output.append("owned_by")
-        if (
-            "Service" in kinds
-            and "Pod" in kinds
-            and bool(kinds & SERVICE_TARGET_KINDS)
-        ):
+        if "Service" in kinds and bool(kinds & SERVICE_TARGET_KINDS):
             output.append("serves")
         if allow_scheduled_on and {"Pod", "Node"}.issubset(kinds):
             output.append("scheduled_on")
@@ -639,6 +615,19 @@ async def reconcile_kubernetes_inventory(
             "kubernetes must be allow-listed in "
             "AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES"
         )
+    registry = settings.cluster_config
+    if len(clusters) > 1 and not registry:
+        raise RuntimeError(
+            "multiple AWARENESS_INVENTORY_CLUSTERS require "
+            "CLUSTER_CONFIG_JSON entries for explicit routing"
+        )
+    if registry:
+        missing = sorted(set(clusters) - set(registry))
+        if missing:
+            raise RuntimeError(
+                "inventory clusters are missing from CLUSTER_CONFIG_JSON: "
+                + ", ".join(missing)
+            )
 
     collector = KubernetesInventoryCollector(
         tools,
