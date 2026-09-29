@@ -68,6 +68,8 @@ O executor recompila o plano no servidor imediatamente antes da execução. O cl
 - Toda tarefa recebe `read_only=true`.
 - O servidor limita quantidade de tarefas, paralelismo, tamanho do contexto do grafo e budget de queries por especialista.
 - O specialist Kubernetes delega para a mesma etapa determinística Kubernetes usada pelo core engine; ele não mantém uma segunda implementação simplificada de RCA.
+- A prioridade de especificidade da causa raiz Kubernetes é compartilhada com o seletor clássico de playbooks, impedindo que uma hipótese de mecanismo supere uma causa específica confirmada apenas por score bruto maior.
+- Qualquer hipótese emitida por um specialist cujo status final não seja `completed` é bloqueada pelo gate de contexto; evidência parcial de ramos `failed`, `skipped` ou `budget_exhausted` nunca pode ser selecionada.
 - Kubernetes só é planejado quando o incidente possui identidade de runtime Kubernetes.
 - Logs exigem namespace e identidade de pod/serviço.
 - Traces exigem identidade de serviço e trace analysis habilitada.
