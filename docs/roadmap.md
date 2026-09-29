@@ -181,4 +181,7 @@ Agentic investigation foundation:
 - [x] shared Kubernetes stage reused by classic and agentic investigation paths
 - [x] eviction, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter, HPA, KEDA and NodeNotReady parity regressions
 - [x] dedicated Kubernetes specialist budget layered under the global query budget
-- [ ] optional model-assisted planning compiled through the specialist allow-list
+- [x] optional model-assisted planning compiled through the specialist allow-list
+- [x] model advice cannot alter task templates, query budgets or dependencies
+- [x] Kubernetes/metrics/traces baseline preserved when deterministically eligible
+- [x] invalid/unknown model specialist names fail back to the deterministic plan
