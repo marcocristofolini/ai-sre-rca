@@ -9,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from app.awareness.inventory import (
     AuthoritativeInventorySnapshot,
     InventoryReconciliationResult,
+    InventorySnapshotConflictError,
     inventory_observation_id,
+    inventory_snapshot_fingerprint,
+    inventory_snapshot_receipt_id,
     materialize_inventory_entities,
     materialize_inventory_relationships,
     resource_in_coverage,
@@ -358,6 +361,32 @@ class MemoryRepository:
         self,
         snapshot: AuthoritativeInventorySnapshot,
     ) -> InventoryReconciliationResult:
+        receipt_id = inventory_snapshot_receipt_id(snapshot)
+        fingerprint = inventory_snapshot_fingerprint(snapshot)
+        existing_receipt = self._awareness_observations.get(receipt_id)
+        if existing_receipt is not None:
+            if existing_receipt.payload.get("fingerprint") != fingerprint:
+                raise InventorySnapshotConflictError(
+                    "authoritative inventory snapshot_id was reused "
+                    "with different content"
+                )
+        else:
+            self._awareness_observations[receipt_id] = AwarenessObservation(
+                id=receipt_id,
+                tenant_id=snapshot.tenant_id,
+                cluster=snapshot.cluster,
+                incident_id=f"inventory:{snapshot.snapshot_id}",
+                target_type="inventory_snapshot",
+                target_id=receipt_id,
+                observed_at=snapshot.observed_at,
+                payload={
+                    "origin": "authoritative_inventory",
+                    "source": snapshot.source,
+                    "snapshot_id": snapshot.snapshot_id,
+                    "fingerprint": fingerprint,
+                },
+            )
+
         entities = materialize_inventory_entities(snapshot)
         relationships = materialize_inventory_relationships(snapshot)
         origin = f"inventory:{snapshot.snapshot_id}"
@@ -1185,6 +1214,38 @@ class SQLRepository:
         )
 
         async with self.sessions() as session:
+            receipt_id = inventory_snapshot_receipt_id(snapshot)
+            fingerprint = inventory_snapshot_fingerprint(snapshot)
+            existing_receipt = await session.get(
+                AwarenessObservationRecord,
+                receipt_id,
+            )
+            if existing_receipt is not None:
+                if (
+                    (existing_receipt.payload or {}).get("fingerprint")
+                    != fingerprint
+                ):
+                    raise InventorySnapshotConflictError(
+                        "authoritative inventory snapshot_id was reused "
+                        "with different content"
+                    )
+            else:
+                session.add(AwarenessObservationRecord(
+                    id=receipt_id,
+                    tenant_id=snapshot.tenant_id,
+                    cluster=snapshot.cluster,
+                    incident_id=origin,
+                    target_type="inventory_snapshot",
+                    target_id=receipt_id,
+                    observed_at=snapshot.observed_at,
+                    payload={
+                        "origin": "authoritative_inventory",
+                        "source": snapshot.source,
+                        "snapshot_id": snapshot.snapshot_id,
+                        "fingerprint": fingerprint,
+                    },
+                ))
+
             async def append_observation(
                 target_type: str,
                 target_id: str,
