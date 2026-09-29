@@ -275,6 +275,7 @@ def reconcile_snapshot(
     snapshot: AwarenessGraphSnapshot,
     *,
     stale_after_minutes: int,
+    include_tombstoned: bool = True,
     as_of: datetime | None = None,
 ) -> ReconciledGraphSnapshot:
     now = as_of or datetime.now(timezone.utc)
@@ -311,6 +312,7 @@ async def _bounded_neighborhood(
     max_depth: int,
     max_nodes: int,
     max_edges: int,
+    include_tombstoned: bool,
 ) -> tuple[
     dict[str, AwarenessEntity],
     dict[str, AwarenessRelationship],
@@ -346,6 +348,8 @@ async def _bounded_neighborhood(
         for relationship in adjacent:
             if relationship.id in relationships:
                 continue
+            if not include_tombstoned and relationship.tombstoned_at is not None:
+                continue
             candidate_ids = (
                 relationship.source_id,
                 relationship.target_id,
@@ -363,6 +367,8 @@ async def _bounded_neighborhood(
                 candidate = neighbor_map.get(candidate_id)
                 if candidate is None:
                     truncated = True
+                    continue
+                if not include_tombstoned and candidate.tombstoned_at is not None:
                     continue
                 entities[candidate_id] = candidate
                 depth_by_id[candidate_id] = depth + 1
@@ -417,6 +423,7 @@ async def build_service_topology(
         max_depth=effective_depth,
         max_nodes=max_nodes,
         max_edges=max_edges,
+        include_tombstoned=include_tombstoned,
     )
     truncated = truncated or requested_depth > max_depth
 
