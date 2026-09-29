@@ -167,19 +167,22 @@ def _resource(kind: str, item: dict[str, Any]) -> InventoryResource:
     )
 
 
-def _controller_owner(item: dict[str, Any]) -> tuple[str, str] | None:
+def _controller_owner(
+    item: dict[str, Any],
+) -> tuple[str, str, str] | None:
     metadata = item.get("metadata") or {}
     raw_refs = metadata.get("ownerReferences") or []
     refs = [ref for ref in raw_refs if isinstance(ref, dict)]
     controllers = [ref for ref in refs if ref.get("controller") is True]
-    candidates = controllers or refs
-    if len(candidates) != 1:
+    if len(controllers) != 1:
         return None
-    kind = str(candidates[0].get("kind") or "").strip()
-    name = str(candidates[0].get("name") or "").strip()
-    if not kind or not name:
+    controller = controllers[0]
+    kind = str(controller.get("kind") or "").strip()
+    name = str(controller.get("name") or "").strip()
+    uid = str(controller.get("uid") or "").strip()
+    if not kind or not name or not uid:
         return None
-    return kind, name
+    return kind, name, uid
 
 
 def _selector_matches(
@@ -307,11 +310,6 @@ class KubernetesInventoryCollector:
             tuple[tuple[str, str, str], str, tuple[str, str, str]],
             InventoryRelationship,
         ] = {}
-        owner_by_child: dict[
-            tuple[str, str, str],
-            tuple[str, str, str],
-        ] = {}
-
         for child_key, item in raw_by_key.items():
             child_resource = resources_by_key.get(child_key)
             if child_resource is None:
@@ -319,16 +317,21 @@ class KubernetesInventoryCollector:
             owner = _controller_owner(item)
             if owner is None:
                 continue
-            owner_kind, owner_name = owner
+            owner_kind, owner_name, owner_uid = owner
             owner_key = _identity(
                 owner_kind,
                 child_resource.namespace,
                 owner_name,
             )
             owner_resource = resources_by_key.get(owner_key)
-            if owner_resource is None:
+            owner_item = raw_by_key.get(owner_key)
+            if owner_resource is None or owner_item is None:
                 continue
-            owner_by_child[child_key] = owner_key
+            observed_owner_uid = str(
+                (owner_item.get("metadata") or {}).get("uid") or ""
+            ).strip()
+            if not observed_owner_uid or observed_owner_uid != owner_uid:
+                continue
             key = (child_key, "owned_by", owner_key)
             relationships[key] = InventoryRelationship(
                 source=InventoryResourceRef(
@@ -342,7 +345,10 @@ class KubernetesInventoryCollector:
                     namespace=owner_resource.namespace,
                 ),
                 relationship="owned_by",
-                metadata={"basis": "ownerReference"},
+                metadata={
+                    "basis": "ownerReference.uid",
+                    "owner_uid": owner_uid,
+                },
             )
 
         if allow_scheduled_on:
