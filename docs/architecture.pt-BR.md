@@ -43,6 +43,9 @@ flowchart TD
     PAG --> SV[Projeções por Serviço]
     PAG --> BR[Blast Radius]
     PAG --> CE[Timeline de Change Events]
+    REC --> AUI[Awareness Explorer Next.js<br/>Read-only]
+    SV --> AUI
+    CE --> AUI
 
     EV --> H[Hipóteses Determinísticas]
     EV --> MEM[Memória de Incidentes<br/>PostgreSQL + pgvector]

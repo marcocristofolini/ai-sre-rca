@@ -20,6 +20,7 @@ A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o in
 - **Projeções centradas em serviço** com budgets de profundidade, nós e arestas.
 - **Blast radius baseado no grafo** com direção causal explícita por tipo de relação. Relações desconhecidas ou stale continuam visíveis como contexto, mas nunca viram caminhos de impacto atual.
 - **Semântica histórica para mudanças.** Change Events e suas arestas são apenas contexto, reconciliam como `historical` e nunca entram na allow-list causal do blast radius.
+- **Awareness Explorer read-only em `/awareness`** com escopo por cluster/namespace/serviço, freshness reconciliado das entidades, relações persistidas e timeline bounded de ChangeEvents. A tela reutiliza a autorização viewer e o client server-side existente sem introduzir controles de escrita no grafo.
 - **Investigation Planner bounded** que emite somente tarefas read-only allow-listed: Kubernetes, métricas, logs, traces, database e mudanças.
 - **Paridade do specialist Kubernetes com o core engine.** O ramo agentic Kubernetes agora delega para a mesma etapa determinística usada pelo RCA clássico, cobrindo eviction/ephemeral-storage, OOMKilled, CrashLoopBackOff, FailedScheduling/capacidade do Karpenter, HPA, KEDA e NodeNotReady com as mesmas hipóteses e regras de evidência.
 - **Política compartilhada de prioridade Kubernetes + fail-closed para ramos parciais.** Os caminhos clássico e agentic usam a mesma ordem de especificidade, e hipóteses de um specialist que não concluiu nunca podem ser selecionadas.
@@ -149,6 +150,9 @@ flowchart TD
     G --> S[Projeções por Serviço]
     G --> B[Blast Radius]
     G --> CE[Timeline de Change Events]
+    R --> AUI[Awareness Explorer Read-only]
+    S --> AUI
+    CE --> AUI
 
     L --> D[Avaliador Determinístico]
     V -. mesmas regras de autoridade .-> D
@@ -179,6 +183,7 @@ Acesse:
 - Demo stateful Kafka: `http://localhost:3000/stateful/kafka`
 - Demo stateful Redis: `http://localhost:3000/stateful/redis`
 - UI de health/RBAC operacional: `http://localhost:3000/ops`
+- Explorer do Persistent Awareness Graph: `http://localhost:3000/awareness?cluster=prod-us-east-1`
 - API de topologia reconciliada: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - API de topologia por serviço: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - API de blast radius: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`

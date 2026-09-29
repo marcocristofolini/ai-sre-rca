@@ -13,6 +13,7 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Stable deployment-event identity across repeated incidents, with observation counts instead of duplicate event nodes.
 - `historical` reconciliation semantics for immutable event nodes/edges, distinct from fresh/stale topology state.
 - Bounded `GET /api/v1/awareness/changes` timeline API with service, namespace and time-window filters.
+- Read-only `/awareness` explorer for reconciled entities, stored relationships, service-scoped projections and historical ChangeEvent context.
 - Fresh/stale topology reconciliation from last_seen without inferring unsafe tombstones.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
 - Graph-backed blast radius with an allow-listed relationship impact-direction model.
@@ -73,7 +74,6 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ### Planned
 - Authoritative tombstones from full inventory reconciliation.
-- Persistent graph explorer UI.
 - Remediation policy bundles, post-action verification and signed approval evidence.
 - Deeper PostgreSQL blocker/query analysis, Kafka rebalance/broker context and Redis slowlog/hot-key analysis.
 

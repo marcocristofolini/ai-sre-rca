@@ -118,16 +118,32 @@ Concluído na branch atual:
 - projeções bounded centradas em serviço;
 - blast radius com direção causal explícita;
 - contexto bounded do grafo para o Investigation Planner;
-- avaliação determinística do shared envelope e rejected-hypothesis explanation graph.
+- avaliação determinística do shared envelope e rejected-hypothesis explanation graph;
+- Awareness Explorer read-only para topologia reconciliada, projeções por serviço e histórico de ChangeEvents.
 
 Ainda planejado:
 
 - tombstones autoritativos a partir de reconciliação de inventário completo;
 - enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
 - métricas e política de retention do grafo;
-- UI de exploração do grafo;
 - contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
 
+
+## Awareness Explorer read-only
+
+A rota Next.js `/awareness` consome somente APIs de viewer. Ela permite escopo por cluster, namespace e serviço, renderiza o estado reconciliado `fresh` / `stale` / `historical` das entidades, mostra relações persistidas e posiciona ChangeEvents em uma timeline histórica bounded. Quando um serviço é informado, a leitura de topologia usa o endpoint existente de projeção bounded por serviço em vez de implementar travessia do grafo no browser.
+
+O explorer encaminha os mesmos headers de autorização da UI existente e expõe override opcional de tenant apenas para principals que já possuem escopo global de tenant. Não há controles de mutação nem endpoint de escrita no grafo.
+
+~~~mermaid
+flowchart LR
+    UI[Awareness Explorer] --> TOP[GET /awareness/topology]
+    UI --> SVC[GET /awareness/services/service]
+    UI --> CH[GET /awareness/changes]
+    TOP --> PAG[(Persistent Awareness Graph)]
+    SVC --> PAG
+    CH --> PAG
+~~~
 
 ## Change Events first-class
 
