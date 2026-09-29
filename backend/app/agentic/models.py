@@ -36,6 +36,22 @@ class PlannerGraphContext(BaseModel):
     truncated: bool = False
 
 
+class ModelPlanningAdvice(BaseModel):
+    requested_specialists: list[str] = Field(default_factory=list)
+    specialist_reasons: dict[str, str] = Field(default_factory=dict)
+    rationale: str = ""
+
+
+class PlannerAdvisoryTrace(BaseModel):
+    source: Literal["model"] = "model"
+    requested_specialists: list[str] = Field(default_factory=list)
+    accepted_specialists: list[SpecialistKind] = Field(default_factory=list)
+    rejected_specialists: list[str] = Field(default_factory=list)
+    forced_specialists: list[SpecialistKind] = Field(default_factory=list)
+    rationale: str = ""
+    fallback_reason: str | None = None
+
+
 class SpecialistTask(BaseModel):
     id: str
     specialist: SpecialistKind
@@ -52,7 +68,8 @@ class InvestigationPlan(BaseModel):
     tenant_id: str
     cluster: str
     incident: IncidentInput
-    planner_origin: Literal["deterministic"] = "deterministic"
+    planner_origin: Literal["deterministic", "model-assisted"] = "deterministic"
+    advisory_trace: PlannerAdvisoryTrace | None = None
     graph_context: PlannerGraphContext = Field(
         default_factory=PlannerGraphContext
     )
