@@ -10,7 +10,10 @@ flowchart TD
     N --> EL[Deterministic Eligible Specialists]
     N --> I[Investigation Engine]
 
-    PAG[(Persistent Awareness Graph)] --> CTX[Bounded Service Context]
+    KINV[Kubernetes API Inventory] --> KCRON[Read-only Inventory CronJob]
+    KCRON --> KSNAP[Complete Authoritative Snapshots]
+    KSNAP --> PAG[(Persistent Awareness Graph)]
+    PAG --> CTX[Bounded Service Context]
     CTX --> EL
     EL --> COMP[Server-side Plan Compiler]
     EL -. sanitized eligible context .-> MPL[Optional Advisory LLM]
@@ -59,6 +62,25 @@ flowchart TD
 ```
 
 
+
+## Automatic Kubernetes inventory reconciliation — v0.8
+
+The automatic inventory path is a separate Kubernetes CronJob rather than a loop inside the API Deployment. It uses the investigator ServiceAccount, which has GET/LIST/WATCH only, and writes only through the existing authoritative graph repository contract.
+
+```mermaid
+flowchart LR
+    CRON[CronJob<br/>Forbid overlap] --> LIST[Paginated Kubernetes LIST]
+    LIST --> OK{All configured lists complete?}
+    OK -->|No| FAIL[Exit non-zero<br/>No snapshot applied]
+    OK -->|Yes| UID[Verify controller ownerReference UID]
+    UID --> REL[Derive explicit relationships]
+    REL --> SNAP[Authoritative snapshot]
+    SNAP --> LOCK[Serialized PostgreSQL reconciliation]
+    LOCK --> GRAPH[(Persistent Awareness Graph)]
+    LOCK --> AUDIT[(Audit events)]
+```
+
+The collector never infers ownership from naming conventions. An `owned_by` edge is emitted only when a single controller `ownerReference` exists and its UID matches the currently observed owner object. Scheduling uses `Pod.spec.nodeName`. Service routing uses exact Service selectors against workload Pod-template labels, so the topology remains stable even when a workload is scaled to zero. Namespace-scoped runs split Node inventory from namespaced resources so a partial namespace scope cannot claim authoritative Pod-to-Node deletion semantics.
 
 ## Model-assisted planning compiler — v0.8
 

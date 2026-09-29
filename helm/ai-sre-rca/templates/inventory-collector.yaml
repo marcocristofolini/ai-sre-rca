@@ -1,0 +1,55 @@
+{{- if .Values.inventoryCollector.enabled }}
+{{- if eq (len .Values.inventoryCollector.clusters) 0 }}
+{{- fail "inventoryCollector.clusters must contain at least one logical cluster when inventoryCollector.enabled=true" }}
+{{- end }}
+{{- if not .Values.inventoryCollector.existingSecret }}
+{{- fail "inventoryCollector.existingSecret is required and should contain only the collector credentials such as DATABASE_URL" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-inventory-collector
+spec:
+  schedule: {{ .Values.inventoryCollector.schedule | quote }}
+  concurrencyPolicy: {{ .Values.inventoryCollector.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.inventoryCollector.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.inventoryCollector.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.inventoryCollector.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}-inventory-collector
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: Never
+          containers:
+            - name: inventory-collector
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - -m
+                - app.inventory.worker
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.inventoryCollector.existingSecret | quote }}
+              env:
+                - name: AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES
+                  value: {{ .Values.backend.env.AWARENESS_AUTHORITATIVE_INVENTORY_SOURCES | quote }}
+                - name: AWARENESS_INVENTORY_TENANT_ID
+                  value: {{ .Values.inventoryCollector.tenantId | quote }}
+                - name: AWARENESS_INVENTORY_CLUSTERS
+                  value: {{ join "," .Values.inventoryCollector.clusters | quote }}
+                - name: AWARENESS_INVENTORY_NAMESPACES
+                  value: {{ join "," .Values.inventoryCollector.namespaces | quote }}
+                - name: AWARENESS_INVENTORY_KINDS
+                  value: {{ join "," .Values.inventoryCollector.kinds | quote }}
+                - name: AWARENESS_INVENTORY_PAGE_SIZE
+                  value: {{ .Values.inventoryCollector.pageSize | quote }}
+                - name: CLUSTER_CONFIG_JSON
+                  value: {{ .Values.backend.env.CLUSTER_CONFIG_JSON | quote }}
+              resources:
+{{ toYaml .Values.resources.inventoryCollector | indent 16 }}
+{{- end }}

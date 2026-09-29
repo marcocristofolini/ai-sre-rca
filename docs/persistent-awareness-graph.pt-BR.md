@@ -72,6 +72,35 @@ Ausência em um incidente nunca é evidência de deleção. Um tombstone só pod
 
 Uma observação posterior, vinda de incidente ou inventário autoritativo, pode reativar um fato tombstoned. Snapshots antigos nunca sobrescrevem nem removem observações mais novas. A tupla `tenant + cluster + source + snapshot_id` é imutável: repetir o mesmo conteúdo é idempotente, enquanto reutilizar essa identidade com conteúdo diferente retorna conflito. Fatos tombstoned continuam consultáveis no grafo/histórico para explicação, mas ficam fora da resolução corrente de entidades e da travessia de blast radius.
 
+## Fonte automática de inventário Kubernetes
+
+A primeira fonte autoritativa automatizada é um worker one-shot de inventário Kubernetes, implantado pelo Helm como um `CronJob` opcional. Ele não roda dentro do processo da API: escalar a API horizontalmente não multiplica loops de inventário, e `concurrencyPolicy: Forbid` impede jobs sobrepostos da mesma release.
+
+O worker executa somente operações GET/LIST no Kubernetes usando o ServiceAccount read-only do investigador. Os kinds iniciais suportados são `Service`, `Deployment`, `StatefulSet`, `DaemonSet`, `ReplicaSet`, `Pod` e `Node`. A paginação segue o token `metadata.continue` da API Kubernetes até terminar e falha de forma fechada se uma página trouxer itens malformados ou repetir um token de continuação. Qualquer falha HTTP, de listagem ou de payload aborta a coleta antes que um snapshot chegue à reconciliação.
+
+As relações são emitidas somente a partir de estado explícito do Kubernetes:
+
+- `owned_by` a partir de um único `ownerReference` controlador, somente quando seu UID corresponde ao objeto owner observado;
+- `scheduled_on` a partir de `Pod.spec.nodeName`, apenas quando o snapshot é cluster-wide e inclui Nodes;
+- `serves` a partir de um selector não vazio de Service que corresponde aos labels do Pod template de um Deployment, StatefulSet ou DaemonSet, inclusive quando o workload está escalado para zero.
+
+Uma coleta limitada por namespace propositalmente não afirma semântica de deleção Pod-to-Node, porque Node possui escopo de cluster. Nesse modo o worker emite escopos autoritativos separados para recursos namespaced e Nodes. Uma coleta cluster-wide pode reconciliar arestas de scheduling porque os dois lados foram observados na mesma coleta completa.
+
+~~~mermaid
+flowchart LR
+    CRON[Helm CronJob<br/>concurrencyPolicy: Forbid] --> GET[Kubernetes somente GET/LIST]
+    GET --> PAGE[Paginar até metadata.continue ficar vazio]
+    PAGE --> VALID{Objetos válidos + token progride?}
+    VALID -->|Não| ABORT[Abortar execução<br/>sem reconciliação]
+    VALID -->|Sim| COMPLETE{Todas as listas configuradas completas?}
+    COMPLETE -->|Não| ABORT
+    COMPLETE -->|Sim| BUILD[Construir recursos + relações explícitas]
+    BUILD --> SNAP[Snapshot autoritativo completo]
+    SNAP --> REC[Contrato existente de reconciliação]
+    REC --> PAG[(Persistent Awareness Graph)]
+    REC --> AUDIT[(Histórico de auditoria)]
+~~~
+
 ## Projeções centradas em serviço
 
 A projeção resolve a entidade canônica exata do tipo `Service` e percorre um neighborhood topológico sob budgets rígidos de profundidade, nós e arestas. Se o mesmo nome de serviço existir em mais de um namespace, o caller precisa informar o namespace em vez de receber uma correspondência arbitrária.

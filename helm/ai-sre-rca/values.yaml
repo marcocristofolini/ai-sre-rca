@@ -76,6 +76,27 @@ backend:
     AGENTIC_KUBERNETES_MAX_QUERIES: "30"
     CLUSTER_CONFIG_JSON: "{}"
 
+inventoryCollector:
+  enabled: false
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 1
+  existingSecret: ""
+  tenantId: "default"
+  clusters: []
+  namespaces: []
+  kinds:
+    - Service
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+    - ReplicaSet
+    - Pod
+    - Node
+  pageSize: 500
+
 remediator:
   enabled: false
   image:
@@ -138,6 +159,9 @@ resources:
   remediator:
     requests: { cpu: 50m, memory: 96Mi }
     limits: { cpu: 500m, memory: 256Mi }
+  inventoryCollector:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { cpu: 500m, memory: 256Mi }
 
 
 networkPolicy:
@@ -152,6 +176,10 @@ networkPolicy:
   # Fail closed for the mutation plane. Configure explicit peers when enabled.
   remediatorIngress: []
   remediatorEgress: []
+  # Inventory collector is read-only but still needs Kubernetes API + PostgreSQL egress.
+  # Replace the empty object with explicit peers in locked-down installations.
+  inventoryCollectorEgress:
+    - {}
   # Empty object means unrestricted backend egress once the policy is enabled.
   # Replace it with namespaceSelector/ipBlock rules for a locked-down install.
   backendEgress:

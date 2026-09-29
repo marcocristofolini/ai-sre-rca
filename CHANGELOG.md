@@ -20,6 +20,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Immutable inventory snapshot identity: identical replays are idempotent, while reuse of the same tenant/cluster/source/snapshot ID with different content fails with conflict.
 - Tombstoned facts remain available for topology/history and the Awareness Explorer while being excluded from current entity resolution and blast-radius traversal.
 - Audited `POST /api/v1/awareness/inventory/reconcile` endpoint plus in-memory/PostgreSQL repository parity.
+- Optional automatic Kubernetes inventory CronJob with complete paginated Service/Deployment/StatefulSet/DaemonSet/ReplicaSet/Pod/Node snapshots.
+- Deterministic Kubernetes inventory relationships from controller ownerReferences, Pod scheduling identity and exact Service selectors.
 - Service-centric bounded topology projections with explicit ambiguity handling across namespaces.
 - Graph-backed blast radius with an allow-listed relationship impact-direction model.
 - Unknown, stale or tombstoned graph relationships remain visible as topology/history context but are excluded from current impact traversal.
@@ -81,6 +83,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Deployment, Service and GitRepository event links are created only from explicit unambiguous graph relationships; namespace/list ordering is never used as identity evidence.
 - Incident-derived graph absence is never treated as deletion; only complete snapshots from configured authoritative sources can create tombstones.
 - Inventory reconciliation fails closed on incomplete snapshots, out-of-scope resources, non-authoritative relationship types and snapshots older than a newer graph observation.
+- Automatic Kubernetes inventory collection aborts before reconciliation if any configured list or page is incomplete, invalid, unavailable or repeats a continuation token.
+- Kubernetes `owned_by` inventory edges require a single controller ownerReference whose UID matches the currently observed owner object, preventing name reuse from creating false controller links.
+- Namespace-scoped inventory never asserts Pod-to-Node tombstones across a cluster-scoped Node boundary; cluster-wide scheduling edges require a complete cluster-wide pass.
 - Immutable ChangeEvent nodes/edges are excluded from inventory tombstoning.
 - The investigator remains read-only and the remediator remains a separate runtime/identity.
 

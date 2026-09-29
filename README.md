@@ -18,6 +18,7 @@ v0.8 is evolving the project from an incident-local RCA engine into an autonomou
 - **Current state + append-only observations** with idempotent ingestion.
 - **Topology reconciliation** that classifies observed records as `fresh` or `stale` from `last_seen`, while incomplete incident data never implies deletion.
 - **Authoritative inventory tombstones** from complete admin-only snapshots supplied by allow-listed sources, with explicit coverage, newer-observation protection, reactivation semantics and append-only audit/history.
+- **Automatic Kubernetes inventory reconciliation** through an opt-in read-only CronJob that paginates complete resource lists, rejects malformed or non-progressing pagination, verifies controller ownership by Kubernetes UID, derives deterministic selector/scheduling relationships, and submits snapshots through the same guarded tombstone contract.
 - **Service-centric topology projections** with bounded depth, node and edge budgets.
 - **Graph-backed blast radius** using explicit causal direction per relationship type. Unknown, stale or tombstoned relationships are visible as context but never traversed as current impact paths.
 - **Historical change timeline semantics.** Change events and their event edges are context-only, reconcile as `historical`, and are never added to the blast-radius causal allow-list.
@@ -127,7 +128,9 @@ flowchart TD
     N --> EL[Deterministic Eligible Specialists]
     N --> E[Investigation Engine]
 
-    G[(Persistent Awareness Graph)] --> C[Bounded Service Context]
+    KI[Kubernetes API Inventory] --> IC[Read-only Inventory CronJob]
+    IC --> G[(Persistent Awareness Graph)]
+    G --> C[Bounded Service Context]
     C --> EL
     EL --> PC[Server-side Plan Compiler]
     EL -. sanitized context .-> ADV[Optional Advisory LLM]
