@@ -209,6 +209,49 @@ def test_inventory_request_rejects_incomplete_snapshot():
         )
 
 
+def test_inventory_request_rejects_server_reserved_temporal_metadata():
+    with pytest.raises(ValidationError, match="temporal_role"):
+        AuthoritativeInventoryRequest(
+            snapshot_id="snap-reserved",
+            source="kubernetes",
+            observed_at=datetime.now(timezone.utc),
+            complete=True,
+            coverage=InventoryCoverage(
+                kinds=["Service"],
+                namespaces=["payments"],
+            ),
+            resources=[
+                InventoryResource(
+                    kind="Service",
+                    name="checkout",
+                    namespace="payments",
+                    metadata={"temporal_role": "event"},
+                )
+            ],
+        )
+
+
+def test_inventory_request_rejects_change_event_presence():
+    with pytest.raises(ValidationError, match="ChangeEvent"):
+        AuthoritativeInventoryRequest(
+            snapshot_id="snap-change-event",
+            source="kubernetes",
+            observed_at=datetime.now(timezone.utc),
+            complete=True,
+            coverage=InventoryCoverage(
+                kinds=["ChangeEvent"],
+                namespaces=["payments"],
+            ),
+            resources=[
+                InventoryResource(
+                    kind="ChangeEvent",
+                    name="deploy-42",
+                    namespace="payments",
+                )
+            ],
+        )
+
+
 def test_inventory_request_rejects_resources_outside_declared_scope():
     with pytest.raises(ValidationError):
         AuthoritativeInventoryRequest(
