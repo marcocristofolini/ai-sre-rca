@@ -159,7 +159,7 @@ Persistent Awareness Graph:
 - [x] bounded service/time-window change-event API
 - [x] change-event relationships excluded from causal blast-radius traversal
 - [x] fail-closed change identity plus explicit, unambiguous graph target/repository resolution
-- [ ] persistent graph explorer UI
+- [x] persistent read-only graph explorer UI with topology/service scope and ChangeEvent timeline
 
 Agentic investigation foundation:
 
