@@ -101,6 +101,24 @@ flowchart LR
     REC --> AUDIT[(Histórico de auditoria)]
 ~~~
 
+## Graph Health
+
+`GET /api/v1/awareness/health?cluster=<cluster>` expõe uma projeção factual do grafo persistido com escopo por tenant/cluster. Ela informa separadamente contagens current, stale, historical e tombstoned para entidades e relações, o total/horário da observação de awareness mais recente e a freshness de cada fonte autoritativa configurada.
+
+A freshness da fonte de inventário usa o último receipt imutável do tipo `inventory_snapshot`. `AWARENESS_INVENTORY_MAX_AGE_MINUTES` tem padrão de 15 minutos e é propositalmente independente de `AWARENESS_STALE_AFTER_MINUTES`, que controla a freshness dos fatos do grafo. Uma source aparece como `missing` quando nunca recebeu snapshot autoritativo, `current` enquanto o último receipt está dentro da idade configurada e `stale` depois desse limite.
+
+O endpoint exige papel viewer e preserva o isolamento existente por tenant/cluster. Ele propositalmente não reduz essas dimensões a um score composto de saúde do grafo: o consumidor recebe o estado observável e pode alertar sobre as dimensões relevantes ao seu ambiente.
+
+~~~mermaid
+flowchart LR
+    E[Entidades / Relações] --> C[Contagens de Estado]
+    O[Observações Append-only] --> L[Observação Mais Recente]
+    O --> R[Último Receipt de Inventário por Source]
+    C --> H[API de Graph Health]
+    L --> H
+    R --> H
+~~~
+
 ## Projeções centradas em serviço
 
 A projeção resolve a entidade canônica exata do tipo `Service` e percorre um neighborhood topológico sob budgets rígidos de profundidade, nós e arestas. Se o mesmo nome de serviço existir em mais de um namespace, o caller precisa informar o namespace em vez de receber uma correspondência arbitrária.
@@ -126,6 +144,7 @@ Tipos de relação desconhecidos permanecem visíveis nas respostas de topologia
 
 ~~~text
 GET /api/v1/awareness/graph?cluster=<cluster>
+GET /api/v1/awareness/health?cluster=<cluster>
 GET /api/v1/awareness/graph?cluster=<cluster>&namespace=<ns>&kind=<kind>
 GET /api/v1/awareness/history/<target_id>?cluster=<cluster>
 GET /api/v1/awareness/topology?cluster=<cluster>
@@ -166,7 +185,7 @@ Concluído na branch atual:
 Ainda planejado:
 
 - enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
-- métricas e política de retention do grafo;
+- política de retention de observações/tombstones com mínimos seguros para explicação;
 - contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
 
 
