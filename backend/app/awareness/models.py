@@ -59,6 +59,9 @@ class AwarenessEntity(BaseModel):
     last_seen: datetime
     last_incident_id: str
     observation_count: int = 1
+    tombstoned_at: datetime | None = None
+    tombstone_snapshot_id: str | None = None
+    tombstone_source: str | None = None
 
 
 class AwarenessRelationship(BaseModel):
@@ -74,6 +77,9 @@ class AwarenessRelationship(BaseModel):
     last_seen: datetime
     last_incident_id: str
     observation_count: int = 1
+    tombstoned_at: datetime | None = None
+    tombstone_snapshot_id: str | None = None
+    tombstone_source: str | None = None
 
 
 class AwarenessObservation(BaseModel):
