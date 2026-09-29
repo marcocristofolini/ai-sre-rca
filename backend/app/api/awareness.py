@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import Principal, authorize_cluster, authorize_tenant, require_role
-from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
+from app.awareness.models import (
+    AwarenessChangeEvent,
+    AwarenessGraphSnapshot,
+    AwarenessObservation,
+)
 from app.awareness.topology import (
     AmbiguousServiceError,
     AwarenessEntityNotFoundError,
@@ -71,6 +78,78 @@ async def get_history(
         target_id=target_id,
         tenant_id=tenant,
         cluster=cluster,
+        limit=limit,
+    )
+
+
+
+
+@router.get("/changes", response_model=list[AwarenessChangeEvent])
+async def list_change_events(
+    cluster: str,
+    request: Request,
+    namespace: str | None = None,
+    service: str | None = None,
+    subject_entity_id: str | None = None,
+    event_type: Literal["deployment_sync", "source_commit"] | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    tenant_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
+    principal: Principal = Depends(require_role("viewer")),
+):
+    authorize_cluster(principal, cluster)
+    tenant = _tenant_scope(principal, tenant_id)
+    if since is not None and until is not None and since > until:
+        raise HTTPException(
+            status_code=422,
+            detail="since must be earlier than or equal to until",
+        )
+
+    resolved_subject_id = subject_entity_id
+    if service is not None:
+        candidates = await request.app.state.repo.find_awareness_entities(
+            tenant,
+            cluster,
+            name=service,
+            namespace=namespace,
+            kind="Service",
+            limit=3,
+        )
+        if not candidates:
+            raise HTTPException(
+                status_code=404,
+                detail=f"service not found: {service}",
+            )
+        if len(candidates) > 1 and namespace is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "service name is ambiguous across namespaces: "
+                    f"{service}"
+                ),
+            )
+        service_id = candidates[0].id
+        if (
+            resolved_subject_id is not None
+            and resolved_subject_id != service_id
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "subject_entity_id does not match the resolved service"
+                ),
+            )
+        resolved_subject_id = service_id
+
+    return await request.app.state.repo.list_awareness_change_events(
+        tenant,
+        cluster,
+        namespace=namespace,
+        event_type=event_type,
+        subject_entity_id=resolved_subject_id,
+        since=since,
+        until=until,
         limit=limit,
     )
 
