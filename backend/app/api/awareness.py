@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from app.auth import Principal, authorize_cluster, authorize_tenant, require_role
 from app.awareness.change_events import AwarenessChangeEvent, query_change_events
 from app.awareness.health import AwarenessGraphHealth
+from app.awareness.retention import AwarenessRetentionResult
 from app.awareness.inventory import (
     AuthoritativeInventoryRequest,
     AuthoritativeInventorySnapshot,
@@ -100,6 +101,30 @@ async def get_awareness_health(
         authoritative_sources=(
             settings.awareness_authoritative_inventory_source_set
         ),
+    )
+
+
+@router.post(
+    "/retention/purge",
+    response_model=AwarenessRetentionResult,
+)
+async def purge_awareness_retention(
+    cluster: str,
+    request: Request,
+    tenant_id: str | None = None,
+    dry_run: bool = Query(default=True),
+    principal: Principal = Depends(require_role("admin")),
+):
+    authorize_cluster(principal, cluster)
+    tenant = _tenant_scope(principal, tenant_id)
+    settings = request.app.state.settings
+    return await request.app.state.repo.purge_awareness_retention(
+        tenant_id=tenant,
+        cluster=cluster,
+        observation_days=settings.awareness_observation_retention_days,
+        tombstone_days=settings.awareness_tombstone_retention_days,
+        actor=principal.subject,
+        dry_run=dry_run,
     )
 
 
