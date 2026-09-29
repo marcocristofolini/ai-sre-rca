@@ -58,6 +58,26 @@ The snapshot is context, not a root-cause authority. Tombstoned entities remain 
 
 The snapshot is bounded by `AGENTIC_MAX_CONTEXT_NODES`, `AGENTIC_CONTEXT_DEPTH`, `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS`, `AGENTIC_CONTEXT_HISTORY_PER_TARGET` and `AGENTIC_CONTEXT_CHANGE_LIMIT`.
 
+## Deterministic specialist scoping
+
+A specialist can inherit missing query identity from the frozen graph context only under deterministic rules. Explicit incident identity always wins. A graph-derived Pod or Argo CD application is accepted only when exactly one matching entity is `fresh` and the topology projection is not truncated.
+
+~~~mermaid
+flowchart TD
+    INC[Explicit incident identity] --> HAS{Target already known?}
+    HAS -->|Yes| SCOPE[Typed SpecialistScope]
+    HAS -->|No| GRAPH[Fresh graph candidates]
+    GRAPH --> COMPLETE{Topology complete within budget?}
+    COMPLETE -->|No| BLOCK[Mark ambiguous / do not infer]
+    COMPLETE -->|Yes| UNIQUE{Exactly one candidate?}
+    UNIQUE -->|No| BLOCK
+    UNIQUE -->|Yes| SCOPE
+    SCOPE --> LIVE[Live source verification<br/>Kubernetes / Loki / Argo CD]
+    LIVE --> EVIDENCE[Typed current evidence]
+~~~
+
+The graph-derived value is query narrowing, not evidence. Kubernetes still reads the resolved Pod live, Logs still query Loki for that exact Pod, and Changes still verifies the resolved application against Argo CD. If multiple fresh Pods/applications exist, or the neighborhood was truncated, the resolver records ambiguity and does not guess.
+
 ## Optional model-assisted compilation
 
 The model never creates a `SpecialistTask`. The deterministic planner first builds the complete eligible task set from incident identity, feature flags and graph context. The model sees only sanitized context plus those eligible specialist descriptions and may return specialist names with short rationales.
@@ -187,7 +207,7 @@ The current server-side defaults are:
 | `AGENTIC_MAX_TASKS` | 6 |
 | `AGENTIC_MAX_PARALLEL_TASKS` | 4 |
 | `AGENTIC_MAX_CONTEXT_NODES` | 50 |
-| `AGENTIC_CONTEXT_DEPTH` | 2 |
+| `AGENTIC_CONTEXT_DEPTH` | 3 |
 | `AGENTIC_CONTEXT_MAX_HISTORY_TARGETS` | 12 |
 | `AGENTIC_CONTEXT_HISTORY_PER_TARGET` | 2 |
 | `AGENTIC_CONTEXT_CHANGE_LIMIT` | 20 |
