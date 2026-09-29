@@ -10,6 +10,7 @@ from app.awareness.inventory import (
     AuthoritativeInventoryRequest,
     AuthoritativeInventorySnapshot,
     InventoryReconciliationResult,
+    InventorySnapshotConflictError,
 )
 from app.awareness.models import AwarenessGraphSnapshot, AwarenessObservation
 from app.schemas import AuditEvent
@@ -71,9 +72,12 @@ async def reconcile_authoritative_inventory(
         tenant_id=tenant,
         cluster=cluster,
     )
-    result = await request.app.state.repo.reconcile_authoritative_inventory(
-        snapshot
-    )
+    try:
+        result = await request.app.state.repo.reconcile_authoritative_inventory(
+            snapshot
+        )
+    except InventorySnapshotConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await request.app.state.repo.append_audit(AuditEvent(
         tenant_id=tenant,
         actor=principal.subject,
