@@ -171,8 +171,14 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
         )
 
         first, second = await asyncio.gather(
-            repo.reconcile_authoritative_inventory(snapshot),
-            repo.reconcile_authoritative_inventory(snapshot),
+            repo.reconcile_authoritative_inventory(
+                snapshot,
+                actor="sql-admin-a",
+            ),
+            repo.reconcile_authoritative_inventory(
+                snapshot,
+                actor="sql-admin-b",
+            ),
         )
 
         assert first.entities_tombstoned + second.entities_tombstoned == 1
@@ -228,5 +234,21 @@ async def test_postgres_inventory_reconciliation_is_idempotent_and_bounded():
         )
         assert len(inventory_observation.incident_id) <= 64
         assert inventory_observation.payload["snapshot_id"] == snapshot_id
+
+        async with repo.engine.begin() as conn:
+            audit_rows = (
+                await conn.execute(
+                    text(
+                        "SELECT actor FROM audit_events "
+                        "WHERE tenant_id = :tenant_id "
+                        "AND action = 'awareness.inventory.reconcile'"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+            ).all()
+        assert {row[0] for row in audit_rows} == {
+            "sql-admin-a",
+            "sql-admin-b",
+        }
     finally:
         await repo.close()
