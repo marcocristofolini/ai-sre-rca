@@ -144,6 +144,8 @@ Event edges are intentionally contextual:
 
 These relationships are not present in the blast-radius impact-direction allow-list. A recent deployment remains correlation/context until runtime evidence satisfies a deterministic causal hypothesis.
 
+Event materialization is fail-closed. `application`, `revision` and an authoritative Argo CD operation timestamp are required; malformed or missing values remain correlation evidence only. Deployment, Service and GitRepository links are attached only through explicit, unambiguous `managed_by`, `serves` and `syncs_from` relationships already present in the investigation graph. The implementation never picks the first resource in a namespace as identity evidence.
+
 Temporal lookup:
 
 ```text
