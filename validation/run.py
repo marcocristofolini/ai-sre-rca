@@ -549,7 +549,7 @@ async def validate_inventory(
         for result in cluster.results
     )
     initial_resources = sum(
-        result.resources_seen
+        result.resources_observed
         for cluster in first
         for result in cluster.results
     )
