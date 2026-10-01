@@ -5,6 +5,10 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
+- v0.8.0-rc.3 development adds a real PostgreSQL 17 + postgres_exporter validation path inside the disposable Kind environment.
+- A bounded PostgreSQL connection loader creates live connection-capacity pressure that must promote the typed `postgres-connection-exhaustion` root in both classic and agentic RCA.
+- Recovery validation scales the loader to zero, requires exporter utilization to normalize, emits fresh healthy metrics/logs/traces, and rejects stale trace/stateful root promotion.
+- Validation report schema v3 adds stateful exporter and recovery evidence.
 - GitHub-first gate that orchestrates CI, CodeQL and real-environment validation as reusable workflows for every pull request and push to `main`.
 - GitHub-only release promotion workflow that verifies `VERSION`, the exact validated SHA and real-environment evidence before creating a release tag.
 - Bilingual GitHub-first delivery documentation with PR, release, recovery and permission contracts.
