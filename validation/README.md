@@ -4,6 +4,7 @@ The validation harness now has two layers:
 
 - **v0.8.0-rc.1 baseline:** real Kubernetes failure states plus authoritative Persistent Awareness Graph reconciliation.
 - **v0.8.0-rc.2 full-stack release candidate:** real Prometheus, Loki and Tempo/OpenTelemetry telemetry produced by an instrumented workload and consumed through the production read-only adapters.
+- **v0.8.0-rc.3 development:** stateful dependency recovery validation, beginning with PostgreSQL exporter-contract telemetry over live Prometheus queries.
 
 ## Release gate
 
@@ -40,6 +41,19 @@ The rc2 full-stack path additionally generates three failing checkout requests. 
 The gate requires Prometheus, Loki and Tempo to report healthy through the production capability checks. At least two independent traces must converge on the same downstream origin before `trace-causal-propagation` can be selected. The agentic execution must complete its metrics, logs and traces specialists, and both classic and agentic evaluation must agree on the deterministic root cause.
 
 A failure in an optional source must never fabricate evidence. The original rc1 crash-loop invariant remains: without the evidence required for a more specific application-exit diagnosis, the engine may stay inconclusive or select the generic crash-loop mechanism, but it may not overclaim specificity.
+
+## v0.8.0-rc.3 PostgreSQL recovery slice
+
+The first rc3 slice exercises the production PostgreSQL Prometheus adapter against live Prometheus data using the exact metric names and labels expected from postgres_exporter-compatible telemetry.
+
+The validation workload exposes two states:
+
+- **pressure:** 19 of 20 PostgreSQL connections are represented as in use, producing 95% connection utilization and requiring `postgres-connection-exhaustion:*` to supersede the trace-only root cause;
+- **recovered:** the same dependency returns to 4 of 20 connections while new failing traces are still generated, requiring the engine to stop promoting the old PostgreSQL-specific cause and return to `trace-causal-propagation`.
+
+Both classic and agentic paths must agree. The agentic database specialist must complete in both phases, and evidence integrity remains mandatory.
+
+This slice validates adapter contract and recovery semantics. A subsequent rc3 slice will replace the exporter-compatible workload metrics with an actual PostgreSQL + postgres_exporter runtime before the release candidate is closed.
 
 ## Flow
 
@@ -103,7 +117,7 @@ Every run writes only these shareable artifacts:
 - `validation-artifacts/validation-report.json`
 - `validation-artifacts/validation-report.md`
 
-The v2 report includes Kubernetes scenarios, full-stack source health and telemetry counts, distributed-trace RCA parity, evidence integrity, and Persistent Awareness Graph reconciliation/tombstones.
+The v3 report keeps all rc2 sections and adds PostgreSQL stateful pressure/recovery evidence. The pressure phase must promote a PostgreSQL-specific RCA while the recovery phase must fall back to trace causality once the current PostgreSQL telemetry is healthy again.
 
 Temporary Kubernetes bearer-token and CA files live under `validation-artifacts/runtime/` only while the job is running and are never uploaded by CI.
 
