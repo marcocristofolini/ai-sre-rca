@@ -55,13 +55,28 @@ def test_wait_for_crashloop_requires_waiting_and_nonzero_exit(monkeypatch):
         exit_code=42,
         waiting_reason="CrashLoopBackOff",
     )
+    pod["status"]["containerStatuses"][0]["restartCount"] = 2
     monkeypatch.setattr(harness, "pods_for_label", lambda *_: [pod])
+    monkeypatch.setattr(
+        harness,
+        "kubectl_json",
+        lambda *_: {
+            "items": [
+                {
+                    "reason": "BackOff",
+                    "message": "Back-off restarting failed container",
+                }
+            ]
+        },
+    )
 
     observed = harness.wait_for_crashloop("kind-test")
 
     assert observed is not None
     assert observed["signal"]["waiting_reason"] == "CrashLoopBackOff"
+    assert observed["signal"]["restart_count"] == 2
     assert observed["signal"]["last_exit_code"] == 42
+    assert observed["signal"]["backoff_event_observed"] is True
 
 
 def test_failed_scheduling_requires_scheduler_evidence(monkeypatch):
