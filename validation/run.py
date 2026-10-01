@@ -421,7 +421,11 @@ async def investigate_scenario(
     )
     agentic = evaluate_shared_evidence(execution)
 
-    classic_root = classic.root_cause.hypothesis_id
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None
+        else None
+    )
     agentic_root = (
         agentic.root_cause.hypothesis_id
         if agentic.root_cause is not None
