@@ -495,15 +495,31 @@ def release_postgres_connections(context: str) -> None:
         NAMESPACE,
         "--replicas=0",
     )
-    kubectl(
-        context,
-        "rollout",
-        "status",
-        "deployment/postgres-connection-loader",
-        "-n",
-        NAMESPACE,
-        "--timeout=60s",
+    wait = run(
+        [
+            "kubectl",
+            "--context",
+            context,
+            "wait",
+            "--for=delete",
+            "pod",
+            "-l",
+            "app=postgres-connection-loader",
+            "-n",
+            NAMESPACE,
+            "--timeout=60s",
+        ],
+        check=False,
     )
+    if wait.returncode != 0:
+        remaining = pods_for_label(
+            context,
+            "app=postgres-connection-loader",
+        )
+        if remaining:
+            raise RuntimeError(
+                "PostgreSQL connection-loader Pod did not terminate during recovery"
+            )
 
 
 def start_postgres(port: int) -> str:
