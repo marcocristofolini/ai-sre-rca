@@ -40,7 +40,7 @@ DEFAULT_NODE_IMAGE = (
 )
 POSTGRES_CONTAINER = "ai-sre-rca-validation-postgres"
 POSTGRES_PORT = 15439
-REPORT_SCHEMA = "ai-sre-rca.validation.v2"
+REPORT_SCHEMA = "ai-sre-rca.validation.v3"
 PROMETHEUS_PORT = 19090
 LOKI_PORT = 13100
 TEMPO_PORT = 13200
@@ -402,6 +402,30 @@ def deploy_observability(context: str, cluster_name: str) -> None:
     time.sleep(3)
 
 
+def set_postgres_pressure(enabled: bool) -> dict[str, Any]:
+    path = (
+        "/stateful/postgres/critical"
+        if enabled
+        else "/stateful/postgres/recover"
+    )
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{WORKLOAD_PORT}{path}",
+        timeout=10,
+    ) as response:
+        body = response.read().decode(errors="replace").strip()
+        if response.status != 200:
+            raise RuntimeError(
+                f"validation workload state change returned {response.status}: {body}"
+            )
+    changed_at = utcnow()
+    time.sleep(5)
+    return {
+        "mode": "critical" if enabled else "recovered",
+        "changed_at": changed_at,
+        "response": body,
+    }
+
+
 def generate_observability_failure(context: str) -> dict[str, Any]:
     pods = pods_for_label(context, "app=rc2-workload")
     if len(pods) != 1:
@@ -547,7 +571,7 @@ def validation_settings(
         notifications_enabled=False,
         llm_enabled=False,
         trace_analysis_enabled=full_stack_observability,
-        stateful_dependency_analysis_enabled=False,
+        stateful_dependency_analysis_enabled=full_stack_observability,
         agentic_execution_enabled=True,
         agentic_model_planner_enabled=False,
         cluster_config_json=json.dumps(registry),
@@ -876,6 +900,126 @@ async def investigate_trace_scenario(
     }
 
 
+async def investigate_postgres_stateful_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+    expected_specific: bool,
+) -> dict[str, Any]:
+    phase = "pressure" if expected_specific else "recovery"
+    incident = IncidentInput(
+        title=f"Stateful PostgreSQL validation: {phase}",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="HighErrorRate",
+        severity="critical",
+        starts_at=signal["started_at"] + timedelta(seconds=1),
+        labels={"validation_scenario": f"postgres-{phase}"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    postgres = next(
+        (
+            item
+            for item in classic.stateful_dependencies
+            if item.kind == "postgresql"
+        ),
+        None,
+    )
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+
+    postgres_prefix = "postgres-connection-exhaustion:"
+    if expected_specific:
+        verdict_ok = (
+            classic.status == "resolved"
+            and agentic.status == "resolved"
+            and bool(classic_root and classic_root.startswith(postgres_prefix))
+            and bool(agentic_root and agentic_root.startswith(postgres_prefix))
+            and postgres is not None
+            and postgres.health == "critical"
+            and postgres.causal_role == "origin"
+        )
+        expected_root = postgres_prefix + "*"
+    else:
+        verdict_ok = (
+            classic.status == "resolved"
+            and agentic.status == "resolved"
+            and classic_root == "trace-causal-propagation"
+            and agentic_root == "trace-causal-propagation"
+            and postgres is not None
+            and postgres.health == "healthy"
+            and not bool(classic_root and classic_root.startswith(postgres_prefix))
+            and not bool(agentic_root and agentic_root.startswith(postgres_prefix))
+        )
+        expected_root = "trace-causal-propagation"
+
+    passed = (
+        verdict_ok
+        and specialists.get("traces") == "completed"
+        and specialists.get("database") == "completed"
+        and integrity_ok
+    )
+    return {
+        "name": f"postgres-{phase}",
+        "expected_root_cause": expected_root,
+        "classic_agentic_parity_ok": (
+            classic.status == agentic.status
+            and classic_root == agentic_root
+        ),
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "postgres_health": postgres.health if postgres else None,
+            "postgres_causal_role": postgres.causal_role if postgres else None,
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
 async def validate_inventory(
     repo: SQLRepository,
     tools: ReadOnlyHTTPTools,
@@ -985,6 +1129,8 @@ async def validate_backend(
     settings: Settings,
     observations: dict[str, dict[str, Any]],
     observability_signal: dict[str, Any],
+    postgres_pressure_signal: dict[str, Any],
+    postgres_recovery_signal: dict[str, Any],
 ) -> dict[str, Any]:
     repo = SQLRepository(settings.database_url)
     tools = ReadOnlyHTTPTools(settings)
@@ -1000,6 +1146,20 @@ async def validate_backend(
             tools=tools,
             settings=settings,
             signal=observability_signal,
+        )
+        postgres_pressure = await investigate_postgres_stateful_scenario(
+            repo=repo,
+            tools=tools,
+            settings=settings,
+            signal=postgres_pressure_signal,
+            expected_specific=True,
+        )
+        postgres_recovery = await investigate_postgres_stateful_scenario(
+            repo=repo,
+            tools=tools,
+            settings=settings,
+            signal=postgres_recovery_signal,
+            expected_specific=False,
         )
         scenarios = []
         definitions = [
@@ -1056,11 +1216,21 @@ async def validate_backend(
             "inventory": inventory,
             "observability": observability,
             "distributed_trace": distributed_trace,
+            "stateful_postgres": {
+                "pressure": postgres_pressure,
+                "recovery": postgres_recovery,
+                "passed": (
+                    postgres_pressure["passed"]
+                    and postgres_recovery["passed"]
+                ),
+            },
             "scenarios": scenarios,
             "passed": (
                 inventory["passed"]
                 and observability["passed"]
                 and distributed_trace["passed"]
+                and postgres_pressure["passed"]
+                and postgres_recovery["passed"]
                 and all(item["passed"] for item in scenarios)
             ),
         }
@@ -1235,6 +1405,12 @@ def main() -> int:
         deploy_observability(context, args.cluster_name)
         observability_signal = generate_observability_failure(context)
 
+        set_postgres_pressure(True)
+        postgres_pressure_signal = generate_observability_failure(context)
+
+        set_postgres_pressure(False)
+        postgres_recovery_signal = generate_observability_failure(context)
+
         runtime_dir = args.report_dir / "runtime"
         api_server, token_file, ca_file = export_cluster_credentials(
             context,
@@ -1253,6 +1429,8 @@ def main() -> int:
                 settings=settings,
                 observations=observations,
                 observability_signal=observability_signal,
+                postgres_pressure_signal=postgres_pressure_signal,
+                postgres_recovery_signal=postgres_recovery_signal,
             )
         )
         report["passed"] = bool(report["validation"]["passed"])
