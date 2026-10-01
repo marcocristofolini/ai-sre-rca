@@ -13,7 +13,7 @@
 - [x] authoritative tombstone after real resource deletion
 - [x] evidence-integrity verification and machine-readable JSON/Markdown report
 - [x] dedicated GitHub Actions workflow with pinned Kind binary checksum
-- [ ] release-candidate Kind workflow passes end-to-end on GitHub Actions
+- [x] release-candidate Kind workflow passes end-to-end on GitHub Actions
 
 ## Completed in v0.2
 
