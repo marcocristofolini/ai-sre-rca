@@ -27,7 +27,7 @@ It calls:
 
 The final `gate` job fails unless all three reusable workflows complete successfully.
 
-For branch protection, require the final **gate** check from the **GitHub-first gate** workflow before merging to `main`. The individual reusable jobs remain visible for diagnosis but do not need to be configured as separate merge requirements.
+`main` is protected by the final **gate** check from the **GitHub-first gate** workflow. Strict up-to-date checks, linear history and conversation resolution remain enabled; force pushes and branch deletion remain disabled. The individual reusable jobs stay visible for diagnosis but are not separate merge requirements.
 
 ## Release flow
 

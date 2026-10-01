@@ -29,7 +29,7 @@
 - [x] validation report must have `passed: true` and matching `environment.git_sha`
 - [x] validated tag is created only after all release checks pass
 - [x] source archives and JSON/Markdown validation evidence are published as release assets
-- [ ] branch protection/ruleset requires the final GitHub-first `gate` check on `main`
+- [x] branch protection on `main` requires the final GitHub-first `gate` check while preserving strict up-to-date, linear-history and conversation-resolution rules
 
 ## Completed in v0.2
 
