@@ -8,7 +8,7 @@ Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernete
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
 
-## v0.8 em desenvolvimento — awareness persistente + planejamento agentic bounded
+## v0.8.0-rc.1: awareness persistente + planejamento agentic bounded + validação em ambiente real
 
 A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A branch de desenvolvimento agora inclui:
 
