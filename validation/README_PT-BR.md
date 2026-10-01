@@ -9,7 +9,7 @@ O harness cria um cluster Kind com dois nós, aplica uma ServiceAccount de valid
 O primeiro gate da RC cobre:
 
 - estado real `OOMKilled`, com causa esperada `container-oom` quando o Prometheus está propositalmente indisponível;
-- `CrashLoopBackOff` real com exit code 42, com causa esperada `application-exit`;
+- `CrashLoopBackOff` real com exit code 42 enquanto o Loki está indisponível, com resultado fail-closed esperado `inconclusive` e sem causa raiz;
 - `FailedScheduling` real causado por requests impossíveis de recursos, com causa esperada `insufficient-resources`;
 - coleta autoritativa do inventário Kubernetes para o Persistent Awareness Graph;
 - relações reais `owned_by`, `serves` e `scheduled_on`;
@@ -17,7 +17,7 @@ O primeiro gate da RC cobre:
 - verificação de integridade SHA-256 das evidências;
 - paridade de causa raiz entre o caminho clássico e a avaliação agentic Kubernetes.
 
-Prometheus, Loki, Tempo e Argo CD ficam propositalmente indisponíveis neste primeiro gate. Assim o teste também prova que a indisponibilidade de fontes opcionais não cria evidência saudável fictícia nem substitui sinais diretos do Kubernetes.
+Prometheus, Loki, Tempo e Argo CD ficam propositalmente indisponíveis neste primeiro gate. OOMKilled e FailedScheduling ainda precisam resolver com evidência direta do Kubernetes. Já o CrashLoopBackOff deve permanecer inconclusivo, porque o playbook `application-exit` exige logs além do estado do container. Isso comprova que uma fonte opcional indisponível não cria evidência fictícia nem faz o engine afirmar uma causa raiz sem suporte suficiente.
 
 ## Fluxo
 
