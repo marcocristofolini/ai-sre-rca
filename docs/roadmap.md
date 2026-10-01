@@ -1,4 +1,19 @@
-# Roadmap — v0.8 in progress
+# Roadmap — v0.8.0-rc.1
+
+## v0.8.0-rc.1 — real environment validation gate
+
+- [x] disposable two-node Kind topology pinned to a release node-image digest
+- [x] dedicated read-only Kubernetes validation ServiceAccount
+- [x] real OOMKilled scenario with deterministic expected root cause
+- [x] real CrashLoopBackOff scenario with deterministic expected root cause
+- [x] real FailedScheduling scenario with deterministic expected root cause
+- [x] classic/agentic Kubernetes root-cause parity assertion
+- [x] PostgreSQL-backed authoritative inventory reconciliation against the real cluster
+- [x] owned_by, serves and scheduled_on relationship assertions
+- [x] authoritative tombstone after real resource deletion
+- [x] evidence-integrity verification and machine-readable JSON/Markdown report
+- [x] dedicated GitHub Actions workflow with pinned Kind binary checksum
+- [ ] release-candidate Kind workflow passes end-to-end on GitHub Actions
 
 ## Completed in v0.2
 
