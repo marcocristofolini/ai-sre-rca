@@ -1,6 +1,6 @@
-# AI SRE RCA — v0.8.0 (em desenvolvimento)
+# AI SRE RCA — v0.8.0-rc.1
 
-[![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Validação em Ambiente Real](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Português do Brasil** · [English](README.md)
 
@@ -8,7 +8,7 @@ Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernete
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
 
-## v0.8 em desenvolvimento — awareness persistente + planejamento agentic bounded
+## v0.8.0-rc.1: awareness persistente + planejamento agentic bounded + validação em ambiente real
 
 A v0.8 está evoluindo o projeto de um engine de RCA válido apenas durante o incidente para uma plataforma SRE autônoma e verificada por evidências. A branch de desenvolvimento agora inclui:
 
@@ -571,3 +571,5 @@ Depois da v0.7, os próximos incrementos de maior valor são:
 5. Kubernetes: ImagePullBackOff, bloqueios por PDB e falhas de PVC/volumes em runtime.
 6. Correlação trace → logs por derived fields, exemplars e evidência sensível a sampling.
 7. Audit sink externo imutável e bundles assinados de export de incidente/remediação.
+
+- **Real Environment Validation Harness.** Um cluster Kind descartável com dois nós agora exercita estados reais de `OOMKilled`, `CrashLoopBackOff` e `FailedScheduling` pelo adaptador Kubernetes read-only de produção, verifica paridade dos verdicts determinísticos clássico/agentic, reconcilia inventário real no Awareness Graph persistido em PostgreSQL, comprova tombstones autoritativos após remoção, valida hashes das evidências e gera evidências de release em JSON/Markdown. Veja [validation/README_PT-BR.md](validation/README_PT-BR.md).

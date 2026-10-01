@@ -284,13 +284,13 @@ jobs:
 
           health = json.loads(get(f"{BACKEND}/healthz"))
           assert health["status"] == "ok"
-          assert health["version"] == "0.8.0"
+          assert health["version"] == "0.8.0-rc.1"
           assert health["demo_mode"] is True
           assert health["stateful_dependency_rca"] is True
 
           remediator_health = json.loads(get(f"{REMEDIATOR}/healthz"))
           assert remediator_health["status"] == "ok"
-          assert remediator_health["version"] == "0.8.0"
+          assert remediator_health["version"] == "0.8.0-rc.1"
           assert remediator_health["service"] == "remediator"
           assert remediator_health["separate_identity"] is True
           remediator_openapi = json.loads(get(f"{REMEDIATOR}/openapi.json"))
@@ -460,7 +460,7 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/awareness)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
 
-          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.8.0"'
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.8.0-rc.1"'
           curl -fsS http://127.0.0.1:18082/healthz | grep -q '"service":"remediator"'
           echo "Production container smoke test passed"
 

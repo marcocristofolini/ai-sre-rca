@@ -4,7 +4,13 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.8.0-rc.1] - 2026-10-01
+
 ### Added
+- Real Environment Validation Harness with a disposable two-node Kind cluster, read-only validator RBAC, real OOMKilled/CrashLoopBackOff/FailedScheduling scenarios, classic/agentic verdict parity, PostgreSQL-backed inventory reconciliation, topology/tombstone assertions, evidence-integrity checks and JSON/Markdown release evidence.
+- Dedicated GitHub Actions release-candidate gate using Kind v0.33.0 and a Kubernetes 1.37.0 node image pinned by digest.
 - v0.8 Persistent Awareness Graph foundation with stable canonical entity and relationship identities.
 - Tenant- and cluster-scoped current graph state plus append-only temporal observations.
 - Idempotent graph ingestion whenever an investigation is persisted.
@@ -68,11 +74,14 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Bilingual Persistent Awareness Graph and Agentic Investigation documentation with Mermaid diagrams.
 
 ### Changed
+- Published API, frontend, Helm and VERSION metadata now identify `0.8.0-rc.1`; the Python package uses the PEP 440 equivalent `0.8.0rc1`.
 - CI production-image smoke builds retry bounded transient registry/network failures before failing the job.
 - Python 3.14 test tooling now permits pytest-asyncio 1.4+, removing the legacy 0.x compatibility cap.
 - The remediation incident-freshness gate is exposed consistently through `.env.example`, Helm values and bilingual remediation documentation.
 
 ### Safety
+- Validation uses a temporary read-only Kubernetes ServiceAccount token and CA; CI uploads only the JSON/Markdown report and never the runtime credential directory.
+- Prometheus, Loki, Tempo and Argo CD are intentionally unavailable in the first real-environment gate, verifying that optional-source outages do not manufacture healthy evidence or override direct Kubernetes signals.
 - The planner cannot confirm root cause, attach evidence IDs or request remediation.
 - Model-assisted planning is advisory-only and disabled by default.
 - The model cannot create SpecialistTask objects, tool names, queries, budgets or dependencies; the server recompiles all executable tasks.
@@ -330,7 +339,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.8.0-rc.1...HEAD
+[0.8.0-rc.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.7.0...v0.8.0-rc.1
 [0.7.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.1...v0.6.0

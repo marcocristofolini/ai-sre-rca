@@ -1,4 +1,4 @@
-# Architecture — v0.8 development
+# Architecture — v0.8.0-rc.1
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
@@ -724,3 +724,33 @@ GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<nam
 ```
 
 The endpoint remains tenant/cluster scoped and returns at most 200 events. Temporal proximity is context only and never upgrades a deployment/source change into root cause without runtime causal evidence.
+
+
+## Real environment validation — v0.8.0-rc.1
+
+The release-candidate gate runs the production read-only Kubernetes adapter against a disposable two-node Kind cluster. Controlled workloads create actual Kubernetes runtime and scheduler states, while PostgreSQL/pgvector persists authoritative inventory and graph reconciliation.
+
+```mermaid
+flowchart LR
+    GA[GitHub Actions / local] --> VH[Real Environment Validation Harness]
+    VH --> KIND[2-node Kind cluster]
+    VH --> PG[(PostgreSQL + pgvector)]
+    KIND --> OOM[OOMKilled]
+    KIND --> CRASH[CrashLoopBackOff]
+    KIND --> SCHED[FailedScheduling]
+    KIND --> RBAC[Read-only ServiceAccount]
+    RBAC --> HTTP[Production ReadOnlyHTTPTools]
+    HTTP --> CORE[Classic deterministic engine]
+    HTTP --> AG[Agentic Kubernetes specialist]
+    HTTP --> INV[Authoritative inventory reconciliation]
+    INV --> PAG[(Persistent Awareness Graph)]
+    CORE --> PARITY[Expected root-cause parity]
+    AG --> PARITY
+    PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
+    PARITY --> REPORT[JSON + Markdown release evidence]
+    GRAPH --> REPORT
+```
+
+The validator uses an ephemeral bearer token and cluster CA compatible with the production integration contract. Those credentials remain local to the job and are excluded from uploaded artifacts. Prometheus, Loki, Tempo and Argo CD are intentionally unreachable in the first RC gate so optional-source failure handling is exercised without weakening direct Kubernetes evidence. The Kind node image is pinned by digest for reproducibility.
+
+See [../validation/README.md](../validation/README.md) for the runnable contract and exact PASS/FAIL conditions.

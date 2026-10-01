@@ -1,4 +1,4 @@
-# Arquitetura — v0.8 em desenvolvimento
+# Arquitetura — v0.8.0-rc.1
 
 **Português do Brasil** · [English](architecture.md)
 
@@ -724,3 +724,33 @@ GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<nam
 ```
 
 O endpoint mantém isolamento por tenant/cluster e retorna no máximo 200 eventos. Proximidade temporal é somente contexto e nunca transforma deploy/source change em causa raiz sem evidência causal de runtime.
+
+
+## Validação em ambiente real — v0.8.0-rc.1
+
+O gate da release candidate executa o adapter Kubernetes read-only de produção contra um cluster Kind descartável com dois nós. Workloads controlados criam estados reais de runtime e scheduling, enquanto PostgreSQL/pgvector persiste o inventário autoritativo e a reconciliação do grafo.
+
+```mermaid
+flowchart LR
+    GA[GitHub Actions / local] --> VH[Real Environment Validation Harness]
+    VH --> KIND[Cluster Kind com 2 nós]
+    VH --> PG[(PostgreSQL + pgvector)]
+    KIND --> OOM[OOMKilled]
+    KIND --> CRASH[CrashLoopBackOff]
+    KIND --> SCHED[FailedScheduling]
+    KIND --> RBAC[ServiceAccount read-only]
+    RBAC --> HTTP[ReadOnlyHTTPTools de produção]
+    HTTP --> CORE[Engine determinístico clássico]
+    HTTP --> AG[Especialista Kubernetes agentic]
+    HTTP --> INV[Reconciliação autoritativa de inventário]
+    INV --> PAG[(Persistent Awareness Graph)]
+    CORE --> PARITY[Paridade da causa raiz esperada]
+    AG --> PARITY
+    PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
+    PARITY --> REPORT[Evidência JSON + Markdown]
+    GRAPH --> REPORT
+```
+
+O validador usa bearer token temporário e CA do cluster compatíveis com o contrato da integração de produção. Essas credenciais permanecem locais ao job e são excluídas dos artefatos enviados. Prometheus, Loki, Tempo e Argo CD ficam propositalmente indisponíveis no primeiro gate da RC para exercitar falhas de fontes opcionais sem enfraquecer evidências diretas do Kubernetes. A imagem de nó do Kind fica presa por digest para reprodutibilidade.
+
+Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e as condições exatas de PASS/FAIL.
