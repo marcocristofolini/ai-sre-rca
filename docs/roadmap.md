@@ -1,4 +1,4 @@
-# Roadmap — v0.8.0-rc.2
+# Roadmap — v0.8.0-rc.3 development
 
 ## v0.8.0-rc.1 — real environment validation gate
 
@@ -255,6 +255,18 @@ Agentic investigation foundation:
 - [x] rc.1 OOMKilled, restart-backoff, FailedScheduling, inventory, graph-relationship and tombstone gates retained in the same run
 - [x] CI timeout expanded for the heavier full-stack release gate
 
-Post-rc.2 candidates:
-- stateful exporter validation for PostgreSQL/Kafka/Redis
-- recovery scenarios that prove stale causal telemetry is not promoted after health is restored
+## v0.8.0-rc.3 — stateful telemetry and recovery validation
+
+- [x] define PostgreSQL pressure and recovery phases in the real-environment harness
+- [x] feed live Prometheus queries with postgres_exporter-compatible metric names/labels
+- [x] pressure phase requires `postgres-connection-exhaustion:*` in classic and agentic RCA
+- [x] recovery phase generates new failing traces while current PostgreSQL telemetry is healthy
+- [x] recovery phase must stop promoting the previous PostgreSQL-specific root cause
+- [x] agentic database specialist must complete in both phases
+- [x] validation report schema v3 includes PostgreSQL pressure/recovery evidence
+- [ ] replace exporter-compatible workload metrics with real PostgreSQL + postgres_exporter runtime
+- [ ] add Kafka runtime/exporter validation
+- [ ] add Redis runtime/exporter validation
+- [ ] prove recovery semantics for Kafka and Redis
+- [ ] close rc.3 version metadata, docs and release evidence
+
