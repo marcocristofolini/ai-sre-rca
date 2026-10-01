@@ -1,4 +1,4 @@
-# Roadmap — v0.8.0-rc.1
+# Roadmap — v0.8.0-rc.2
 
 ## v0.8.0-rc.1 — real environment validation gate
 
@@ -14,6 +14,22 @@
 - [x] evidence-integrity verification and machine-readable JSON/Markdown report
 - [x] dedicated GitHub Actions workflow with pinned Kind binary checksum
 - [x] release-candidate Kind workflow passes end-to-end on GitHub Actions
+
+## GitHub-first delivery
+
+- [x] CI converted to a reusable `workflow_call` workflow
+- [x] CodeQL converted to a reusable `workflow_call` workflow while preserving the weekly schedule
+- [x] real-environment validation converted to a reusable `workflow_call` workflow
+- [x] single GitHub-first gate orchestrates PR and `main` validation
+- [x] final gate job fails unless CI, CodeQL and real-environment validation all succeed
+- [x] manual diagnostic dispatch remains available for each specialized workflow
+- [x] release promotion moved from workstation-created tags to GitHub `workflow_dispatch`
+- [x] release promotion requires `main`, matching `VERSION` and a successful gate for the exact SHA
+- [x] release promotion downloads the validation artifact from the gated run
+- [x] validation report must have `passed: true` and matching `environment.git_sha`
+- [x] validated tag is created only after all release checks pass
+- [x] source archives and JSON/Markdown validation evidence are published as release assets
+- [ ] branch protection/ruleset requires the final GitHub-first `gate` check on `main`
 
 ## Completed in v0.2
 
