@@ -1316,6 +1316,28 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
             "",
         ]
     )
+    stateful_postgres = validation.get("stateful_postgres") or {}
+    pressure = stateful_postgres.get("pressure") or {}
+    recovery = stateful_postgres.get("recovery") or {}
+    lines.extend(
+        [
+            "",
+            "## Stateful PostgreSQL RCA and recovery",
+            "",
+            f"- Pressure expected root: {pressure.get('expected_root_cause')}",
+            f"- Pressure classic root: {(pressure.get('classic') or {}).get('root_cause')}",
+            f"- Pressure agentic root: {(pressure.get('agentic') or {}).get('root_cause')}",
+            f"- Pressure PostgreSQL health: {(pressure.get('classic') or {}).get('postgres_health')}",
+            f"- Pressure result: **{'PASS' if pressure.get('passed') else 'FAIL'}**",
+            f"- Recovery expected root: {recovery.get('expected_root_cause')}",
+            f"- Recovery classic root: {(recovery.get('classic') or {}).get('root_cause')}",
+            f"- Recovery agentic root: {(recovery.get('agentic') or {}).get('root_cause')}",
+            f"- Recovery PostgreSQL health: {(recovery.get('classic') or {}).get('postgres_health')}",
+            f"- Recovery result: **{'PASS' if recovery.get('passed') else 'FAIL'}**",
+            f"- Stateful PostgreSQL result: **{'PASS' if stateful_postgres.get('passed') else 'FAIL'}**",
+            "",
+        ]
+    )
     inventory = validation.get("inventory") or {}
     lines.extend(
         [
@@ -1350,7 +1372,8 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Provision a disposable Kind cluster with Prometheus, Loki and "
             "Tempo, inject real failures, and validate deterministic plus "
-            "agentic RCA across Kubernetes and distributed telemetry."
+            "agentic RCA across Kubernetes, distributed telemetry and "
+            "stateful PostgreSQL recovery."
         )
     )
     parser.add_argument(
