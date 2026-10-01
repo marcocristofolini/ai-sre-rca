@@ -176,11 +176,13 @@ def test_validation_settings_switches_full_stack_sources(tmp_path):
     assert enabled_cluster["loki_url"].endswith(f":{harness.LOKI_PORT}")
     assert enabled_cluster["tempo_url"].endswith(f":{harness.TEMPO_PORT}")
     assert enabled.trace_analysis_enabled is True
+    assert enabled.stateful_dependency_analysis_enabled is True
 
     assert disabled_cluster["prometheus_url"] == "http://127.0.0.1:9"
     assert disabled_cluster["loki_url"] == "http://127.0.0.1:9"
     assert disabled_cluster["tempo_url"] == "http://127.0.0.1:9"
     assert disabled.trace_analysis_enabled is False
+    assert disabled.stateful_dependency_analysis_enabled is False
 
 
 def test_report_writer_includes_full_stack_sections(tmp_path):
@@ -214,6 +216,31 @@ def test_report_writer_includes_full_stack_sections(tmp_path):
                 "evidence_integrity_ok": True,
                 "passed": True,
             },
+            "stateful_postgres": {
+                "pressure": {
+                    "expected_root_cause": "postgres-connection-exhaustion:*",
+                    "classic": {
+                        "root_cause": "postgres-connection-exhaustion:dependency",
+                        "postgres_health": "critical",
+                    },
+                    "agentic": {
+                        "root_cause": "postgres-connection-exhaustion:dependency",
+                    },
+                    "passed": True,
+                },
+                "recovery": {
+                    "expected_root_cause": "trace-causal-propagation",
+                    "classic": {
+                        "root_cause": "trace-causal-propagation",
+                        "postgres_health": "healthy",
+                    },
+                    "agentic": {
+                        "root_cause": "trace-causal-propagation",
+                    },
+                    "passed": True,
+                },
+                "passed": True,
+            },
             "inventory": {
                 "relationship_types": [],
                 "passed": True,
@@ -228,3 +255,6 @@ def test_report_writer_includes_full_stack_sections(tmp_path):
     assert "Tempo traces: 3" in markdown
     assert "## Distributed trace RCA" in markdown
     assert "trace-causal-propagation" in markdown
+    assert "## Stateful PostgreSQL RCA and recovery" in markdown
+    assert "postgres-connection-exhaustion:*" in markdown
+    assert "Recovery PostgreSQL health: healthy" in markdown
