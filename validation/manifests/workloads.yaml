@@ -83,9 +83,7 @@ metadata:
 spec:
   restartPolicy: Never
   tolerations:
-    - key: node-role.kubernetes.io/control-plane
-      operator: Exists
-      effect: NoSchedule
+    - operator: Exists
   containers:
     - name: worker
       image: busybox:1.36.1
