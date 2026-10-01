@@ -3,20 +3,8 @@ name: Real environment validation
 on:
   push:
     branches: [main]
-    paths:
-      - "backend/**"
-      - "validation/**"
-      - ".github/workflows/real-environment-validation.yml"
-      - "Makefile"
-      - "VERSION"
   pull_request:
     branches: [main]
-    paths:
-      - "backend/**"
-      - "validation/**"
-      - ".github/workflows/real-environment-validation.yml"
-      - "Makefile"
-      - "VERSION"
   workflow_dispatch:
 
 permissions:
