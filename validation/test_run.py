@@ -147,6 +147,21 @@ def test_observability_payload_helpers():
     assert harness._loki_entry_count(loki) == 3
 
 
+def test_stateful_signal_value_reads_exporter_scalar():
+    payload = {
+        "signals": {
+            "connections": {"value": 15.0},
+            "max_connections": {"value": "20"},
+            "missing": {"value": None},
+        }
+    }
+
+    assert harness._stateful_signal_value(payload, "connections") == 15.0
+    assert harness._stateful_signal_value(payload, "max_connections") == 20.0
+    assert harness._stateful_signal_value(payload, "missing") is None
+    assert harness._stateful_signal_value(payload, "unknown") is None
+
+
 def test_validation_settings_switches_full_stack_sources(tmp_path):
     token = tmp_path / "token"
     ca = tmp_path / "ca.crt"
@@ -214,6 +229,43 @@ def test_report_writer_includes_full_stack_sections(tmp_path):
                 "evidence_integrity_ok": True,
                 "passed": True,
             },
+            "stateful_postgresql": {
+                "postgres_exporter": {
+                    "connections": 15.0,
+                    "max_connections": 20.0,
+                    "utilization": 0.75,
+                    "critical_threshold": 0.70,
+                },
+                "classic": {
+                    "root_cause": "postgres-connection-exhaustion:dependency:postgresql/orders@orders-db:5432",
+                },
+                "agentic": {
+                    "root_cause": "postgres-connection-exhaustion:dependency:postgresql/orders@orders-db:5432",
+                },
+                "evidence_integrity_ok": True,
+                "passed": True,
+            },
+            "recovery": {
+                "recovered_postgres": {
+                    "connections": 1.0,
+                    "max_connections": 20.0,
+                    "utilization": 0.05,
+                },
+                "fresh_telemetry": {
+                    "prometheus_success_requests": 3.0,
+                    "loki_recovery_entries": 3,
+                    "tempo_recovery_trace_count": 3,
+                },
+                "classic": {
+                    "root_cause": None,
+                    "trace_causal_evidence_count": 0,
+                },
+                "agentic": {
+                    "root_cause": None,
+                },
+                "evidence_integrity_ok": True,
+                "passed": True,
+            },
             "inventory": {
                 "relationship_types": [],
                 "passed": True,
@@ -228,3 +280,9 @@ def test_report_writer_includes_full_stack_sections(tmp_path):
     assert "Tempo traces: 3" in markdown
     assert "## Distributed trace RCA" in markdown
     assert "trace-causal-propagation" in markdown
+    assert "## Stateful PostgreSQL RCA" in markdown
+    assert "Exporter utilization: 0.75" in markdown
+    assert "postgres-connection-exhaustion:" in markdown
+    assert "## Recovery validation" in markdown
+    assert "Recovered PostgreSQL utilization: 0.05" in markdown
+    assert "Fresh trace causal evidence count: 0" in markdown
