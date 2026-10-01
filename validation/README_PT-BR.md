@@ -41,6 +41,19 @@ O gate exige que Prometheus, Loki e Tempo apareçam como healthy nos checks de c
 
 Uma falha de fonte opcional nunca pode fabricar evidência. O invariant original da rc1 para crash loop continua valendo: sem a evidência exigida para diagnosticar uma saída específica da aplicação, o engine pode ficar inconclusivo ou selecionar o mecanismo genérico de crash loop, mas não pode afirmar uma especificidade sem suporte.
 
+## Slice PostgreSQL de recuperação da v0.8.0-rc.3
+
+O primeiro slice da rc3 exercita o adapter Prometheus de PostgreSQL de produção contra dados live no Prometheus usando exatamente os nomes de métricas e labels esperados por telemetria compatível com postgres_exporter.
+
+O workload de validação expõe dois estados:
+
+- **pressão:** 19 de 20 conexões PostgreSQL aparecem em uso, gerando 95% de utilização e exigindo que `postgres-connection-exhaustion:*` substitua a causa apenas por trace;
+- **recuperado:** a mesma dependência volta para 4 de 20 conexões enquanto novos traces com falha continuam sendo gerados, exigindo que o engine deixe de promover a causa PostgreSQL antiga e volte para `trace-causal-propagation`.
+
+Os caminhos clássico e agentic precisam concordar. O specialist de database precisa concluir nas duas fases, e a integridade das evidências continua obrigatória.
+
+Este slice valida o contrato do adapter e a semântica de recuperação. Um próximo slice da rc3 substituirá as métricas compatíveis emitidas pelo workload por PostgreSQL + postgres_exporter reais antes de fecharmos a release candidate.
+
 ## Fluxo
 
 ```mermaid
@@ -103,7 +116,7 @@ Cada execução gera apenas estes artefatos compartilháveis:
 - `validation-artifacts/validation-report.json`
 - `validation-artifacts/validation-report.md`
 
-O relatório v2 inclui cenários Kubernetes, health e contagens da telemetria full-stack, paridade do RCA por traces distribuídos, integridade das evidências e reconciliação/tombstones do Persistent Awareness Graph.
+O relatório v3 preserva todas as seções da rc2 e adiciona evidências de pressão/recuperação stateful de PostgreSQL. Na fase de pressão o RCA específico de PostgreSQL precisa ser promovido; após a recuperação, com telemetria atual saudável, o engine precisa voltar para a causalidade por traces.
 
 O bearer token temporário do Kubernetes e o arquivo de CA ficam em `validation-artifacts/runtime/` somente durante a execução e nunca são enviados como artefatos pelo CI.
 
