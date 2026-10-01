@@ -444,6 +444,68 @@ def generate_observability_failure(context: str) -> dict[str, Any]:
     }
 
 
+def generate_observability_recovery(context: str) -> dict[str, Any]:
+    pods = pods_for_label(context, "app=rc3-workload")
+    if len(pods) != 1:
+        raise RuntimeError(
+            f"expected exactly one rc3 workload pod, found {len(pods)}"
+        )
+    pod_name, node_name = pod_identity(pods[0])
+    started_at = utcnow()
+
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{WORKLOAD_PORT}/recover",
+        timeout=10,
+    ) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"validation recovery transition returned {response.status}"
+            )
+
+    responses: list[str] = []
+    for _ in range(3):
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{WORKLOAD_PORT}/ok",
+            timeout=10,
+        ) as response:
+            body = response.read().decode(errors="replace")
+            if response.status != 200:
+                raise RuntimeError(
+                    f"validation healthy request returned {response.status}: {body}"
+                )
+            responses.append(body.strip())
+        time.sleep(0.3)
+
+    time.sleep(5)
+    return {
+        "started_at": started_at,
+        "requests": len(responses),
+        "responses": responses,
+        "pod": pod_name,
+        "node": node_name,
+    }
+
+
+def release_postgres_connections(context: str) -> None:
+    kubectl(
+        context,
+        "scale",
+        "deployment/postgres-connection-loader",
+        "-n",
+        NAMESPACE,
+        "--replicas=0",
+    )
+    kubectl(
+        context,
+        "rollout",
+        "status",
+        "deployment/postgres-connection-loader",
+        "-n",
+        NAMESPACE,
+        "--timeout=60s",
+    )
+
+
 def start_postgres(port: int) -> str:
     run(["docker", "rm", "-f", POSTGRES_CONTAINER], check=False)
     run(
@@ -706,6 +768,121 @@ def _loki_entry_count(payload: dict[str, Any]) -> int:
         for stream in payload.get("data", {}).get("result", [])
         if isinstance(stream, dict)
     )
+
+
+def _stateful_signal_value(payload: dict[str, Any], name: str) -> float | None:
+    try:
+        value = payload["signals"][name]["value"]
+        return float(value) if value is not None else None
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+async def wait_for_postgres_utilization(
+    tools: ReadOnlyHTTPTools,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            metrics = await tools.postgres_dependency_metrics(
+                "orders",
+                utcnow(),
+                1,
+                "orders-db:5432",
+            )
+            connections = _stateful_signal_value(metrics, "connections")
+            max_connections = _stateful_signal_value(metrics, "max_connections")
+            utilization = (
+                connections / max_connections
+                if connections is not None
+                and max_connections not in {None, 0}
+                else None
+            )
+            last = {
+                "connections": connections,
+                "max_connections": max_connections,
+                "utilization": utilization,
+                "metrics": metrics,
+            }
+            above_ok = minimum is None or (
+                utilization is not None and utilization >= minimum
+            )
+            below_ok = maximum is None or (
+                utilization is not None and utilization <= maximum
+            )
+            if above_ok and below_ok:
+                return last
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+
+    raise RuntimeError(
+        "PostgreSQL exporter utilization did not reach the required state: "
+        f"minimum={minimum}, maximum={maximum}, last={last}"
+    )
+
+
+async def validate_recovery_observability(
+    tools: ReadOnlyHTTPTools,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    started_at = signal["started_at"]
+    deadline = time.monotonic() + 45
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            now = utcnow()
+            metric_payload, log_payload, traces = await asyncio.gather(
+                tools.prometheus_query(
+                    'sum(ai_sre_validation_requests_total{service="frontend",status="200"})',
+                    now,
+                ),
+                tools.loki_query_range(
+                    '{namespace="rca-validation",app="frontend",level="info"}',
+                    started_at,
+                    now + timedelta(minutes=1),
+                    100,
+                ),
+                tools.tempo_search_traces(
+                    "frontend",
+                    started_at,
+                    now + timedelta(minutes=1),
+                    8,
+                ),
+            )
+            last = {
+                "prometheus_success_requests": _prometheus_value(metric_payload),
+                "loki_recovery_entries": _loki_entry_count(log_payload),
+                "tempo_recovery_trace_count": len(traces),
+                "tempo_recovery_trace_ids": [
+                    str(item.get("traceID"))
+                    for item in traces
+                    if item.get("traceID")
+                ],
+            }
+            if (
+                (last["prometheus_success_requests"] or 0) >= 3
+                and last["loki_recovery_entries"] >= 3
+                and last["tempo_recovery_trace_count"] >= 2
+            ):
+                break
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+
+    last["passed"] = (
+        (last.get("prometheus_success_requests") or 0) >= 3
+        and last.get("loki_recovery_entries", 0) >= 3
+        and last.get("tempo_recovery_trace_count", 0) >= 2
+    )
+    return last
 
 
 async def validate_observability(
