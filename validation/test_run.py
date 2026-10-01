@@ -211,8 +211,9 @@ def test_validation_workload_emits_trace_dependency_contract(monkeypatch):
         ["scopeSpans"][0]["spans"]
     )
     root, database = spans
-    assert root["status"]["code"] == "STATUS_CODE_ERROR"
-    assert database["kind"] == "SPAN_KIND_CLIENT"
+    assert root["status"]["code"] == 2
+    assert root["kind"] == 2
+    assert database["kind"] == 3
     assert database["parentSpanId"] == root["spanId"]
     keys = {item["key"] for item in database["attributes"]}
     assert {

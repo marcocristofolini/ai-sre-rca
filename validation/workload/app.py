@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 import os
 import secrets
@@ -75,7 +74,7 @@ def _attributes(values: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _id(raw: bytes) -> str:
-    return base64.b64encode(raw).decode("ascii")
+    return raw.hex()
 
 
 def _post_json(url: str, payload: dict[str, Any]) -> int:
@@ -100,7 +99,7 @@ def emit_trace(*, failed: bool) -> str:
     db_finished = db_started + db_duration
     root_finished = started + (250_000_000 if failed else 30_000_000)
 
-    status_code = "STATUS_CODE_ERROR" if failed else "STATUS_CODE_OK"
+    status_code = 2 if failed else 1
     http_status = 500 if failed else 200
     common = {
         "traceId": _id(trace_id),
@@ -112,7 +111,7 @@ def emit_trace(*, failed: bool) -> str:
             **common,
             "spanId": _id(root_span_id),
             "name": "GET /checkout",
-            "kind": "SPAN_KIND_SERVER",
+            "kind": 2,
             "startTimeUnixNano": str(started),
             "endTimeUnixNano": str(root_finished),
             "attributes": _attributes(
@@ -129,7 +128,7 @@ def emit_trace(*, failed: bool) -> str:
             "spanId": _id(db_span_id),
             "parentSpanId": _id(root_span_id),
             "name": "SELECT orders",
-            "kind": "SPAN_KIND_CLIENT",
+            "kind": 3,
             "startTimeUnixNano": str(db_started),
             "endTimeUnixNano": str(db_finished),
             "attributes": _attributes(
