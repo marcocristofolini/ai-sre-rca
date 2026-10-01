@@ -150,7 +150,7 @@ spec:
               until pg_isready -h orders-db -U postgres -d orders; do sleep 1; done
               i=0
               while [ "$i" -lt 15 ]; do
-                PGPASSWORD=validation psql -h orders-db -U postgres -d orders -c "select pg_sleep(3600)" &
+                (echo "select 1;"; sleep 3600) | PGPASSWORD=validation psql -h orders-db -U postgres -d orders &
                 i=$((i + 1))
               done
               wait
