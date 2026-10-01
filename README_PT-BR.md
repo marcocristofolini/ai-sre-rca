@@ -8,6 +8,18 @@ Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernete
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
 
+## Desenvolvimento da v0.8.0-rc.3: telemetria stateful e recuperação
+
+A próxima candidata já está em validação ativa. A primeira fatia da rc.3 adiciona uma **dependência PostgreSQL 17 real e postgres_exporter** ao ambiente Kind descartável, em vez de depender apenas da identidade da dependência extraída dos traces.
+
+O harness eleva a utilização de conexões do PostgreSQL acima de um threshold controlado usando um connection loader bounded. Com os mesmos traces distribuídos de falha usados na rc.2, os adapters de produção precisam observar independentemente a anomalia do banco, e as avaliações clássica e agentic precisam convergir para uma causa tipada `postgres-connection-exhaustion:...`. O specialist de database precisa concluir e a integridade das evidências continua obrigatória.
+
+Depois o harness escala o loader para zero, espera a utilização observada pelo exporter normalizar, emite métricas HTTP 200, logs Loki e traces OTLP saudáveis e executa uma investigação de recuperação limitada à nova janela pós-recovery. Essa investigação não pode promover novamente a antiga causa causal de trace ou stateful.
+
+Este trabalho permanece explicitamente marcado como **em desenvolvimento** até o GitHub-first real-environment gate passar ponta a ponta. Redis/redis_exporter e Kafka/kafka-exporter são os alvos stateful restantes da rc.3.
+
+Veja [validation/README_PT-BR.md](validation/README_PT-BR.md) e [o roadmap](docs/roadmap.md).
+
 ## v0.8.0-rc.2: validação full-stack de observabilidade
 
 Baseline anterior: [v0.8.0-rc.1](https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.8.0-rc.1). A candidata rc.2 preserva esse gate de Kubernetes/Persistent Awareness Graph e adiciona validação live com Prometheus, Loki e Tempo/OpenTelemetry.
