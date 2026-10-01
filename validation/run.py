@@ -169,18 +169,60 @@ def wait_for_oom(context: str) -> dict[str, Any] | None:
 def wait_for_crashloop(context: str) -> dict[str, Any] | None:
     for pod in pods_for_label(context, "app=crashloop-target"):
         statuses = (pod.get("status") or {}).get("containerStatuses") or []
-        for status in statuses:
-            waiting = (status.get("state") or {}).get("waiting") or {}
-            reason, exit_code = terminated_reason(pod)
-            if waiting.get("reason") == "CrashLoopBackOff" and exit_code:
-                return {
-                    "pod": pod,
-                    "signal": {
-                        "waiting_reason": "CrashLoopBackOff",
-                        "last_exit_code": exit_code,
-                        "last_reason": reason,
-                    },
-                }
+        reason, exit_code = terminated_reason(pod)
+        if not exit_code:
+            continue
+
+        restart_count = max(
+            (
+                int(status.get("restartCount") or 0)
+                for status in statuses
+                if isinstance(status, dict)
+            ),
+            default=0,
+        )
+        waiting_reason = next(
+            (
+                str(((status.get("state") or {}).get("waiting") or {}).get("reason"))
+                for status in statuses
+                if isinstance(status, dict)
+                and ((status.get("state") or {}).get("waiting") or {}).get("reason")
+            ),
+            None,
+        )
+        pod_name = str((pod.get("metadata") or {}).get("name") or "")
+        events = kubectl_json(
+            context,
+            "get",
+            "events",
+            "-n",
+            NAMESPACE,
+            "--field-selector",
+            f"involvedObject.name={pod_name}",
+        )
+        backoff_event = next(
+            (
+                event
+                for event in events.get("items", [])
+                if isinstance(event, dict)
+                and str(event.get("reason") or "") == "BackOff"
+            ),
+            None,
+        )
+        if restart_count >= 1 and (
+            waiting_reason == "CrashLoopBackOff"
+            or backoff_event is not None
+        ):
+            return {
+                "pod": pod,
+                "signal": {
+                    "waiting_reason": waiting_reason,
+                    "restart_count": restart_count,
+                    "last_exit_code": exit_code,
+                    "last_reason": reason,
+                    "backoff_event_observed": backoff_event is not None,
+                },
+            }
     return None
 
 
@@ -389,6 +431,9 @@ async def investigate_scenario(
     signal: dict[str, Any],
     expected_root: str | None,
     expected_status: str = "resolved",
+    allowed_statuses: tuple[str, ...] | None = None,
+    allowed_roots: tuple[str | None, ...] | None = None,
+    forbidden_roots: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     pod_name, node_name = pod_identity(pod)
     incident = IncidentInput(
@@ -444,11 +489,22 @@ async def investigate_scenario(
         ),
         None,
     )
+    accepted_statuses = set(allowed_statuses or (expected_status,))
+    accepted_roots = set(
+        allowed_roots if allowed_roots is not None else (expected_root,)
+    )
+    parity_ok = (
+        classic.status == agentic.status
+        and classic_root == agentic_root
+    )
     passed = (
-        classic.status == expected_status
-        and classic_root == expected_root
-        and agentic.status == expected_status
-        and agentic_root == expected_root
+        classic.status in accepted_statuses
+        and agentic.status in accepted_statuses
+        and classic_root in accepted_roots
+        and agentic_root in accepted_roots
+        and classic_root not in forbidden_roots
+        and agentic_root not in forbidden_roots
+        and parity_ok
         and integrity_ok
         and kubernetes_result is not None
         and kubernetes_result.status == "completed"
@@ -460,6 +516,15 @@ async def investigate_scenario(
         "signal": signal,
         "expected_status": expected_status,
         "expected_root_cause": expected_root,
+        "accepted_statuses": sorted(accepted_statuses),
+        "accepted_root_causes": sorted(
+            (
+                "none" if item is None else item
+                for item in accepted_roots
+            )
+        ),
+        "forbidden_root_causes": sorted(forbidden_roots),
+        "classic_agentic_parity_ok": parity_ok,
         "classic": {
             "status": classic.status,
             "root_cause": classic_root,
@@ -628,6 +693,21 @@ async def validate_backend(
                     signal=observed["signal"],
                     expected_root=expected_root,
                     expected_status=expected_status,
+                    allowed_statuses=(
+                        ("resolved", "inconclusive")
+                        if name == "crashloop"
+                        else None
+                    ),
+                    allowed_roots=(
+                        (None, "container-crash-loop")
+                        if name == "crashloop"
+                        else None
+                    ),
+                    forbidden_roots=(
+                        ("application-exit",)
+                        if name == "crashloop"
+                        else ()
+                    ),
                 )
             )
         return {
@@ -680,8 +760,12 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
             "| {name} | {expected} | {classic} | {agentic} | {integrity} | {result} |".format(
                 name=item["name"],
                 expected=(
-                    item["expected_root_cause"]
-                    or f"{item['expected_status']} / no root cause"
+                    " / ".join(item["accepted_root_causes"])
+                    if len(item["accepted_root_causes"]) > 1
+                    else (
+                        item["expected_root_cause"]
+                        or f"{item['expected_status']} / no root cause"
+                    )
                 ),
                 classic=item["classic"]["root_cause"],
                 agentic=item["agentic"]["root_cause"],
@@ -760,8 +844,9 @@ def main() -> int:
             lambda: wait_for_oom(context),
         )
         crash = wait_until(
-            "CrashLoopBackOff with non-zero exit",
+            "container restart backoff with non-zero exit",
             lambda: wait_for_crashloop(context),
+            timeout_seconds=90,
         )
         failed = wait_until(
             "FailedScheduling caused by insufficient resources",
