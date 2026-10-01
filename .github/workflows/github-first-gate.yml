@@ -1,124 +1,75 @@
 name: GitHub-first gate
 
 on:
-  workflow_run:
-    workflows:
-      - Real environment validation
-    types: [completed]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   actions: read
   contents: read
+  packages: read
+  security-events: read
 
 concurrency:
-  group: github-first-gate-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: github-first-gate-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  codeql:
+    name: CodeQL
+    uses: ./.github/workflows/codeql.yml
+
+  real-environment:
+    name: Real environment validation
+    uses: ./.github/workflows/real-environment-validation.yml
+
   gate:
     name: gate
+    if: always()
+    needs:
+      - ci
+      - codeql
+      - real-environment
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - name: Resolve target commit
-        id: target
+      - name: Verify required workflows
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          REAL_ENV_RESULT: ${{ needs.real-environment.result }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-            echo "branch=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-            echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+          printf 'CI=%s\nCodeQL=%s\nReal environment=%s\n' \
+            "$CI_RESULT" "$CODEQL_RESULT" "$REAL_ENV_RESULT"
 
-      - name: Wait for required GitHub workflows
-        uses: actions/github-script@v8
+          test "$CI_RESULT" = success
+          test "$CODEQL_RESULT" = success
+          test "$REAL_ENV_RESULT" = success
+
+      - name: Publish gate summary
         env:
-          TARGET_SHA: ${{ steps.target.outputs.sha }}
-          TARGET_BRANCH: ${{ steps.target.outputs.branch }}
-        with:
-          script: |
-            const required = [
-              'CI',
-              'CodeQL',
-              'Real environment validation',
-            ];
-            const targetSha = process.env.TARGET_SHA;
-            const deadline = Date.now() + 40 * 60 * 1000;
+          CI_RESULT: ${{ needs.ci.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          REAL_ENV_RESULT: ${{ needs.real-environment.result }}
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # GitHub-first gate passed
 
-            function latestByName(runs, name) {
-              return runs
-                .filter(run => run.name === name)
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
-            }
+          | Required workflow | Result |
+          | --- | --- |
+          | CI | $CI_RESULT |
+          | CodeQL | $CODEQL_RESULT |
+          | Real environment validation | $REAL_ENV_RESULT |
 
-            while (Date.now() < deadline) {
-              const response = await github.rest.actions.listWorkflowRunsForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                head_sha: targetSha,
-                per_page: 100,
-              });
-              const runs = response.data.workflow_runs;
-              const state = {};
-
-              for (const name of required) {
-                const run = latestByName(runs, name);
-                state[name] = run ? {
-                  id: run.id,
-                  status: run.status,
-                  conclusion: run.conclusion,
-                  event: run.event,
-                  html_url: run.html_url,
-                } : null;
-              }
-
-              core.info(`Target SHA: ${targetSha}`);
-              core.info(JSON.stringify(state, null, 2));
-
-              const missing = required.filter(name => !state[name]);
-              const failed = required.filter(name =>
-                state[name]?.status === 'completed' &&
-                state[name]?.conclusion !== 'success'
-              );
-
-              if (failed.length) {
-                core.setFailed(
-                  `GitHub-first gate failed for ${targetSha}: ${failed.join(', ')}`
-                );
-                return;
-              }
-
-              const allSuccessful = required.every(name =>
-                state[name]?.status === 'completed' &&
-                state[name]?.conclusion === 'success'
-              );
-              if (allSuccessful) {
-                await core.summary
-                  .addHeading('GitHub-first gate passed')
-                  .addTable([
-                    [{data: 'Workflow', header: true}, {data: 'Conclusion', header: true}, {data: 'Run', header: true}],
-                    ...required.map(name => [
-                      name,
-                      state[name].conclusion,
-                      `<a href="${state[name].html_url}">${state[name].id}</a>`,
-                    ]),
-                  ])
-                  .addRaw(`\nCommit: \`${targetSha}\`\n`)
-                  .addRaw(`Branch: \`${process.env.TARGET_BRANCH || 'unknown'}\`\n`)
-                  .write();
-                return;
-              }
-
-              if (missing.length) {
-                core.info(`Waiting for workflow runs: ${missing.join(', ')}`);
-              } else {
-                core.info('Required workflows still running.');
-              }
-              await new Promise(resolve => setTimeout(resolve, 15000));
-            }
-
-            core.setFailed(`Timed out waiting for required workflows on ${targetSha}`);
+          Commit: \`${GITHUB_SHA}\`
+          Ref: \`${GITHUB_REF}\`
+          EOF
