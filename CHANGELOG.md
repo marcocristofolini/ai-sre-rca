@@ -4,10 +4,26 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.8.0-rc.2] - 2026-10-01
+
+### Added
+- Full-stack real-environment validation with disposable Prometheus, Loki and Tempo/OpenTelemetry services inside the Kind harness.
+- Instrumented validation workload that emits Prometheus metrics, structured Loki logs and OTLP/HTTP traces through the official OpenTelemetry SDK.
+- Deterministic distributed-trace gate requiring repeated downstream origin across independent traces, classic/agentic verdict parity, completed metrics/logs/traces specialists and evidence-integrity verification.
+- Validation report schema v2 with full-stack telemetry health/counts and distributed-trace RCA evidence.
+- Digest-pinned validation telemetry images and pinned OpenTelemetry workload dependencies.
+- Bounded service-scoped Loki specialist fallback when namespace/service identity is explicit but Pod identity is absent or ambiguous.
+
+### Changed
+- Real Environment Validation workflow timeout increased to 35 minutes for the heavier full-stack gate.
+- The rc.1 Kubernetes and Persistent Awareness Graph scenarios remain mandatory in the same validation run.
+
 ### Documentation
-- Revised the English and Brazilian Portuguese READMEs and architecture diagrams to reflect the published v0.8.0-rc.1 architecture and real-environment validation plane.
-- Added real application screenshots captured from the running v0.8.0-rc.1 UI in `DEMO_MODE=true` for Kubernetes RCA, trace-aware RCA, stateful PostgreSQL RCA, Awareness Explorer and Operations.
-- Aligned Persistent Awareness Graph and agentic investigation docs with capabilities already delivered in rc.1 and the v0.8.0-rc.2 full-stack observability validation target.
+- Revised the English and Brazilian Portuguese READMEs and architecture diagrams for the rc.2 full-stack validation plane.
+- Preserved the real UI screenshots captured from the running rc.1 application in `DEMO_MODE=true` for Kubernetes RCA, trace-aware RCA, stateful PostgreSQL RCA, Awareness Explorer and Operations.
+- Updated roadmap and validation documentation with the closed rc.2 scope and post-rc.2 candidates.
 
 ## [0.8.0-rc.1] - 2026-10-01
 
@@ -342,7 +358,8 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 - Next.js investigation UI.
 - Docker Compose and Helm deployment assets.
 
-[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.8.0-rc.1...HEAD
+[Unreleased]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.8.0-rc.2...HEAD
+[0.8.0-rc.2]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.8.0-rc.1...v0.8.0-rc.2
 [0.8.0-rc.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.7.0...v0.8.0-rc.1
 [0.7.0]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.6.0...v0.6.1

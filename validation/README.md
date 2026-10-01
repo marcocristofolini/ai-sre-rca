@@ -1,38 +1,45 @@
 # Real Environment Validation Harness
 
-The v0.8.0-rc.1 validation harness proves the Kubernetes RCA path against a disposable, real Kubernetes control plane instead of mocks or canned fixtures.
+The validation harness now has two layers:
+
+- **v0.8.0-rc.1 baseline:** real Kubernetes failure states plus authoritative Persistent Awareness Graph reconciliation.
+- **v0.8.0-rc.2 full-stack release candidate:** real Prometheus, Loki and Tempo/OpenTelemetry telemetry produced by an instrumented workload and consumed through the production read-only adapters.
 
 ## Release gate
 
-The harness creates a two-node Kind cluster, applies a read-only validator ServiceAccount, starts PostgreSQL/pgvector, injects controlled failures, and runs both the classic deterministic engine and the v0.8 agentic execution path against the live Kubernetes API.
+The harness creates a disposable two-node Kind cluster, applies the read-only validator ServiceAccount, starts PostgreSQL/pgvector, deploys the validation workloads, and runs the production investigation code against live APIs.
 
-The first RC gate covers:
+For the rc2 path it additionally deploys:
 
-- real `OOMKilled` state, expected root cause `container-oom` when Prometheus is intentionally unavailable;
-- real restart backoff with exit code 42 while Loki is unavailable; the gate accepts either the generic `container-crash-loop` mechanism or an inconclusive result, requires classic/agentic parity, and explicitly forbids promotion to the more specific `application-exit` hypothesis without log evidence;
-- real `FailedScheduling` caused by impossible resource requests, expected root cause `insufficient-resources`;
-- authoritative Kubernetes inventory collection into the Persistent Awareness Graph;
-- real `owned_by`, `serves` and `scheduled_on` relationships;
-- authoritative tombstoning after a resource is deleted from the real cluster;
-- SHA-256 evidence-integrity verification;
-- root-cause parity between classic and agentic Kubernetes evaluation.
+- Prometheus, scraping the instrumented validation workload every two seconds;
+- Loki, receiving structured application logs through its HTTP push API;
+- Tempo, receiving OTLP/HTTP traces produced by the official OpenTelemetry SDK;
+- an instrumented `frontend` workload that exposes Prometheus metrics and emits correlated logs and traces.
 
-Prometheus, Loki, Tempo and Argo CD are deliberately unreachable in this first gate. OOMKilled and FailedScheduling must still resolve from direct Kubernetes evidence. For crash loops, the gate validates a safety invariant instead of a timing-sensitive exact verdict: classic and agentic must agree, the result may be the generic `container-crash-loop` mechanism or inconclusive, and `application-exit` is forbidden while log evidence is unavailable. This verifies that an optional-source outage does not invent evidence or overclaim specificity.
+The observability images and the Kind node image are pinned by digest. The workload image pins its Python base image and OpenTelemetry package versions.
 
-## Published v0.8.0-rc.1 evidence
+## What the gate proves
 
-The published prerelease points to commit `4c3429f8ee26be7bf42279c40186b50da045e9d1`. The post-merge real-environment workflow passed on that exact commit and its JSON/Markdown reports are attached to the GitHub release.
+The Kubernetes baseline still requires:
 
-Observed in that run:
+- real `OOMKilled`, resolving to `container-oom`;
+- real restart backoff with exit code 42, preserving classic/agentic parity and never promoting `application-exit` without log evidence;
+- real `FailedScheduling` caused by impossible resource requests, resolving to `insufficient-resources`;
+- authoritative Kubernetes inventory ingestion;
+- `owned_by`, `serves` and `scheduled_on` graph relationships;
+- authoritative tombstones after deleting real resources;
+- SHA-256 evidence-integrity verification.
 
-- 34 Kubernetes resources observed by authoritative inventory;
-- 13 validation-namespace graph entities;
-- `owned_by`, `scheduled_on` and `serves` relationships present;
-- 3 authoritative tombstones after real resource deletion;
-- OOMKilled resolved to `container-oom`;
-- FailedScheduling resolved to `insufficient-resources`;
-- restart-backoff scenario preserved classic/agentic parity and did not promote `application-exit` without log evidence;
-- all evidence-integrity checks passed.
+The rc2 full-stack path additionally generates three failing checkout requests. Each request produces:
+
+- an HTTP 500 counter visible through Prometheus;
+- a structured error log in Loki carrying both Pod/service labels and the trace ID;
+- an OTLP trace with the causal path `frontend -> postgresql/orders@orders-db:5432`;
+- service-graph RED metrics exposed through Prometheus.
+
+The gate requires Prometheus, Loki and Tempo to report healthy through the production capability checks. At least two independent traces must converge on the same downstream origin before `trace-causal-propagation` can be selected. The agentic execution must complete its metrics, logs and traces specialists, and both classic and agentic evaluation must agree on the deterministic root cause.
+
+A failure in an optional source must never fabricate evidence. The original rc1 crash-loop invariant remains: without the evidence required for a more specific application-exit diagnosis, the engine may stay inconclusive or select the generic crash-loop mechanism, but it may not overclaim specificity.
 
 ## Flow
 
@@ -41,16 +48,33 @@ flowchart LR
     CI[GitHub Actions or local runner] --> H[Validation Harness]
     H --> K[Disposable 2-node Kind cluster]
     H --> PG[(PostgreSQL + pgvector)]
-    K --> F[Controlled failure workloads]
+
+    K --> KF[Kubernetes failure workloads]
+    K --> OBS[Full-stack observability]
+    OBS --> PROM[Prometheus]
+    OBS --> LOKI[Loki]
+    OBS --> TEMPO[Tempo]
+    OBS --> APP[Instrumented frontend]
+
+    APP -->|scrape| PROM
+    APP -->|structured logs| LOKI
+    APP -->|OTLP/HTTP| TEMPO
+
     K --> SA[Read-only validator ServiceAccount]
     SA --> T[ReadOnlyHTTPTools]
-    T --> I[Classic Investigation Engine]
-    T --> A[Agentic Specialists]
+    PROM --> T
+    LOKI --> T
+    TEMPO --> T
+
+    T --> CLASSIC[Classic Investigation Engine]
+    T --> AGENT[Agentic Specialists]
     T --> INV[Authoritative Inventory Collector]
+
     INV --> G[(Persistent Awareness Graph)]
-    I --> V[Deterministic verdict check]
-    A --> E[Shared-envelope evaluator]
+    CLASSIC --> V[Deterministic verdict]
+    AGENT --> E[Shared-envelope evaluator]
     G --> R[Topology + tombstone checks]
+
     V --> REP[JSON + Markdown evidence]
     E --> REP
     R --> REP
@@ -70,19 +94,21 @@ make validate-harness
 make validate-real
 ```
 
-The harness pins the Kind node image by digest. The CI workflow separately pins the Kind binary and verifies its SHA-256 checksum.
+The harness builds the small validation workload locally, loads it into Kind, starts the telemetry stack and cleans everything up afterward.
 
 ## Evidence
 
-Successful or failed runs write only these shareable artifacts:
+Every run writes only these shareable artifacts:
 
 - `validation-artifacts/validation-report.json`
 - `validation-artifacts/validation-report.md`
 
-Temporary Kubernetes bearer-token and CA files live below `validation-artifacts/runtime/` only while the job is running and are never uploaded by CI.
+The v2 report includes Kubernetes scenarios, full-stack source health and telemetry counts, distributed-trace RCA parity, evidence integrity, and Persistent Awareness Graph reconciliation/tombstones.
 
-The process exits non-zero when any required signal, deterministic verdict, agentic verdict, graph relationship, evidence-integrity check or tombstone invariant fails.
+Temporary Kubernetes bearer-token and CA files live under `validation-artifacts/runtime/` only while the job is running and are never uploaded by CI.
+
+The process exits non-zero when any required runtime signal, telemetry source, deterministic verdict, agentic verdict, graph relationship, evidence-integrity check or tombstone invariant fails.
 
 ## Cleanup
 
-By default the harness removes the disposable Kind cluster and PostgreSQL container in a `finally` block. Pass `--keep` only for local debugging.
+By default the harness terminates port-forwards, removes the disposable Kind cluster and removes the PostgreSQL container in a `finally` path. Pass `--keep` only for local debugging.

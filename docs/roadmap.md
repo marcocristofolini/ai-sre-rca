@@ -221,3 +221,24 @@ Agentic investigation foundation:
 - [x] model advice cannot alter task templates, query budgets or dependencies
 - [x] Kubernetes/metrics/traces baseline preserved when deterministically eligible
 - [x] invalid/unknown model specialist names fail back to the deterministic plan
+
+
+## v0.8.0-rc.2 — full-stack observability validation
+
+- [x] disposable Prometheus, Loki and Tempo/OpenTelemetry stack inside the Kind validation environment
+- [x] instrumented frontend workload emitting Prometheus metrics, structured Loki logs and OTLP/HTTP traces
+- [x] official OpenTelemetry SDK used for trace emission
+- [x] Prometheus/Loki/Tempo production capability checks must all report healthy
+- [x] service-scoped bounded Loki queries when an incident has namespace/service identity but no unambiguous Pod
+- [x] repeated downstream trace-origin convergence required before promoting `trace-causal-propagation`
+- [x] agentic metrics, logs and traces specialists execute against the same live telemetry
+- [x] classic and agentic deterministic verdict parity for the distributed-trace scenario
+- [x] SHA-256 evidence-integrity verification preserved across the full-stack scenario
+- [x] validation report schema v2 with telemetry counts, source health and distributed-trace RCA evidence
+- [x] Kind, Prometheus, Loki, Tempo and workload base images pinned by digest
+- [x] rc.1 OOMKilled, restart-backoff, FailedScheduling, inventory, graph-relationship and tombstone gates retained in the same run
+- [x] CI timeout expanded for the heavier full-stack release gate
+
+Post-rc.2 candidates:
+- stateful exporter validation for PostgreSQL/Kafka/Redis
+- recovery scenarios that prove stale causal telemetry is not promoted after health is restored

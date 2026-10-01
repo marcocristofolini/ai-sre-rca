@@ -392,7 +392,7 @@ def _eligible_tasks(
         scope=scope,
     )
 
-    if scope.namespace and scope.pod:
+    if scope.namespace and (scope.pod or scope.service):
         log_reason = (
             "The incident has explicit namespace and Pod identity for scoped log queries."
         )
@@ -400,6 +400,11 @@ def _eligible_tasks(
             log_reason = (
                 "A single fresh Pod was resolved from the bounded persistent "
                 "topology and will be used only to narrow the live Loki query."
+            )
+        elif scope.pod is None and scope.service:
+            log_reason = (
+                "No unambiguous Pod identity is available, so logs remain "
+                "bounded to the explicit namespace and service label."
             )
         _append_task(
             tasks,

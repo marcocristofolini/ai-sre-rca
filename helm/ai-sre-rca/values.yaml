@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.8.0-rc.1"
+    tag: "0.8.0-rc.2"
   replicas: 2
   existingSecret: ""
   service:
@@ -119,7 +119,7 @@ remediator:
   enabled: false
   image:
     repository: ghcr.io/your-org/ai-sre-rca-backend
-    tag: "0.8.0-rc.1"
+    tag: "0.8.0-rc.2"
   replicas: 1
   existingSecret: ""
   service:
@@ -155,7 +155,7 @@ remediator:
 frontend:
   image:
     repository: ghcr.io/your-org/ai-sre-rca-frontend
-    tag: "0.8.0-rc.1"
+    tag: "0.8.0-rc.2"
   replicas: 2
   service:
     port: 3000

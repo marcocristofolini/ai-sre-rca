@@ -193,9 +193,12 @@ async def test_multiple_fresh_pods_fail_closed_without_runtime_target_guess():
 
     by_kind = {task.specialist: task for task in plan.tasks}
     assert "kubernetes" not in by_kind
-    assert "logs" not in by_kind
+    assert "logs" in by_kind
     assert by_kind["metrics"].scope.pod is None
+    assert by_kind["logs"].scope.pod is None
+    assert by_kind["logs"].scope.service == "checkout"
     assert "pod" in by_kind["metrics"].scope.graph_ambiguous_fields
+    assert "pod" in by_kind["logs"].scope.graph_ambiguous_fields
 
 
 @pytest.mark.asyncio
@@ -338,3 +341,42 @@ async def test_changes_specialist_verifies_graph_resolved_application_live():
     assert result.status == "completed"
     assert tools.application == "checkout-prod"
     assert "scope:application:checkout-prod" in result.context_references
+
+
+@pytest.mark.asyncio
+async def test_log_specialist_can_use_explicit_service_scope_without_pod():
+    tools = RecordingLogTools()
+    task = SpecialistTask(
+        id="task-logs-service",
+        specialist="logs",
+        objective="bounded service logs",
+        rationale="test",
+        max_queries=2,
+        scope=SpecialistScope(
+            namespace="payments",
+            service="checkout",
+        ),
+    )
+
+    result = await execute_specialist(
+        task,
+        incident=IncidentInput(
+            title="Checkout service errors",
+            tenant_id="tenant-a",
+            cluster="prod",
+            namespace="payments",
+            service="checkout",
+        ),
+        tools=tools,
+        settings=Settings(),
+        prior_results={},
+        operational_context=PlannerGraphContext(),
+    )
+
+    assert result.status == "completed"
+    assert tools.query is not None
+    assert 'namespace="payments"' in tools.query
+    assert 'app="checkout"' in tools.query
+    assert 'pod=' not in tools.query
+    assert result.evidence[0].facts["scope_kind"] == "service"
+    assert result.evidence[0].facts["service"] == "checkout"

@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.8.0-rc.1
+# AI SRE RCA — v0.8.0-rc.2
 
 [![Validação em Ambiente Real](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -8,11 +8,11 @@ Investigador de incidentes SRE **evidence-first** e **read-only** para Kubernete
 
 O serviço recebe um incidente, resolve ownership e topologia de runtime do Kubernetes, reconstrói causalidade por traces, promove nós tipados de PostgreSQL/Kafka/Redis para investigadores determinísticos, coleta evidências de Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub e Karpenter, recupera incidentes históricos semelhantes no PostgreSQL/pgvector, avalia hipóteses explícitas e devolve um RCA estruturado.
 
-## v0.8.0-rc.1: awareness persistente + planejamento agentic bounded + validação em ambiente real
+## v0.8.0-rc.2: validação full-stack de observabilidade
 
-Prerelease publicada: [v0.8.0-rc.1](https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.8.0-rc.1) · as evidências da validação em ambiente real estão anexadas à release.
+Baseline anterior: [v0.8.0-rc.1](https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.8.0-rc.1). A candidata rc.2 preserva esse gate de Kubernetes/Persistent Awareness Graph e adiciona validação live com Prometheus, Loki e Tempo/OpenTelemetry.
 
-A v0.8.0-rc.1 avança o projeto de um engine de RCA restrito ao contexto do incidente para uma plataforma SRE autônoma e verificada por evidências. A release candidate publicada inclui:
+A v0.8.0-rc.2 avança o projeto de um engine de RCA restrito ao contexto do incidente para uma plataforma SRE autônoma e verificada por evidências. A release candidate inclui:
 
 - **Persistent Awareness Graph temporal** com identidade canônica de entidades e relações entre incidentes.
 - **Nós ChangeEvent first-class** derivados das evidências de deploy do Argo CD e da revisão Git correspondente, com identidade estável entre reobservações do mesmo deploy. A materialização exige aplicação, revisão e timestamp autoritativo da operação; vínculos com workload, serviço e repositório só são emitidos quando o grafo existente os resolve sem ambiguidade.
@@ -39,7 +39,7 @@ A v0.8.0-rc.1 avança o projeto de um engine de RCA restrito ao contexto do inci
 - **Três superfícies agentic distintas:** `plan` compila, `execute` apenas coleta evidências read-only dos especialistas e `investigate` executa ambos mais a avaliação determinística. Somente `investigate` pode retornar um verdict de causa raiz.
 - **Planejamento assistido por modelo opcional**, desabilitado por padrão. O LLM pode sugerir somente nomes de especialistas e justificativas; o servidor intersecta essa sugestão com a allow-list existente, gates determinísticos de elegibilidade, ramos obrigatórios de baseline e budgets/dependências controlados pelo servidor antes de qualquer tarefa existir.
 
-- **Real Environment Validation Harness.** Um cluster Kind descartável com dois nós agora exercita estados reais de `OOMKilled`, `CrashLoopBackOff` e `FailedScheduling` pelo adaptador Kubernetes read-only de produção, verifica paridade dos verdicts determinísticos clássico/agentic, reconcilia inventário real no Awareness Graph persistido em PostgreSQL, comprova tombstones autoritativos após remoção, valida hashes das evidências e gera evidências de release em JSON/Markdown. Veja [validation/README_PT-BR.md](validation/README_PT-BR.md).
+- **Full-stack Real Environment Validation Harness.** O gate Kind descartável com dois nós preserva os cenários reais de `OOMKilled`, restart backoff e `FailedScheduling`, além da reconciliação autoritativa do Awareness Graph, e agora também sobe Prometheus, Loki, Tempo/OpenTelemetry e um workload `frontend` instrumentado. O gate rc.2 exige adapters de produção healthy, convergência repetida da origem nos traces, evidência Loki scoped pelo serviço, conclusão dos specialists de métricas/logs/traces, paridade clássico/agentic em `trace-causal-propagation`, integridade das evidências e relatórios auditáveis JSON/Markdown. Veja [validation/README_PT-BR.md](validation/README_PT-BR.md).
 
 APIs atuais da v0.8:
 
@@ -613,16 +613,21 @@ docs/                 arquitetura, roadmap e screenshots reais da UI
 validation/           gate descartável de ambiente real com Kind
 ```
 
-## Próximo alvo de validação — v0.8.0-rc.2
+## Desenvolvimento da v0.8.0-rc.2 — validação full-stack de observabilidade
 
-O próximo marco da release candidate é a **validação full-stack de observabilidade**. O harness deve adicionar Prometheus, Loki e Tempo/OpenTelemetry reais, além de um workload instrumentado, para validar cadeias causais ponta a ponta.
+O caminho de validação da rc2 agora está implementado no harness de ambiente real. Ele preserva o baseline da rc1 para Kubernetes/Persistent Awareness Graph e adiciona um stack descartável de telemetria com **Prometheus, Loki e Tempo/OpenTelemetry**, além de um workload `frontend` instrumentado.
 
-Cenários alvo:
+O cenário full-stack gera três requests HTTP 500 reais. Cada request emite um contador Prometheus, um log no Loki scoped pelo Pod com o trace ID e um trace OTLP cuja dependência mais profunda em falha é `postgresql/orders@orders-db:5432`. O harness também expõe métricas RED de service graph pelo Prometheus.
 
-1. correlação deployment/change → regressão de runtime sem transformar proximidade temporal em prova;
-2. origem da falha no trace → evidência de logs → degradação de métricas → RCA determinístico;
-3. HTTP 5xx, latência de dependência, CPU throttling e memory pressure;
-4. telemetria stateful de PostgreSQL/Kafka/Redis no mesmo ambiente descartável;
-5. validação de recuperação, comprovando que evidência antiga não permanece promovida depois que o workload volta ao estado saudável.
+O gate exige:
 
-O gate da v0.8.0-rc.1 continua sendo o baseline de Kubernetes e Persistent Awareness Graph para essas extensões.
+1. Prometheus, Loki e Tempo healthy nos capability checks do adapter de produção;
+2. pelo menos três requests com falha, três logs correlacionados e dois traces independentes;
+3. uma aresta de service graph ao redor de `frontend`;
+4. conclusão dos specialists agentic de métricas, logs e traces usando a mesma telemetria live;
+5. convergência das avaliações clássica e agentic em `trace-causal-propagation`;
+6. integridade SHA-256 das evidências mais os checks já existentes de paridade Kubernetes e tombstones autoritativos.
+
+As imagens do stack descartável de telemetria ficam presas por digest, e o workload usa o SDK oficial do OpenTelemetry com versões fixas dos pacotes. Veja [validation/README_PT-BR.md](validation/README_PT-BR.md).
+
+Depois da rc.2, a próxima release candidate pode adicionar validação de exporters stateful de PostgreSQL/Kafka/Redis e cenários explícitos de recuperação, comprovando que telemetria antes causal deixa de ser promovida depois que o workload volta ao estado saudável.

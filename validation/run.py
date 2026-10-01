@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -38,7 +40,13 @@ DEFAULT_NODE_IMAGE = (
 )
 POSTGRES_CONTAINER = "ai-sre-rca-validation-postgres"
 POSTGRES_PORT = 15439
-REPORT_SCHEMA = "ai-sre-rca.validation.v1"
+REPORT_SCHEMA = "ai-sre-rca.validation.v2"
+PROMETHEUS_PORT = 19090
+LOKI_PORT = 13100
+TEMPO_PORT = 13200
+WORKLOAD_PORT = 18080
+WORKLOAD_IMAGE = "ai-sre-rc2-workload:local"
+PORT_FORWARDS: list[subprocess.Popen[str]] = []
 
 
 def utcnow() -> datetime:
@@ -306,6 +314,128 @@ def create_cluster(cluster_name: str, node_image: str) -> str:
     return context
 
 
+def wait_http(url: str, description: str, timeout_seconds: int = 120) -> None:
+    def probe():
+        try:
+            with urllib.request.urlopen(url, timeout=2) as response:
+                return response.status if response.status < 400 else None
+        except Exception:
+            return None
+
+    wait_until(description, probe, timeout_seconds=timeout_seconds, interval_seconds=1)
+
+
+def start_port_forward(
+    context: str,
+    service: str,
+    local_port: int,
+    remote_port: int,
+) -> None:
+    process = subprocess.Popen(
+        [
+            "kubectl", "--context", context, "-n", NAMESPACE,
+            "port-forward", f"service/{service}",
+            f"{local_port}:{remote_port}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    PORT_FORWARDS.append(process)
+
+
+def stop_port_forwards() -> None:
+    while PORT_FORWARDS:
+        process = PORT_FORWARDS.pop()
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
+def deploy_observability(context: str, cluster_name: str) -> None:
+    build_command = [
+        "docker", "build",
+        "-t", WORKLOAD_IMAGE,
+        str(ROOT / "validation" / "workload"),
+    ]
+    for attempt in range(1, 4):
+        build = run(build_command, check=False, capture=False)
+        if build.returncode == 0:
+            break
+        if attempt == 3:
+            raise RuntimeError(
+                "validation workload image build failed after 3 attempts"
+            )
+        time.sleep(attempt * 2)
+    run(
+        ["kind", "load", "docker-image", WORKLOAD_IMAGE, "--name", cluster_name],
+        capture=False,
+    )
+    kubectl(
+        context,
+        "apply",
+        "-f",
+        str(ROOT / "validation" / "manifests" / "observability.yaml"),
+    )
+    for deployment in ("prometheus", "loki", "tempo", "rc2-workload"):
+        kubectl(
+            context,
+            "rollout",
+            "status",
+            f"deployment/{deployment}",
+            "-n",
+            NAMESPACE,
+            "--timeout=180s",
+        )
+
+    start_port_forward(context, "prometheus", PROMETHEUS_PORT, 9090)
+    start_port_forward(context, "loki", LOKI_PORT, 3100)
+    start_port_forward(context, "tempo", TEMPO_PORT, 3200)
+    start_port_forward(context, "rc2-workload", WORKLOAD_PORT, 8080)
+    wait_http(f"http://127.0.0.1:{PROMETHEUS_PORT}/-/ready", "Prometheus readiness")
+    wait_http(f"http://127.0.0.1:{LOKI_PORT}/ready", "Loki readiness")
+    wait_http(f"http://127.0.0.1:{TEMPO_PORT}/ready", "Tempo readiness")
+    wait_http(f"http://127.0.0.1:{WORKLOAD_PORT}/health", "validation workload readiness")
+    time.sleep(3)
+
+
+def generate_observability_failure(context: str) -> dict[str, Any]:
+    pods = pods_for_label(context, "app=rc2-workload")
+    if len(pods) != 1:
+        raise RuntimeError(
+            f"expected exactly one rc2 workload pod, found {len(pods)}"
+        )
+    pod_name, node_name = pod_identity(pods[0])
+    started_at = utcnow()
+    responses: list[str] = []
+    for _ in range(3):
+        try:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{WORKLOAD_PORT}/fail",
+                timeout=10,
+            )
+            raise RuntimeError("validation workload unexpectedly returned success")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode(errors="replace")
+            if exc.code != 500:
+                raise RuntimeError(
+                    f"validation workload returned {exc.code}: {body}"
+                )
+            responses.append(body.strip())
+        time.sleep(0.3)
+    time.sleep(5)
+    return {
+        "started_at": started_at,
+        "requests": len(responses),
+        "responses": responses,
+        "pod": pod_name,
+        "node": node_name,
+    }
+
+
 def start_postgres(port: int) -> str:
     run(["docker", "rm", "-f", POSTGRES_CONTAINER], check=False)
     run(
@@ -388,15 +518,25 @@ def validation_settings(
     api_server: str,
     token_file: Path,
     ca_file: Path,
+    full_stack_observability: bool = True,
 ) -> Settings:
     registry = {
         LOGICAL_CLUSTER: {
             "kubernetes_api_url": api_server,
             "kubernetes_token_file": str(token_file),
             "kubernetes_ca_file": str(ca_file),
-            "prometheus_url": "http://127.0.0.1:9",
-            "loki_url": "http://127.0.0.1:9",
-            "tempo_url": "http://127.0.0.1:9",
+            "prometheus_url": (
+                f"http://127.0.0.1:{PROMETHEUS_PORT}"
+                if full_stack_observability else "http://127.0.0.1:9"
+            ),
+            "loki_url": (
+                f"http://127.0.0.1:{LOKI_PORT}"
+                if full_stack_observability else "http://127.0.0.1:9"
+            ),
+            "tempo_url": (
+                f"http://127.0.0.1:{TEMPO_PORT}"
+                if full_stack_observability else "http://127.0.0.1:9"
+            ),
             "argocd_url": "http://127.0.0.1:9",
         }
     }
@@ -406,7 +546,7 @@ def validation_settings(
         query_budget_enabled=False,
         notifications_enabled=False,
         llm_enabled=False,
-        trace_analysis_enabled=False,
+        trace_analysis_enabled=full_stack_observability,
         stateful_dependency_analysis_enabled=False,
         agentic_execution_enabled=True,
         agentic_model_planner_enabled=False,
@@ -545,6 +685,197 @@ async def investigate_scenario(
     }
 
 
+def _prometheus_value(payload: dict[str, Any]) -> float | None:
+    try:
+        return float(payload["data"]["result"][0]["value"][1])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+
+
+def _loki_entry_count(payload: dict[str, Any]) -> int:
+    return sum(
+        len(stream.get("values") or [])
+        for stream in payload.get("data", {}).get("result", [])
+        if isinstance(stream, dict)
+    )
+
+
+async def validate_observability(
+    tools: ReadOnlyHTTPTools,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    started_at = signal["started_at"]
+    deadline = time.monotonic() + 45
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            now = utcnow()
+            metric_payload, log_payload, traces = await asyncio.gather(
+                tools.prometheus_query(
+                    'sum(ai_sre_validation_requests_total{service="frontend",status="500"})',
+                    now,
+                ),
+                tools.loki_query_range(
+                    '{namespace="rca-validation",app="frontend"}',
+                    started_at - timedelta(minutes=1),
+                    now + timedelta(minutes=1),
+                    100,
+                ),
+                tools.tempo_search_traces(
+                    "frontend",
+                    started_at - timedelta(minutes=1),
+                    now + timedelta(minutes=1),
+                    8,
+                ),
+            )
+            try:
+                graph = await tools.service_graph("frontend", now)
+            except Exception:
+                graph = []
+            last = {
+                "prometheus_failure_requests": _prometheus_value(metric_payload),
+                "loki_entries": _loki_entry_count(log_payload),
+                "tempo_trace_count": len(traces),
+                "tempo_trace_ids": [
+                    str(item.get("traceID"))
+                    for item in traces
+                    if item.get("traceID")
+                ],
+                "service_graph_edges": len(graph),
+                "service_graph": graph,
+            }
+            if (
+                (last["prometheus_failure_requests"] or 0) >= 3
+                and last["loki_entries"] >= 3
+                and last["tempo_trace_count"] >= 2
+                and last["service_graph_edges"] >= 1
+            ):
+                break
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+
+    capabilities = await tools.capability_report(LOGICAL_CLUSTER)
+    capability_status = {
+        item["source"]: item["status"]
+        for item in capabilities
+        if item["source"] in {"prometheus", "loki", "tempo"}
+    }
+    last["capabilities"] = capability_status
+    last["passed"] = (
+        (last.get("prometheus_failure_requests") or 0) >= 3
+        and last.get("loki_entries", 0) >= 3
+        and last.get("tempo_trace_count", 0) >= 2
+        and last.get("service_graph_edges", 0) >= 1
+        and capability_status == {
+            "prometheus": "healthy",
+            "loki": "healthy",
+            "tempo": "healthy",
+        }
+    )
+    return last
+
+
+async def investigate_trace_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    incident = IncidentInput(
+        title="Full-stack validation: downstream database failure",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="HighErrorRate",
+        severity="critical",
+        starts_at=signal["started_at"] + timedelta(seconds=1),
+        labels={"validation_scenario": "full-stack-trace"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    trace_evidence = [
+        item for item in classic.evidence
+        if item.source == "tempo" and item.category == "trace-causal-chain"
+    ]
+    passed = (
+        classic.status == "resolved"
+        and agentic.status == "resolved"
+        and classic_root == "trace-causal-propagation"
+        and agentic_root == "trace-causal-propagation"
+        and len(classic.trace_analyses) >= 2
+        and len(trace_evidence) >= 2
+        and specialists.get("metrics") == "completed"
+        and specialists.get("logs") == "completed"
+        and specialists.get("traces") == "completed"
+        and any(
+            item.source == "loki"
+            and item.category == "agentic-log-window"
+            and int(item.facts.get("entry_count") or 0) >= 3
+            for item in execution.shared_evidence.evidence
+        )
+        and integrity_ok
+    )
+    return {
+        "name": "full-stack-trace",
+        "expected_root_cause": "trace-causal-propagation",
+        "classic_agentic_parity_ok": (
+            classic.status == agentic.status
+            and classic_root == agentic_root
+        ),
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "trace_count": len(classic.trace_analyses),
+            "trace_evidence_count": len(trace_evidence),
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
 async def validate_inventory(
     repo: SQLRepository,
     tools: ReadOnlyHTTPTools,
@@ -653,12 +984,23 @@ async def validate_backend(
     context: str,
     settings: Settings,
     observations: dict[str, dict[str, Any]],
+    observability_signal: dict[str, Any],
 ) -> dict[str, Any]:
     repo = SQLRepository(settings.database_url)
     tools = ReadOnlyHTTPTools(settings)
     await repo.initialize()
     try:
         inventory = await validate_inventory(repo, tools, settings, context)
+        observability = await validate_observability(
+            tools,
+            observability_signal,
+        )
+        distributed_trace = await investigate_trace_scenario(
+            repo=repo,
+            tools=tools,
+            settings=settings,
+            signal=observability_signal,
+        )
         scenarios = []
         definitions = [
             (
@@ -712,9 +1054,15 @@ async def validate_backend(
             )
         return {
             "inventory": inventory,
+            "observability": observability,
+            "distributed_trace": distributed_trace,
             "scenarios": scenarios,
-            "passed": inventory["passed"]
-            and all(item["passed"] for item in scenarios),
+            "passed": (
+                inventory["passed"]
+                and observability["passed"]
+                and distributed_trace["passed"]
+                and all(item["passed"] for item in scenarios)
+            ),
         }
     finally:
         await repo.close()
@@ -773,6 +1121,31 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
                 result="PASS" if item["passed"] else "FAIL",
             )
         )
+    observability = validation.get("observability") or {}
+    distributed = validation.get("distributed_trace") or {}
+    lines.extend(
+        [
+            "",
+            "## Full-stack observability",
+            "",
+            f"- Prometheus failed requests: {observability.get('prometheus_failure_requests')}",
+            f"- Loki correlated entries: {observability.get('loki_entries')}",
+            f"- Tempo traces: {observability.get('tempo_trace_count')}",
+            f"- Service graph edges: {observability.get('service_graph_edges')}",
+            f"- Source health: {observability.get('capabilities')}",
+            f"- Telemetry result: **{'PASS' if observability.get('passed') else 'FAIL'}**",
+            "",
+            "## Distributed trace RCA",
+            "",
+            f"- Expected root cause: {distributed.get('expected_root_cause')}",
+            f"- Classic root cause: {(distributed.get('classic') or {}).get('root_cause')}",
+            f"- Agentic root cause: {(distributed.get('agentic') or {}).get('root_cause')}",
+            f"- Classic trace count: {(distributed.get('classic') or {}).get('trace_count')}",
+            f"- Evidence integrity: {'ok' if distributed.get('evidence_integrity_ok') else 'failed'}",
+            f"- Result: **{'PASS' if distributed.get('passed') else 'FAIL'}**",
+            "",
+        ]
+    )
     inventory = validation.get("inventory") or {}
     lines.extend(
         [
@@ -805,8 +1178,9 @@ def cleanup(cluster_name: str) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Provision a disposable Kind cluster, inject real Kubernetes "
-            "failures, and validate deterministic plus agentic RCA."
+            "Provision a disposable Kind cluster with Prometheus, Loki and "
+            "Tempo, inject real failures, and validate deterministic plus "
+            "agentic RCA across Kubernetes and distributed telemetry."
         )
     )
     parser.add_argument(
@@ -858,6 +1232,9 @@ def main() -> int:
             "failed-scheduling": failed,
         }
 
+        deploy_observability(context, args.cluster_name)
+        observability_signal = generate_observability_failure(context)
+
         runtime_dir = args.report_dir / "runtime"
         api_server, token_file, ca_file = export_cluster_credentials(
             context,
@@ -875,6 +1252,7 @@ def main() -> int:
                 context=context,
                 settings=settings,
                 observations=observations,
+                observability_signal=observability_signal,
             )
         )
         report["passed"] = bool(report["validation"]["passed"])
@@ -890,6 +1268,7 @@ def main() -> int:
     finally:
         report["finished_at"] = utcnow().isoformat()
         write_reports(args.report_dir, report)
+        stop_port_forwards()
         if not args.keep:
             cleanup(args.cluster_name)
 
