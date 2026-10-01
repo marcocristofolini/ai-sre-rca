@@ -9,7 +9,7 @@ The harness creates a two-node Kind cluster, applies a read-only validator Servi
 The first RC gate covers:
 
 - real `OOMKilled` state, expected root cause `container-oom` when Prometheus is intentionally unavailable;
-- real `CrashLoopBackOff` with exit code 42 while Loki is unavailable, expected fail-closed result `inconclusive` with no root cause;
+- real `CrashLoopBackOff` with exit code 42 while Loki is unavailable, expected generic root cause `container-crash-loop`; the gate explicitly prevents promotion to the more specific `application-exit` hypothesis without log evidence;
 - real `FailedScheduling` caused by impossible resource requests, expected root cause `insufficient-resources`;
 - authoritative Kubernetes inventory collection into the Persistent Awareness Graph;
 - real `owned_by`, `serves` and `scheduled_on` relationships;
@@ -17,7 +17,7 @@ The first RC gate covers:
 - SHA-256 evidence-integrity verification;
 - root-cause parity between classic and agentic Kubernetes evaluation.
 
-Prometheus, Loki, Tempo and Argo CD are deliberately unreachable in this first gate. OOMKilled and FailedScheduling must still resolve from direct Kubernetes evidence. CrashLoopBackOff deliberately remains inconclusive because the `application-exit` playbook requires log evidence in addition to container state. This verifies that an optional-source outage does not invent evidence or overclaim a root cause.
+Prometheus, Loki, Tempo and Argo CD are deliberately unreachable in this first gate. OOMKilled and FailedScheduling must still resolve from direct Kubernetes evidence. CrashLoopBackOff may resolve only to the generic `container-crash-loop` mechanism because the more specific `application-exit` playbook requires log evidence in addition to container state. This verifies that an optional-source outage does not invent evidence or overclaim specificity.
 
 ## Flow
 
