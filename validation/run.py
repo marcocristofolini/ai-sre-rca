@@ -1441,6 +1441,50 @@ async def validate_backend(
             settings=settings,
             signal=observability_signal,
         )
+
+        stateful_settings = settings.model_copy(
+            update={
+                "stateful_dependency_analysis_enabled": True,
+                "postgres_connection_utilization_critical": 0.70,
+            }
+        )
+        saturated_postgres = await wait_for_postgres_utilization(
+            tools,
+            minimum=stateful_settings.postgres_connection_utilization_critical,
+        )
+        stateful_postgresql = await investigate_postgres_stateful_scenario(
+            repo=repo,
+            tools=tools,
+            settings=stateful_settings,
+            signal=observability_signal,
+            postgres_metrics=saturated_postgres,
+        )
+
+        release_postgres_connections(context)
+        recovered_postgres = await wait_for_postgres_utilization(
+            tools,
+            maximum=0.30,
+        )
+        recovery_signal = generate_observability_recovery(context)
+        recovery_observability = await validate_recovery_observability(
+            tools,
+            recovery_signal,
+        )
+        recovery_settings = stateful_settings.model_copy(
+            update={
+                "trace_window_minutes": 0,
+                "service_graph_window_minutes": 1,
+            }
+        )
+        recovery = await investigate_recovery_scenario(
+            repo=repo,
+            tools=tools,
+            settings=recovery_settings,
+            signal=recovery_signal,
+            recovery_observability=recovery_observability,
+            postgres_metrics=recovered_postgres,
+        )
+
         scenarios = []
         definitions = [
             (
@@ -1496,11 +1540,15 @@ async def validate_backend(
             "inventory": inventory,
             "observability": observability,
             "distributed_trace": distributed_trace,
+            "stateful_postgresql": stateful_postgresql,
+            "recovery": recovery,
             "scenarios": scenarios,
             "passed": (
                 inventory["passed"]
                 and observability["passed"]
                 and distributed_trace["passed"]
+                and stateful_postgresql["passed"]
+                and recovery["passed"]
                 and all(item["passed"] for item in scenarios)
             ),
         }
