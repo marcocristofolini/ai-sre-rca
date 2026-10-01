@@ -4,69 +4,86 @@
 
 ## System overview
 
+v0.8.0-rc.1 is split into four explicit planes. Investigation remains read-only, persistent awareness is reconciled separately, remediation uses a distinct identity and approval boundary, and the release-validation plane proves the critical Kubernetes path against a disposable real cluster.
+
 ```mermaid
-flowchart TD
-    A[Alertmanager / REST API] --> N[Incident Normalizer]
-    N --> EL[Deterministic Eligible Specialists]
-    N --> I[Investigation Engine]
+flowchart LR
+    IN[Alertmanager / REST API] --> N[Incident Normalizer]
 
-    KINV[Kubernetes API Inventory] --> KCRON[Read-only Inventory CronJob]
-    KCRON --> KSNAP[Complete Authoritative Snapshots]
-    KSNAP --> PAG[(Persistent Awareness Graph)]
-    PAG --> OCS[Frozen Operational Context Snapshot]
-    OCS --> EL
-    EL --> COMP[Server-side Plan Compiler]
-    EL -. sanitized eligible context .-> MPL[Optional Advisory LLM]
-    MPL -. specialist names + rationale only .-> COMP
-    COMP --> PLAN[Bounded Investigation Plan]
-    PLAN --> PT[Allow-listed Specialist Tasks<br/>K8s / Metrics / Logs / Traces / DB / Changes]
-    PT -->|opt-in| ORCH[Parallel Read-only Specialists]
-    OCS --> ORCH
-    ORCH --> SE[Shared Evidence Envelope]
-    SE --> AE[Deterministic Agentic Evaluator]
-    AE --> XG[Explanation Graph]
+    subgraph READ["1. Read-only investigation"]
+      N --> CORE[Deterministic Investigation Engine]
+      N --> PLAN[Bounded Investigation Planner]
+      PLAN --> SPEC[Allow-listed Specialists]
+      SPEC --> ENV[Shared Evidence Envelope]
+      ENV --> AGENT[Deterministic Agentic Evaluator]
+      CORE --> EVAL[Deterministic Evaluator]
+      AGENT --> EVAL
+    end
 
-    I --> K[Kubernetes Adapter]
-    I --> P[Prometheus Adapter]
-    I --> L[Loki Adapter]
-    I --> T[Tempo / TraceQL]
-    I --> AR[Argo CD / GitHub]
-    I --> KA[Karpenter]
+    subgraph SRC["Typed evidence sources"]
+      K[Kubernetes]
+      P[Prometheus]
+      L[Loki]
+      T[Tempo / OpenTelemetry]
+      C[Argo CD / GitHub]
+      KR[Karpenter]
+    end
+    K --> CORE
+    P --> CORE
+    L --> CORE
+    T --> CORE
+    C --> CORE
+    KR --> CORE
+    K --> SPEC
+    P --> SPEC
+    L --> SPEC
+    T --> SPEC
+    C --> SPEC
 
-    K --> LG[Incident-local Graph]
-    P --> LG
-    L --> LG
-    T --> LG
-    AR --> LG
-    KA --> LG
+    EVAL --> RCA[Evidence-backed RCA]
+    RCA --> API[FastAPI]
+    API --> UI[Next.js Investigator / Ops]
 
-    LG --> EV[Evidence Evaluator]
-    AE -. same deterministic authority rules .-> EV
-    LG --> PAG
-    PAG --> REC[Fresh / Stale / Historical Reconciliation]
-    PAG --> GH[Graph Health<br/>Counts + Inventory Freshness]
-    PAG --> SV[Service Projections]
-    PAG --> BR[Blast Radius]
-    PAG --> CE[Change Event Timeline]
-    REC --> OCS
-    GH --> OCS
-    CE --> OCS
-    GH --> API
-    REC --> AUI[Next.js Awareness Explorer<br/>Read-only]
-    SV --> AUI
-    CE --> AUI
+    subgraph AWARE["2. Persistent awareness"]
+      KI[Kubernetes Inventory CronJob] --> SNAP[Authoritative Snapshot]
+      SNAP --> PAG[(Persistent Awareness Graph)]
+      CORE --> PAG
+      PAG --> OCS[Frozen Operational Context]
+      OCS --> PLAN
+      PAG --> AX[Awareness Explorer]
+      PAG --> BR[Blast Radius / Change Timeline]
+      PAG --> MEM[(PostgreSQL + pgvector)]
+    end
 
-    EV --> H[Deterministic Hypotheses]
-    EV --> MEM[Incident Memory<br/>PostgreSQL + pgvector]
-    EV --> LLM[Optional LLM<br/>Hypothesis Proposer Only]
-    MEM --> H
-    LLM --> H
-    H --> RC[Root Cause Selector]
-    RC --> RCA[Structured RCA]
-    RCA --> API[REST API]
-    RCA --> UI[Next.js Investigation UI]
+    subgraph REM["3. Guarded remediation"]
+      RCA --> RP[Remediation Proposal]
+      RP --> POL[Policy + dry-run + approval]
+      POL --> RID[Separate Remediation Identity]
+      RID --> ACT[Allow-listed Mutation]
+    end
+    subgraph VAL["4. Release validation"]
+      GH[GitHub Actions] --> KIND[Disposable Kind Cluster]
+      KIND --> VH[Real Environment Validation Harness]
+      VH --> CORE
+      VH --> PAG
+      VH --> REP[JSON / Markdown Evidence]
+    end
 ```
 
+The main correctness boundary is unchanged: live typed evidence and deterministic gates decide what can be asserted. The planner and optional LLM can narrow or prioritize investigation, but they cannot manufacture graph facts, evidence, scores, or a root-cause verdict.
+
+
+## Runtime UI surfaces
+
+These screenshots were captured from v0.8.0-rc.1 running locally with `DEMO_MODE=true`. They are real rendered application screens backed by the demo adapters.
+
+| Surface | Screenshot |
+| --- | --- |
+| Kubernetes deterministic RCA | ![Kubernetes RCA](images/investigator-k8s.png) |
+| Trace-aware causality | ![Trace-aware RCA](images/trace-aware-rca.png) |
+| Stateful PostgreSQL RCA | ![Stateful PostgreSQL RCA](images/stateful-postgresql.png) |
+| Persistent Awareness Graph | ![Awareness Explorer](images/awareness-explorer.png) |
+| Operational capabilities | ![Operations](images/operations.png) |
 
 
 ## Automatic Kubernetes inventory reconciliation — v0.8
@@ -744,7 +761,7 @@ flowchart LR
     HTTP --> AG[Agentic Kubernetes specialist]
     HTTP --> INV[Authoritative inventory reconciliation]
     INV --> PAG[(Persistent Awareness Graph)]
-    CORE --> PARITY[Expected root-cause parity]
+    CORE --> PARITY[Classic / agentic parity + scenario invariants]
     AG --> PARITY
     PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
     PARITY --> REPORT[JSON + Markdown release evidence]

@@ -19,6 +19,21 @@ The first RC gate covers:
 
 Prometheus, Loki, Tempo and Argo CD are deliberately unreachable in this first gate. OOMKilled and FailedScheduling must still resolve from direct Kubernetes evidence. For crash loops, the gate validates a safety invariant instead of a timing-sensitive exact verdict: classic and agentic must agree, the result may be the generic `container-crash-loop` mechanism or inconclusive, and `application-exit` is forbidden while log evidence is unavailable. This verifies that an optional-source outage does not invent evidence or overclaim specificity.
 
+## Published v0.8.0-rc.1 evidence
+
+The published prerelease points to commit `4c3429f8ee26be7bf42279c40186b50da045e9d1`. The post-merge real-environment workflow passed on that exact commit and its JSON/Markdown reports are attached to the GitHub release.
+
+Observed in that run:
+
+- 34 Kubernetes resources observed by authoritative inventory;
+- 13 validation-namespace graph entities;
+- `owned_by`, `scheduled_on` and `serves` relationships present;
+- 3 authoritative tombstones after real resource deletion;
+- OOMKilled resolved to `container-oom`;
+- FailedScheduling resolved to `insufficient-resources`;
+- restart-backoff scenario preserved classic/agentic parity and did not promote `application-exit` without log evidence;
+- all evidence-integrity checks passed.
+
 ## Flow
 
 ```mermaid

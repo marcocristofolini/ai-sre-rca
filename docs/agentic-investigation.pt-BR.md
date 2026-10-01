@@ -1,8 +1,8 @@
-# Investigação Agentic — fundação v0.8
+# Investigação Agentic — v0.8.0-rc.1
 
 **Português do Brasil** · [English](agentic-investigation.md)
 
-A v0.8 introduz um Investigation Planner bounded e um executor paralelo experimental de especialistas. O planejamento fica disponível por padrão; a execução dos especialistas está implementada, porém **desabilitada por padrão**, exigindo `AGENTIC_EXECUTION_ENABLED=true`. Um planner assistido por modelo opcional também fica desabilitado por padrão e exige `LLM_ENABLED=true` mais `AGENTIC_MODEL_PLANNER_ENABLED=true`. Todas as camadas permanecem read-only e somente o evaluator determinístico pode confirmar causa raiz.
+A v0.8.0-rc.1 inclui um Investigation Planner bounded e um executor paralelo experimental de especialistas. O planejamento fica disponível por padrão; a execução dos especialistas está implementada, porém **desabilitada por padrão**, exigindo `AGENTIC_EXECUTION_ENABLED=true`. Um planner assistido por modelo opcional também fica desabilitado por padrão e exige `LLM_ENABLED=true` mais `AGENTIC_MODEL_PLANNER_ENABLED=true`. Todas as camadas permanecem read-only e somente o evaluator determinístico pode confirmar causa raiz.
 
 O princípio é:
 
@@ -251,6 +251,8 @@ O evaluator **não** confia em `confirmed` produzido localmente pelo specialist.
 
 O resultado inclui `root_cause` determinística somente quando todos esses gates passam. Também retorna um explanation graph com nós de hipótese, evidência, gate e verdict conectados por `supports`, `contradicts`, `blocks`, `selected` e `considered`.
 
-## Próxima fase
+## Status da v0.8.0-rc.1 e próxima validação
 
-Os eventos first-class de deployment/change, o explorer read-only do Persistent Awareness Graph e a reconciliação autoritativa de inventário completo com tombstones agora fazem parte da v0.8. Ausência em incidente continua sem semântica de deleção; somente snapshot autorizado para admin e vindo de fonte allow-listed pode tombstonar fatos cobertos, e snapshots antigos não removem observações mais novas. A próxima geração agentic poderá usar estado atual, histórico e explicitamente tombstoned como contexto bounded de planejamento sem tratar correlação visível na UI ou ausência histórica como prova causal.
+A release candidate já inclui ChangeEvents first-class, o explorer read-only do Persistent Awareness Graph, reconciliação autoritativa com tombstones, Operational Context Snapshot congelado, compilação assistida por modelo atrás de gates determinísticos no servidor, scoping determinístico dos especialistas, execução paralela read-only atrás de feature flag opt-in e avaliação do shared envelope.
+
+O gate de ambiente real da v0.8.0-rc.1 valida a paridade do specialist Kubernetes e a reconciliação do grafo persistente contra um cluster real descartável. O próximo alvo, v0.8.0-rc.2, deve executar planner e executor contra dados reais de Prometheus, Loki e Tempo/OpenTelemetry produzidos por um workload instrumentado. O modelo de autoridade continua igual: modelo/planner escolhem o trabalho de investigação, enquanto evidência live tipada e gates determinísticos decidem o verdict.

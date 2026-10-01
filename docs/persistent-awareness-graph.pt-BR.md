@@ -1,8 +1,8 @@
-# Awareness Graph Persistente — fundação v0.8
+# Awareness Graph Persistente — v0.8.0-rc.1
 
 **Português do Brasil** · [English](persistent-awareness-graph.md)
 
-A v0.8 inicia a transição de uma topologia válida apenas durante o incidente para conhecimento operacional persistente. O grafo recebe somente fatos que já foram coletados como evidência por uma investigação. O LLM não ganha uma operação genérica de escrita no grafo.
+A v0.8.0-rc.1 persiste topologia operacional entre incidentes e valida a reconciliação autoritativa contra um cluster Kubernetes real e descartável. O grafo recebe evidências coletadas pelas investigações e snapshots completos de fontes autoritativas allow-listed. Nenhum dos dois caminhos entrega ao LLM uma operação genérica de escrita no grafo.
 
 ## Objetivos
 
@@ -11,7 +11,7 @@ A v0.8 inicia a transição de uma topologia válida apenas durante o incidente 
 - estado atual do grafo mais observações temporais append-only;
 - relações ligadas às evidências;
 - ingestão idempotente quando um incidente é persistido novamente;
-- superfície de consulta para blast radius, memória e futuros agentes.
+- superfície bounded de consulta usada por blast radius, Awareness Explorer, contexto de incidentes e planejamento agentic.
 
 ## Identidade canônica
 
@@ -204,23 +204,23 @@ Os limites padrão no servidor são `depth=4`, `nodes=200`, `edges=800`, com thr
 - snapshots antigos não podem tombstonar observações mais novas;
 - ChangeEvents são fatos históricos e nunca recebem tombstone de inventário.
 
-## Próximas fases da v0.8
+## Status na v0.8.0-rc.1
 
-Concluído na branch atual:
+A release candidate inclui as capacidades do grafo que antes estavam acompanhadas como fases da v0.8:
 
 - reconciliação de freshness sem inferência insegura de tombstone;
 - projeções bounded centradas em serviço;
 - blast radius com direção causal explícita;
-- contexto bounded do grafo para o Investigation Planner;
-- avaliação determinística do shared envelope e rejected-hypothesis explanation graph;
-- Awareness Explorer read-only para topologia reconciliada, projeções por serviço e histórico de ChangeEvents;
-- reconciliação autoritativa de inventário completo com tombstones first-class, auditoria e semântica de reativação.
+- reconciliação autoritativa de inventário completo com tombstones first-class, auditoria e reativação;
+- coleta automática de inventário Kubernetes com relações explícitas de ownership, scheduling e selectors;
+- Graph Health factual e freshness das fontes autoritativas;
+- retention agendada e segura para explicabilidade, independente do startup da API;
+- ChangeEvents históricos first-class derivados de evidências Argo CD/GitHub;
+- Awareness Explorer read-only para topologia reconciliada e histórico de mudanças;
+- Operational Context Snapshot congelado para planejamento agentic bounded;
+- scoping determinístico dos especialistas usando contexto único, fresh e não truncado do grafo.
 
-Ainda planejado:
-
-- enriquecimento autoritativo de Change Events a partir de outros sistemas de delivery além de Argo CD/GitHub;
-- execução agendada de retention do Awareness Graph independente do startup da API;
-- contexto mais rico do grafo para paridade do specialist Kubernetes e raciocínio sobre eventos de deployment/change.
+O próximo alvo de validação é a v0.8.0-rc.2: exercitar esse contexto persistente junto com telemetria real de Prometheus, Loki e Tempo/OpenTelemetry. Essa etapa deve ampliar cobertura de validação, sem introduzir escrita genérica no grafo nem enfraquecer a fronteira do inventário autoritativo.
 
 
 ## Awareness Explorer read-only

@@ -1,8 +1,8 @@
-# Persistent Awareness Graph — v0.8 foundation
+# Persistent Awareness Graph — v0.8.0-rc.1
 
 [Português do Brasil](persistent-awareness-graph.pt-BR.md) · **English**
 
-v0.8 starts the transition from an incident-local topology into persistent operational knowledge. The graph is populated only from evidence already collected by an investigation. It does not give the LLM a generic graph-write primitive.
+v0.8.0-rc.1 persists operational topology across incidents and validates authoritative reconciliation against a real disposable Kubernetes cluster. The graph is populated from evidence collected by investigations plus complete snapshots from allow-listed authoritative inventory sources. Neither path gives the LLM a generic graph-write primitive.
 
 ## Goals
 
@@ -11,7 +11,7 @@ v0.8 starts the transition from an incident-local topology into persistent opera
 - current graph state plus append-only temporal observations;
 - evidence-linked relationships;
 - idempotent ingestion when an incident is persisted again;
-- a query surface that future blast-radius, memory and agent-planning layers can consume.
+- a bounded query surface consumed by blast-radius, the Awareness Explorer, incident context and agent planning.
 
 ## Canonical identity
 
@@ -204,23 +204,23 @@ Default server-side bounds are `depth=4`, `nodes=200`, `edges=800`, with a 24-ho
 - older snapshots cannot tombstone newer observations;
 - ChangeEvents are historical facts and are never inventory-tombstoned.
 
-## Next v0.8 phases
+## Status in v0.8.0-rc.1
 
-Completed in the current development branch:
+The release candidate includes the graph capabilities that were previously tracked as v0.8 phases:
 
 - freshness reconciliation without unsafe tombstone inference;
 - service-centric bounded graph projections;
 - causal-direction-aware blast-radius traversal;
-- bounded graph context for the Investigation Planner;
-- deterministic shared-envelope evaluation and rejected-hypothesis explanation graph;
-- read-only Awareness Explorer for reconciled topology, service projections and ChangeEvent history;
-- authoritative complete-inventory reconciliation with first-class tombstones, audit records and reactivation semantics.
+- authoritative complete-inventory reconciliation with first-class tombstones, audit records and reactivation semantics;
+- automatic Kubernetes inventory collection with explicit ownership, scheduling and selector relationships;
+- factual Graph Health and authoritative-source freshness;
+- scheduled explanation-safe awareness retention independent from API startup;
+- first-class historical ChangeEvents from Argo CD/GitHub evidence;
+- read-only Awareness Explorer for reconciled topology and change history;
+- frozen Operational Context Snapshot for bounded agentic planning;
+- deterministic specialist scoping from unique, fresh, non-truncated graph context.
 
-Still planned:
-
-- authoritative change-event enrichment from additional delivery systems beyond Argo CD/GitHub;
-- scheduled awareness-retention execution independent from API startup;
-- richer graph context for Kubernetes specialist parity and deployment/change event reasoning.
+The next validation target is v0.8.0-rc.2: exercise this persistent context together with real Prometheus, Loki and Tempo/OpenTelemetry telemetry. That phase should improve validation coverage, not introduce a generic graph-write path or weaken the authoritative inventory boundary.
 
 
 ## Read-only Awareness Explorer
