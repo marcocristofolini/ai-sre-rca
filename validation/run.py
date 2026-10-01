@@ -1061,6 +1061,261 @@ async def investigate_trace_scenario(
     }
 
 
+async def investigate_postgres_stateful_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+    postgres_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    incident = IncidentInput(
+        title="Stateful validation: PostgreSQL connection exhaustion",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="PostgreSQLHighConnections",
+        severity="critical",
+        starts_at=signal["started_at"] + timedelta(seconds=1),
+        labels={"validation_scenario": "stateful-postgresql"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    prefix = "postgres-connection-exhaustion:"
+    postgres = next(
+        (
+            item
+            for item in classic.stateful_dependencies
+            if item.kind == "postgresql"
+        ),
+        None,
+    )
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+    parity_ok = (
+        classic.status == agentic.status
+        and classic_root == agentic_root
+    )
+    passed = (
+        classic.status == "resolved"
+        and agentic.status == "resolved"
+        and bool(classic_root and classic_root.startswith(prefix))
+        and bool(agentic_root and agentic_root.startswith(prefix))
+        and parity_ok
+        and postgres is not None
+        and postgres.health == "critical"
+        and postgres.causal_role == "origin"
+        and bool(
+            postgres.hypothesis_id
+            and postgres.hypothesis_id.startswith(prefix)
+        )
+        and specialists.get("traces") == "completed"
+        and specialists.get("database") == "completed"
+        and integrity_ok
+        and (postgres_metrics.get("utilization") or 0)
+        >= settings.postgres_connection_utilization_critical
+    )
+    return {
+        "name": "stateful-postgresql",
+        "expected_root_prefix": prefix,
+        "postgres_exporter": {
+            "connections": postgres_metrics.get("connections"),
+            "max_connections": postgres_metrics.get("max_connections"),
+            "utilization": postgres_metrics.get("utilization"),
+            "critical_threshold": settings.postgres_connection_utilization_critical,
+        },
+        "classic_agentic_parity_ok": parity_ok,
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "stateful_dependencies": len(classic.stateful_dependencies),
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "postgresql": (
+            {
+                "health": postgres.health,
+                "causal_role": postgres.causal_role,
+                "hypothesis_id": postgres.hypothesis_id,
+                "signal_count": len(postgres.signals),
+            }
+            if postgres is not None else None
+        ),
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
+async def investigate_recovery_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+    recovery_observability: dict[str, Any],
+    postgres_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    incident = IncidentInput(
+        title="Recovery validation: healthy checkout after PostgreSQL recovery",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="RecoveryVerification",
+        severity="warning",
+        starts_at=signal["started_at"],
+        labels={"validation_scenario": "stateful-recovery"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    forbidden_prefixes = (
+        "postgres-connection-exhaustion:",
+        "postgres-lock-contention:",
+        "postgres-deadlocks:",
+        "postgres-replication-lag:",
+        "postgres-long-transaction:",
+        "kafka-",
+        "redis-",
+    )
+
+    def root_is_safe(root: str | None) -> bool:
+        if root is None:
+            return True
+        if root == "trace-causal-propagation":
+            return False
+        return not any(root.startswith(prefix) for prefix in forbidden_prefixes)
+
+    trace_evidence = [
+        item
+        for item in classic.evidence
+        if item.source == "tempo"
+        and item.category == "trace-causal-chain"
+    ]
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+    parity_ok = (
+        classic.status == agentic.status
+        and classic_root == agentic_root
+    )
+    utilization = postgres_metrics.get("utilization")
+    passed = (
+        signal.get("requests") == 3
+        and recovery_observability.get("passed") is True
+        and utilization is not None
+        and utilization <= 0.30
+        and root_is_safe(classic_root)
+        and root_is_safe(agentic_root)
+        and len(trace_evidence) == 0
+        and specialists.get("metrics") == "completed"
+        and specialists.get("logs") == "completed"
+        and specialists.get("traces") == "completed"
+        and parity_ok
+        and integrity_ok
+    )
+    return {
+        "name": "stateful-recovery",
+        "recovered_postgres": {
+            "connections": postgres_metrics.get("connections"),
+            "max_connections": postgres_metrics.get("max_connections"),
+            "utilization": utilization,
+        },
+        "fresh_telemetry": recovery_observability,
+        "classic_agentic_parity_ok": parity_ok,
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "trace_causal_evidence_count": len(trace_evidence),
+            "stateful_dependencies": [
+                {
+                    "kind": item.kind,
+                    "health": item.health,
+                    "causal_role": item.causal_role,
+                    "hypothesis_id": item.hypothesis_id,
+                }
+                for item in classic.stateful_dependencies
+            ],
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "forbidden_root": "trace-causal-propagation or stateful anomaly root",
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
 async def validate_inventory(
     repo: SQLRepository,
     tools: ReadOnlyHTTPTools,
