@@ -1,4 +1,4 @@
-# Awareness Graph Persistente — v0.8.0-rc.1
+# Awareness Graph Persistente — v0.8.0-rc.2
 
 **Português do Brasil** · [English](persistent-awareness-graph.md)
 

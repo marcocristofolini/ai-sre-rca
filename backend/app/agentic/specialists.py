@@ -491,21 +491,34 @@ async def _logs(
     budget = SpecialistBudget(task.max_queries)
     namespace = task.scope.namespace or incident.namespace
     pod = task.scope.pod or incident.pod
-    if not namespace or not pod:
+    service = task.scope.service or incident.service
+    if not namespace or (not pod and not service):
         return _result(
             task,
             budget,
             started_at=started,
             reason=(
-                "namespace and pod identity are required for bounded log execution"
+                "namespace plus pod or service identity are required for "
+                "bounded log execution"
             ),
         )
 
     evidence: list[Evidence] = []
-    query = (
-        f'{{namespace="{quoted_string(namespace)}",'
-        f' pod="{quoted_string(pod)}"}}'
-    ).replace(", ", ",")
+    if pod:
+        query = (
+            f'{{namespace="{quoted_string(namespace)}",'
+            f' pod="{quoted_string(pod)}"}}'
+        ).replace(", ", ",")
+        scope_kind = "pod"
+        scope_value = pod
+    else:
+        query = (
+            f'{{namespace="{quoted_string(namespace)}",'
+            f' app="{quoted_string(service or "")}"}}'
+        ).replace(", ", ",")
+        scope_kind = "service"
+        scope_value = service
+
     try:
         budget.consume("loki_query_range")
         payload = await tools.loki_query_range(
@@ -525,11 +538,15 @@ async def _logs(
                 category="agentic-log-window",
                 summary=(
                     f"Loki returned {entry_count} bounded log entries "
-                    f"across {len(streams)} stream(s) for the incident pod."
+                    f"across {len(streams)} stream(s) for the incident "
+                    f"{scope_kind}."
                 ),
                 facts={
                     "namespace": namespace,
                     "pod": pod,
+                    "service": service,
+                    "scope_kind": scope_kind,
+                    "scope_value": scope_value,
                     "stream_count": len(streams),
                     "entry_count": entry_count,
                     "stream_labels": [
@@ -550,6 +567,8 @@ async def _logs(
         started_at=started,
         evidence=evidence,
     )
+
+
 async def _traces(
     task: SpecialistTask,
     incident: IncidentInput,

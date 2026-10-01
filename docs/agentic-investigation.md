@@ -1,4 +1,4 @@
-# Agentic Investigation — v0.8.0-rc.1
+# Agentic Investigation — v0.8.0-rc.2
 
 [Português do Brasil](agentic-investigation.pt-BR.md) · **English**
 

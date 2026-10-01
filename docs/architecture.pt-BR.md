@@ -1,10 +1,10 @@
-# Arquitetura — v0.8.0-rc.1
+# Arquitetura — v0.8.0-rc.2
 
 **Português do Brasil** · [English](architecture.md)
 
 ## Visão geral do sistema
 
-A v0.8.0-rc.1 está separada em quatro planos explícitos. A investigação continua read-only, o awareness persistente é reconciliado separadamente, a remediação usa identidade e aprovação próprias, e o plano de validação comprova o caminho crítico de Kubernetes contra um cluster real descartável.
+A v0.8.0-rc.2 está separada em quatro planos explícitos. A investigação continua read-only, o awareness persistente é reconciliado separadamente, a remediação usa identidade e aprovação próprias, e o plano de validação comprova o caminho crítico de Kubernetes contra um cluster real descartável.
 
 ```mermaid
 flowchart LR
@@ -743,31 +743,51 @@ GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<nam
 O endpoint mantém isolamento por tenant/cluster e retorna no máximo 200 eventos. Proximidade temporal é somente contexto e nunca transforma deploy/source change em causa raiz sem evidência causal de runtime.
 
 
-## Validação em ambiente real — v0.8.0-rc.1
+## Validação em ambiente real — baseline v0.8.0-rc.1 + full stack v0.8.0-rc.2
 
-O gate da release candidate executa o adapter Kubernetes read-only de produção contra um cluster Kind descartável com dois nós. Workloads controlados criam estados reais de runtime e scheduling, enquanto PostgreSQL/pgvector persiste o inventário autoritativo e a reconciliação do grafo.
+O gate preserva a prova da rc1 para Kubernetes e Persistent Awareness Graph e adiciona um caminho real de telemetria para a rc2. Os adapters read-only de produção consultam um stack descartável de Prometheus, Loki e Tempo alimentado por um workload instrumentado.
 
 ```mermaid
 flowchart LR
     GA[GitHub Actions / local] --> VH[Real Environment Validation Harness]
     VH --> KIND[Cluster Kind com 2 nós]
     VH --> PG[(PostgreSQL + pgvector)]
+
     KIND --> OOM[OOMKilled]
     KIND --> CRASH[CrashLoopBackOff]
     KIND --> SCHED[FailedScheduling]
+
+    KIND --> APP[Frontend instrumentado]
+    APP -->|scrape| PROM[Prometheus]
+    APP -->|logs estruturados Pod/serviço| LOKI[Loki]
+    APP -->|traces OTLP/HTTP| TEMPO[Tempo]
+
     KIND --> RBAC[ServiceAccount read-only]
     RBAC --> HTTP[ReadOnlyHTTPTools de produção]
+    PROM --> HTTP
+    LOKI --> HTTP
+    TEMPO --> HTTP
+
     HTTP --> CORE[Engine determinístico clássico]
-    HTTP --> AG[Especialista Kubernetes agentic]
+    HTTP --> SPEC[Specialists agentic de métricas / logs / traces]
     HTTP --> INV[Reconciliação autoritativa de inventário]
+
     INV --> PAG[(Persistent Awareness Graph)]
-    CORE --> PARITY[Paridade clássico / agentic + invariantes do cenário]
-    AG --> PARITY
+    CORE --> PARITY[Paridade determinística clássico / agentic]
+    SPEC --> ENV[Shared Evidence Envelope]
+    ENV --> PARITY
+
     PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
     PARITY --> REPORT[Evidência JSON + Markdown]
     GRAPH --> REPORT
 ```
 
-O validador usa bearer token temporário e CA do cluster compatíveis com o contrato da integração de produção. Essas credenciais permanecem locais ao job e são excluídas dos artefatos enviados. Prometheus, Loki, Tempo e Argo CD ficam propositalmente indisponíveis no primeiro gate da RC para exercitar falhas de fontes opcionais sem enfraquecer evidências diretas do Kubernetes. A imagem de nó do Kind fica presa por digest para reprodutibilidade.
+O workload da rc2 gera falhas repetidas de checkout cuja span mais profunda em falha é `postgresql/orders@orders-db:5432`. Prometheus observa os contadores de falha e métricas RED do service graph, Loki armazena logs com o trace ID e Tempo armazena traces OTLP emitidos pelo SDK oficial do OpenTelemetry.
+
+O gate não promove causa por trace a partir de um único request. Pelo menos dois traces independentes precisam convergir para a mesma origem downstream. Os specialists agentic de métricas, logs e traces precisam concluir contra a telemetria live, os hashes das evidências precisam ser válidos e as avaliações clássica e agentic precisam convergir em `trace-causal-propagation`.
+
+Os invariants Kubernetes originais da rc1 continuam na mesma execução. Isso preserva o comportamento evidence-first quando fontes opcionais estão indisponíveis e adiciona um segundo caminho que comprova a participação dessas fontes em um RCA causal quando estão disponíveis.
+
+As imagens do Kind, Prometheus, Loki, Tempo e da base do workload ficam presas por digest. Credenciais temporárias do Kubernetes permanecem locais ao job e são excluídas dos artefatos enviados.
 
 Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e as condições exatas de PASS/FAIL.

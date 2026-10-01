@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.app_name,
-    version="0.8.0-rc.1",
+    version="0.8.0-rc.2",
     description="Evidence-verified SRE investigation platform with deterministic RCA, persistent temporal awareness graph, trace-aware causality, stateful dependency analysis and guarded remediation",
     lifespan=lifespan,
 )
@@ -87,7 +87,7 @@ app.state.engine = InvestigationEngine(
 async def healthz():
     return {
         "status": "ok",
-        "version": "0.8.0-rc.1",
+        "version": "0.8.0-rc.2",
         "demo_mode": settings.demo_mode,
         "persistence": "postgres+pgvector" if settings.database_url else "memory",
         "llm_hypotheses": settings.llm_enabled,
