@@ -5,6 +5,16 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
+- v0.8.0-rc.3 development slice for PostgreSQL stateful recovery validation in the real-environment harness.
+- Live Prometheus exporter-contract telemetry for PostgreSQL connection utilization using the production adapter's exact metric names and instance scoping.
+- Separate pressure and recovery incidents proving that a PostgreSQL-specific root cause is promoted only while current dependency telemetry is critical.
+- Recovery regression requiring new failing traces to fall back to `trace-causal-propagation` after PostgreSQL telemetry returns to healthy.
+- Validation report schema v3 with stateful PostgreSQL pressure/recovery evidence.
+
+### Documentation
+- Extended bilingual validation docs and roadmap with the staged rc.3 plan: PostgreSQL contract/recovery first, then real exporter runtime, Kafka and Redis.
+
+### Added
 - GitHub-first gate that orchestrates CI, CodeQL and real-environment validation as reusable workflows for every pull request and push to `main`.
 - GitHub-only release promotion workflow that verifies `VERSION`, the exact validated SHA and real-environment evidence before creating a release tag.
 - Bilingual GitHub-first delivery documentation with PR, release, recovery and permission contracts.
