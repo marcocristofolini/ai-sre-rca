@@ -27,7 +27,7 @@ Ele chama:
 
 O job final `gate` falha se qualquer um dos três workflows reutilizáveis não terminar com sucesso.
 
-Na proteção da branch, o recomendado é exigir apenas o check final **gate** do workflow **GitHub-first gate** antes de permitir merge em `main`. Os jobs especializados continuam visíveis para diagnóstico, mas não precisam ser requisitos independentes de merge.
+A branch `main` está protegida pelo check final **gate** do workflow **GitHub-first gate**. Permanecem ativos o requisito de branch atualizada, histórico linear e resolução de conversas; force-push e deleção da branch continuam bloqueados. Os jobs especializados seguem visíveis para diagnóstico, mas não são requisitos independentes de merge.
 
 ## Fluxo de release
 
