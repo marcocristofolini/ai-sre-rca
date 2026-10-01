@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from validation import run as harness
+from validation.workload import app as workload
 
 
 def pod_with_termination(
@@ -124,3 +125,123 @@ def test_report_writer_never_writes_runtime_credentials(tmp_path):
     assert (tmp_path / "validation-report.json").exists()
     assert (tmp_path / "validation-report.md").exists()
     assert not (tmp_path / "runtime").exists()
+
+
+def test_ready_pod_for_label_requires_ready_condition(monkeypatch):
+    not_ready = {
+        "metadata": {"name": "checkout-a"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "False"}
+            ]
+        },
+    }
+    ready = {
+        "metadata": {"name": "checkout-b"},
+        "status": {
+            "conditions": [
+                {"type": "Ready", "status": "True"}
+            ]
+        },
+    }
+    monkeypatch.setattr(
+        harness,
+        "pods_for_label",
+        lambda *_: [not_ready, ready],
+    )
+
+    observed = harness.ready_pod_for_label(
+        "kind-test",
+        "app=checkout",
+    )
+
+    assert observed == ready
+
+
+def test_prometheus_value_reads_first_vector_sample():
+    payload = {
+        "data": {
+            "result": [
+                {"value": [1234, "42.5"]}
+            ]
+        }
+    }
+
+    assert harness.prometheus_value(payload) == 42.5
+    assert harness.prometheus_value({"data": {"result": []}}) is None
+
+
+def test_trigger_checkout_fails_closed_on_telemetry_error(monkeypatch):
+    monkeypatch.setattr(
+        harness,
+        "http_json",
+        lambda *_args, **_kwargs: (
+            500,
+            {
+                "trace_id": "abc",
+                "telemetry_errors": ["tempo:unavailable"],
+            },
+        ),
+    )
+
+    try:
+        harness.trigger_checkout("db-error")
+    except RuntimeError as exc:
+        assert "telemetry export failed" in str(exc)
+    else:
+        raise AssertionError("telemetry export failure must fail closed")
+
+
+def test_validation_workload_emits_trace_dependency_contract(monkeypatch):
+    captured = {}
+
+    def fake_post(url, payload):
+        captured["url"] = url
+        captured["payload"] = payload
+        return 200
+
+    monkeypatch.setattr(workload, "_post_json", fake_post)
+
+    trace_id = workload.emit_trace(failed=True)
+
+    assert len(trace_id) == 32
+    assert captured["url"] == workload.OTLP_HTTP_URL
+    spans = (
+        captured["payload"]["resourceSpans"][0]
+        ["scopeSpans"][0]["spans"]
+    )
+    root, database = spans
+    assert root["status"]["code"] == "STATUS_CODE_ERROR"
+    assert database["kind"] == "SPAN_KIND_CLIENT"
+    assert database["parentSpanId"] == root["spanId"]
+    keys = {item["key"] for item in database["attributes"]}
+    assert {
+        "db.system",
+        "db.namespace",
+        "server.address",
+        "server.port",
+    }.issubset(keys)
+
+
+def test_validation_workload_exposes_prometheus_contract():
+    original = {
+        "requests": workload.STATE.requests,
+        "errors": workload.STATE.errors,
+        "duration_sum": workload.STATE.duration_sum,
+        "db_active": workload.STATE.db_active,
+        "db_idle": workload.STATE.db_idle,
+        "graph_requests": workload.STATE.graph_requests,
+        "graph_failures": workload.STATE.graph_failures,
+        "graph_duration_sum": workload.STATE.graph_duration_sum,
+    }
+    try:
+        workload.STATE.record(failed=True, duration=0.25)
+        metrics = workload.metrics_text()
+        assert "validation_requests_total" in metrics
+        assert 'instance="orders-db:5432"' in metrics
+        assert "traces_service_graph_request_total" in metrics
+        assert 'server="postgresql/orders"' in metrics
+    finally:
+        with workload.STATE.lock:
+            for key, value in original.items():
+                setattr(workload.STATE, key, value)
