@@ -1,6 +1,6 @@
 # AI SRE RCA — v0.8.0-rc.1
 
-[![Real Environment Validation](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Real Environment Validation](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Português do Brasil](README_PT-BR.md) · **English**
 
@@ -10,7 +10,9 @@ The service receives an incident, resolves Kubernetes ownership and runtime topo
 
 ## v0.8.0-rc.1 — persistent awareness + bounded agentic planning + real-environment validation
 
-v0.8 is evolving the project from an incident-local RCA engine into an autonomous, evidence-verified SRE platform. The current development branch now includes:
+Published prerelease: [v0.8.0-rc.1](https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.8.0-rc.1) · real-environment evidence is attached to the release.
+
+v0.8.0-rc.1 advances the project from an incident-local RCA engine toward an autonomous, evidence-verified SRE platform. The published release candidate includes:
 
 - **Persistent temporal Awareness Graph** with canonical entity/relationship identity across incidents.
 - **First-class ChangeEvent nodes** derived from Argo CD deployment evidence and matching Git revision evidence, with stable identity across repeated observations. Materialization requires application, revision and an authoritative operation timestamp; workload/service/repository links are emitted only when the existing graph resolves them unambiguously.
@@ -49,6 +51,7 @@ GET  /api/v1/awareness/topology
 GET  /api/v1/awareness/services/{service_name}
 GET  /api/v1/awareness/blast-radius/{target_id}
 GET  /api/v1/awareness/changes
+POST /api/v1/awareness/inventory/reconcile
 POST /api/v1/awareness/retention/purge
 POST /api/v1/planner/plan
 POST /api/v1/planner/execute
@@ -130,51 +133,96 @@ v0.5.1 tightens stateful RCA correctness after the v0.5 review: invalid stateful
 ## Architecture
 
 ```mermaid
-flowchart TD
-    A[Alertmanager / API] --> N[Incident Normalizer]
-    N --> EL[Deterministic Eligible Specialists]
-    N --> E[Investigation Engine]
+flowchart LR
+    IN[Alertmanager / REST API] --> N[Incident Normalizer]
 
-    KI[Kubernetes API Inventory] --> IC[Read-only Inventory CronJob]
-    IC --> G[(Persistent Awareness Graph)]
-    G --> C[Bounded Service Context]
-    C --> EL
-    EL --> PC[Server-side Plan Compiler]
-    EL -. sanitized context .-> ADV[Optional Advisory LLM]
-    ADV -. specialist names only .-> PC
-    PC --> P[Bounded Investigation Plan]
-    P --> T[Allow-listed Specialist Tasks]
-    T -->|opt-in| X[Parallel Read-only Specialists]
-    X --> SE[Shared Evidence Envelope]
-    SE --> V[Deterministic Shared-envelope Evaluator]
-    V --> EG[Rejected-hypothesis Explanation Graph]
+    subgraph READ["Read-only investigation plane"]
+      N --> CORE[Deterministic Investigation Engine]
+      N --> PLAN[Bounded Investigation Planner]
+      PLAN --> SPEC[Allow-listed Specialists]
+      SPEC --> ENV[Shared Evidence Envelope]
+      ENV --> AGENT[Deterministic Agentic Evaluator]
+      CORE --> EVAL[Deterministic Evaluator]
+      AGENT --> EVAL
+    end
 
-    E --> K[Kubernetes]
-    E --> O[Prometheus / Loki / Tempo]
-    E --> CH[Argo CD / GitHub / Karpenter]
-    K --> L[Incident-local Graph + Evidence]
-    O --> L
-    CH --> L
+    subgraph SRC["Typed evidence sources"]
+      K[Kubernetes]
+      P[Prometheus]
+      L[Loki]
+      T[Tempo / OpenTelemetry]
+      C[Argo CD / GitHub]
+      KR[Karpenter]
+    end
 
-    L --> G
-    G --> R[Fresh / Stale / Historical Reconciliation]
-    G --> S[Service Projections]
-    G --> B[Blast Radius]
-    G --> CE[Change Event Timeline]
-    R --> AUI[Read-only Awareness Explorer]
-    S --> AUI
-    CE --> AUI
+    K --> CORE
+    P --> CORE
+    L --> CORE
+    T --> CORE
+    C --> CORE
+    KR --> CORE
+    K --> SPEC
+    P --> SPEC
+    L --> SPEC
+    T --> SPEC
+    C --> SPEC
 
-    L --> D[Deterministic Evaluator]
-    V -. same authority rules .-> D
-    D --> M[Incident Memory<br/>PostgreSQL + pgvector]
-    D --> H[Verified Hypotheses]
-    H --> RCA[Evidence-backed RCA]
-    RCA --> API[REST API]
-    RCA --> UI[Next.js UI]
+    EVAL --> RCA[Evidence-backed RCA]
+    RCA --> API[FastAPI]
+    API --> UI[Next.js Investigator / Ops]
+
+    subgraph AWARE["Persistent awareness plane"]
+      KI[Kubernetes Inventory CronJob] --> SNAP[Authoritative Snapshot]
+      SNAP --> PAG[(Persistent Awareness Graph)]
+      CORE --> PAG
+      PAG --> OCS[Frozen Operational Context]
+      OCS --> PLAN
+      PAG --> AX[Awareness Explorer]
+      PAG --> BR[Blast Radius / Change Timeline]
+      PAG --> MEM[(PostgreSQL + pgvector)]
+    end
+
+    subgraph REM["Guarded remediation plane"]
+      RCA --> RP[Remediation Proposal]
+      RP --> POL[Policy + dry-run + approval]
+      POL --> RID[Separate Remediation Identity]
+      RID --> ACT[Allow-listed Mutation]
+    end
+
+    subgraph VAL["Release validation plane"]
+      GH[GitHub Actions] --> KIND[Disposable Kind Cluster]
+      KIND --> VH[Real Environment Validation Harness]
+      VH --> CORE
+      VH --> PAG
+      VH --> REP[JSON / Markdown Evidence]
+    end
 ```
 
-More diagrams are available in [docs/architecture.md](docs/architecture.md).
+More detailed diagrams: [docs/architecture.md](docs/architecture.md).
+
+## Application running
+
+The screenshots below were captured from **v0.8.0-rc.1 running locally with `DEMO_MODE=true`**. They are real rendered application screens backed by the demo adapters, not design mockups.
+
+### Kubernetes RCA investigator
+
+![AI SRE RCA Kubernetes investigator showing an ephemeral-storage eviction root cause](docs/images/investigator-k8s.png)
+
+### Trace-aware causal RCA
+
+![Trace-aware RCA showing downstream database failure propagation](docs/images/trace-aware-rca.png)
+
+### Stateful PostgreSQL RCA
+
+![Stateful PostgreSQL RCA showing connection exhaustion evidence](docs/images/stateful-postgresql.png)
+
+### Persistent Awareness Graph explorer
+
+![Awareness Explorer showing reconciled entities, relationships and change history](docs/images/awareness-explorer.png)
+
+### Operational source health
+
+![Operations UI showing tenant, RBAC and source capabilities](docs/images/operations.png)
 
 ## Quick start
 
@@ -194,7 +242,7 @@ Open:
 - Stateful Kafka demo: `http://localhost:3000/stateful/kafka`
 - Stateful Redis demo: `http://localhost:3000/stateful/redis`
 - Operational health/RBAC UI: `http://localhost:3000/ops`
-- Persistent Awareness Graph explorer: `http://localhost:3000/awareness?cluster=prod-us-east-1`
+- Persistent Awareness Graph explorer with the richer Kubernetes demo graph: `http://localhost:3000/awareness?cluster=prod-india-exchange`
 - Reconciled topology API: `GET /api/v1/awareness/topology?cluster=<cluster>`
 - Service topology API: `GET /api/v1/awareness/services/<service>?cluster=<cluster>&namespace=<ns>`
 - Blast-radius API: `GET /api/v1/awareness/blast-radius/<entity-id>?cluster=<cluster>`
@@ -561,17 +609,20 @@ backend/
   tests/              RCA + safety regression tests
 frontend/             Next.js investigation UI
 helm/ai-sre-rca/      deployment + read-only RBAC
-docs/                 architecture and roadmap
+docs/                 architecture, roadmap and real UI screenshots
+validation/           disposable Kind real-environment release gate
 ```
 
-## Next evolution
+## Next validation target — v0.8.0-rc.2
 
-After v0.7, the highest-value increments are:
+The next release-candidate milestone is **full-stack observability validation**. The harness should add real Prometheus, Loki and Tempo/OpenTelemetry data plus an instrumented workload so the platform can validate causal chains end to end.
 
-1. Remediation policy bundles per tenant/cluster and signed approval evidence.
-2. Post-action verification gates and rollback proposals, still requiring explicit execution.
-3. PostgreSQL blocker/blockee graphs and pg_stat_statements correlation.
-4. Kafka rebalance/broker timelines and Redis slowlog/hot-key analysis.
-5. Remaining Kubernetes depth: ImagePullBackOff, PDB blocking and runtime PVC/volume failures.
-6. Trace-to-log derived fields, explicit exemplars and sampling-aware trace evidence.
-7. External immutable audit sink and signed incident/remediation export bundles.
+Target scenarios:
+
+1. deployment/change → runtime regression correlation without treating temporal proximity as proof;
+2. trace-origin failure → log evidence → metric degradation → deterministic RCA;
+3. HTTP 5xx, dependency latency, CPU throttling and memory-pressure scenarios;
+4. stateful PostgreSQL/Kafka/Redis telemetry in the same disposable environment;
+5. recovery validation, proving that stale evidence does not remain promoted after the workload returns to healthy state.
+
+The v0.8.0-rc.1 gate remains the Kubernetes and Persistent Awareness Graph baseline for those additions.

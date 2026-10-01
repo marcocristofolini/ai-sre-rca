@@ -4,7 +4,10 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 
 ## [Unreleased]
 
-No changes yet.
+### Documentation
+- Revised the English and Brazilian Portuguese READMEs and architecture diagrams to reflect the published v0.8.0-rc.1 architecture and real-environment validation plane.
+- Added real application screenshots captured from the running v0.8.0-rc.1 UI in `DEMO_MODE=true` for Kubernetes RCA, trace-aware RCA, stateful PostgreSQL RCA, Awareness Explorer and Operations.
+- Aligned Persistent Awareness Graph and agentic investigation docs with capabilities already delivered in rc.1 and the v0.8.0-rc.2 full-stack observability validation target.
 
 ## [0.8.0-rc.1] - 2026-10-01
 

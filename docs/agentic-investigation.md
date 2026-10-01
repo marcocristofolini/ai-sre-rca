@@ -1,8 +1,8 @@
-# Agentic Investigation — v0.8 foundation
+# Agentic Investigation — v0.8.0-rc.1
 
 [Português do Brasil](agentic-investigation.pt-BR.md) · **English**
 
-v0.8 introduces a bounded Investigation Planner plus an experimental parallel specialist executor. Planning is available by default; specialist execution is implemented but **disabled by default** and requires `AGENTIC_EXECUTION_ENABLED=true`. An optional model-assisted planning advisor is also disabled by default and requires both `LLM_ENABLED=true` and `AGENTIC_MODEL_PLANNER_ENABLED=true`. All layers remain read-only and only the deterministic evaluator can confirm root cause.
+v0.8.0-rc.1 includes a bounded Investigation Planner plus an experimental parallel specialist executor. Planning is available by default; specialist execution is implemented but **disabled by default** and requires `AGENTIC_EXECUTION_ENABLED=true`. An optional model-assisted planning advisor is also disabled by default and requires both `LLM_ENABLED=true` and `AGENTIC_MODEL_PLANNER_ENABLED=true`. All layers remain read-only and only the deterministic evaluator can confirm root cause.
 
 The design goal is:
 
@@ -251,6 +251,8 @@ The evaluator does **not** trust specialist-local `confirmed` state. It filters 
 
 The result includes a deterministic `root_cause` only when those gates pass. It also returns an explanation graph with hypothesis, evidence, gate and verdict nodes connected by `supports`, `contradicts`, `blocks`, `selected` and `considered` edges.
 
-## Next phase
+## v0.8.0-rc.1 status and next validation
 
-First-class deployment/change events, the read-only Persistent Awareness Graph explorer, and authoritative complete-inventory reconciliation with tombstones are now part of v0.8. Incident-local absence still has no deletion semantics; only an admin-authorized snapshot from an allow-listed source can tombstone covered facts, and older snapshots cannot delete newer observations. The next agentic generation can use current, historical and explicitly tombstoned graph state as bounded planning context without treating UI-visible correlation or historical absence as causal proof.
+The release candidate already includes first-class deployment/change events, the read-only Persistent Awareness Graph explorer, authoritative inventory reconciliation with tombstones, the frozen Operational Context Snapshot, model-assisted compilation behind deterministic server gates, deterministic specialist scoping, parallel read-only specialist execution behind an opt-in flag, and shared-envelope evaluation.
+
+The v0.8.0-rc.1 real-environment gate validates Kubernetes specialist parity and persistent graph reconciliation against a real disposable cluster. The next validation target, v0.8.0-rc.2, should run the planner/executor against real Prometheus, Loki and Tempo/OpenTelemetry data from an instrumented workload. The authority model remains unchanged: model/planner output selects investigation work, while typed live evidence and deterministic gates decide the verdict.

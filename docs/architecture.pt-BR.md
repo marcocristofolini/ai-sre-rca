@@ -4,69 +4,86 @@
 
 ## Visão geral do sistema
 
+A v0.8.0-rc.1 está separada em quatro planos explícitos. A investigação continua read-only, o awareness persistente é reconciliado separadamente, a remediação usa identidade e aprovação próprias, e o plano de validação comprova o caminho crítico de Kubernetes contra um cluster real descartável.
+
 ```mermaid
-flowchart TD
-    A[Alertmanager / REST API] --> N[Normalizador de Incidente]
-    N --> EL[Especialistas Deterministicamente Elegíveis]
-    N --> I[Investigation Engine]
+flowchart LR
+    IN[Alertmanager / REST API] --> N[Normalizador de Incidente]
 
-    KINV[Inventário da API Kubernetes] --> KCRON[CronJob Read-only de Inventário]
-    KCRON --> KSNAP[Snapshots Autoritativos Completos]
-    KSNAP --> PAG[(Persistent Awareness Graph)]
-    PAG --> OCS[Operational Context Snapshot Congelado]
-    OCS --> EL
-    EL --> COMP[Compilador de Plano no Servidor]
-    EL -. contexto elegível sanitizado .-> MPL[LLM Advisory Opcional]
-    MPL -. somente nomes + justificativas .-> COMP
-    COMP --> PLAN[Investigation Plan Bounded]
-    PLAN --> PT[Tarefas Allow-listed<br/>K8s / Métricas / Logs / Traces / DB / Mudanças]
-    PT -->|opt-in| ORCH[Especialistas Paralelos Read-only]
-    OCS --> ORCH
-    ORCH --> SE[Shared Evidence Envelope]
-    SE --> AE[Avaliador Agentic Determinístico]
-    AE --> XG[Explanation Graph]
+    subgraph READ["1. Investigação read-only"]
+      N --> CORE[Investigation Engine Determinístico]
+      N --> PLAN[Investigation Planner Bounded]
+      PLAN --> SPEC[Especialistas Allow-listed]
+      SPEC --> ENV[Shared Evidence Envelope]
+      ENV --> AGENT[Avaliador Agentic Determinístico]
+      CORE --> EVAL[Avaliador Determinístico]
+      AGENT --> EVAL
+    end
+    subgraph SRC["Fontes tipadas de evidência"]
+      K[Kubernetes]
+      P[Prometheus]
+      L[Loki]
+      T[Tempo / OpenTelemetry]
+      C[Argo CD / GitHub]
+      KR[Karpenter]
+    end
 
-    I --> K[Adapter Kubernetes]
-    I --> P[Adapter Prometheus]
-    I --> L[Adapter Loki]
-    I --> T[Tempo / TraceQL]
-    I --> AR[Argo CD / GitHub]
-    I --> KA[Karpenter]
+    K --> CORE
+    P --> CORE
+    L --> CORE
+    T --> CORE
+    C --> CORE
+    KR --> CORE
+    K --> SPEC
+    P --> SPEC
+    L --> SPEC
+    T --> SPEC
+    C --> SPEC
 
-    K --> LG[Grafo Local do Incidente]
-    P --> LG
-    L --> LG
-    T --> LG
-    AR --> LG
-    KA --> LG
+    EVAL --> RCA[RCA Baseado em Evidências]
+    RCA --> API[FastAPI]
+    API --> UI[Next.js Investigator / Ops]
 
-    LG --> EV[Avaliador de Evidências]
-    AE -. mesmas regras determinísticas de autoridade .-> EV
-    LG --> PAG
-    PAG --> REC[Reconciliação Fresh / Stale / Historical]
-    PAG --> GH[Graph Health<br/>Contagens + Freshness de Inventário]
-    PAG --> SV[Projeções por Serviço]
-    PAG --> BR[Blast Radius]
-    PAG --> CE[Timeline de Change Events]
-    REC --> OCS
-    GH --> OCS
-    CE --> OCS
-    GH --> API
-    REC --> AUI[Awareness Explorer Next.js<br/>Read-only]
-    SV --> AUI
-    CE --> AUI
+    subgraph AWARE["2. Awareness persistente"]
+      KI[CronJob de Inventário Kubernetes] --> SNAP[Snapshot Autoritativo]
+      SNAP --> PAG[(Persistent Awareness Graph)]
+      CORE --> PAG
+      PAG --> OCS[Operational Context Congelado]
+      OCS --> PLAN
+      PAG --> AX[Awareness Explorer]
+      PAG --> BR[Blast Radius / Timeline de Mudanças]
+      PAG --> MEM[(PostgreSQL + pgvector)]
+    end
+    subgraph REM["3. Remediação guardada"]
+      RCA --> RP[Proposta de Remediação]
+      RP --> POL[Política + dry-run + aprovação]
+      POL --> RID[Identidade Separada de Remediação]
+      RID --> ACT[Mutação Allow-listed]
+    end
 
-    EV --> H[Hipóteses Determinísticas]
-    EV --> MEM[Memória de Incidentes<br/>PostgreSQL + pgvector]
-    EV --> LLM[LLM Opcional<br/>Somente Propositor]
-    MEM --> H
-    LLM --> H
-    H --> RC[Seletor de Causa Raiz]
-    RC --> RCA[RCA Estruturado]
-    RCA --> API[REST API]
-    RCA --> UI[UI Next.js]
+    subgraph VAL["4. Validação da release"]
+      GH[GitHub Actions] --> KIND[Cluster Kind Descartável]
+      KIND --> VH[Real Environment Validation Harness]
+      VH --> CORE
+      VH --> PAG
+      VH --> REP[Evidência JSON / Markdown]
+    end
 ```
 
+A fronteira principal de correção não mudou: evidência live tipada e gates determinísticos decidem o que pode ser afirmado. O planner e o LLM opcional podem restringir ou priorizar a investigação, mas não podem fabricar fatos do grafo, evidências, scores ou um verdict de causa raiz.
+
+
+## Superfícies da UI em execução
+
+Estas capturas foram feitas com a v0.8.0-rc.1 executando localmente em `DEMO_MODE=true`. São telas reais renderizadas pela aplicação usando os adapters de demonstração.
+
+| Superfície | Captura |
+| --- | --- |
+| RCA Kubernetes determinístico | ![RCA Kubernetes](images/investigator-k8s.png) |
+| Causalidade baseada em traces | ![RCA trace-aware](images/trace-aware-rca.png) |
+| RCA stateful de PostgreSQL | ![RCA stateful PostgreSQL](images/stateful-postgresql.png) |
+| Persistent Awareness Graph | ![Awareness Explorer](images/awareness-explorer.png) |
+| Capabilities operacionais | ![Operations](images/operations.png) |
 
 
 ## Reconciliação automática do inventário Kubernetes — v0.8
@@ -744,7 +761,7 @@ flowchart LR
     HTTP --> AG[Especialista Kubernetes agentic]
     HTTP --> INV[Reconciliação autoritativa de inventário]
     INV --> PAG[(Persistent Awareness Graph)]
-    CORE --> PARITY[Paridade da causa raiz esperada]
+    CORE --> PARITY[Paridade clássico / agentic + invariantes do cenário]
     AG --> PARITY
     PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
     PARITY --> REPORT[Evidência JSON + Markdown]
