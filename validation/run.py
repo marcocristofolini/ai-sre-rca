@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -473,9 +474,12 @@ def start_postgres(port: int) -> str:
             check=False,
         )
         if probe.returncode == 0:
+            # The disposable PostgreSQL container is local and does not
+            # expose TLS. Disable asyncpg SSL negotiation explicitly so the
+            # validation gate does not depend on asyncio TLS-upgrade behavior.
             return (
                 "postgresql+asyncpg://ai_sre:ai_sre@"
-                f"127.0.0.1:{port}/ai_sre"
+                f"127.0.0.1:{port}/ai_sre?ssl=disable"
             )
         time.sleep(1)
     raise RuntimeError("validation PostgreSQL did not become ready")
@@ -1615,6 +1619,12 @@ def main() -> int:
         print(
             f"validation failed: {type(exc).__name__}: {exc}",
             file=sys.stderr,
+        )
+        traceback.print_exc()
+        run(
+            ["docker", "logs", POSTGRES_CONTAINER],
+            check=False,
+            capture=False,
         )
     finally:
         report["finished_at"] = utcnow().isoformat()
