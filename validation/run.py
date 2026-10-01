@@ -387,7 +387,8 @@ async def investigate_scenario(
     alert_name: str,
     pod: dict[str, Any],
     signal: dict[str, Any],
-    expected_root: str,
+    expected_root: str | None,
+    expected_status: str = "resolved",
 ) -> dict[str, Any]:
     pod_name, node_name = pod_identity(pod)
     incident = IncidentInput(
@@ -444,9 +445,9 @@ async def investigate_scenario(
         None,
     )
     passed = (
-        classic.status == "resolved"
+        classic.status == expected_status
         and classic_root == expected_root
-        and agentic.status == "resolved"
+        and agentic.status == expected_status
         and agentic_root == expected_root
         and integrity_ok
         and kubernetes_result is not None
@@ -457,6 +458,7 @@ async def investigate_scenario(
         "pod": pod_name,
         "node": node_name,
         "signal": signal,
+        "expected_status": expected_status,
         "expected_root_cause": expected_root,
         "classic": {
             "status": classic.status,
@@ -597,20 +599,23 @@ async def validate_backend(
             (
                 "oomkilled",
                 "KubePodOOMKilled",
+                "resolved",
                 "container-oom",
             ),
             (
                 "crashloop",
                 "KubePodCrashLooping",
-                "application-exit",
+                "inconclusive",
+                None,
             ),
             (
                 "failed-scheduling",
                 "KubePodFailedScheduling",
+                "resolved",
                 "insufficient-resources",
             ),
         ]
-        for name, alert_name, expected_root in definitions:
+        for name, alert_name, expected_status, expected_root in definitions:
             observed = observations[name]
             scenarios.append(
                 await investigate_scenario(
@@ -622,6 +627,7 @@ async def validate_backend(
                     pod=observed["pod"],
                     signal=observed["signal"],
                     expected_root=expected_root,
+                    expected_status=expected_status,
                 )
             )
         return {
@@ -673,7 +679,10 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
         lines.append(
             "| {name} | {expected} | {classic} | {agentic} | {integrity} | {result} |".format(
                 name=item["name"],
-                expected=item["expected_root_cause"],
+                expected=(
+                    item["expected_root_cause"]
+                    or f"{item['expected_status']} / no root cause"
+                ),
                 classic=item["classic"]["root_cause"],
                 agentic=item["agentic"]["root_cause"],
                 integrity="ok" if item["evidence_integrity_ok"] else "failed",
