@@ -5,7 +5,7 @@
 - [x] disposable two-node Kind topology pinned to a release node-image digest
 - [x] dedicated read-only Kubernetes validation ServiceAccount
 - [x] real OOMKilled scenario with deterministic expected root cause
-- [x] real CrashLoopBackOff scenario with deterministic expected root cause
+- [x] real CrashLoopBackOff scenario with deterministic fail-closed expectation when log evidence is unavailable
 - [x] real FailedScheduling scenario with deterministic expected root cause
 - [x] classic/agentic Kubernetes root-cause parity assertion
 - [x] PostgreSQL-backed authoritative inventory reconciliation against the real cluster
