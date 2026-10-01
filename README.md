@@ -1,6 +1,6 @@
 # AI SRE RCA — v0.8.0-rc.2
 
-[![Real Environment Validation](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [Português do Brasil](README_PT-BR.md) · **English**
 
@@ -61,6 +61,16 @@ POST /api/v1/planner/investigate
 The planner remains a preview/compilation surface. Every compiled plan now freezes a bounded Operational Context Snapshot from the Persistent Awareness Graph and carries the same snapshot into specialist execution and the shared envelope. This lets specialists see confirmed current state together with stale/history/tombstone/change context without reinterpreting those records as live causal evidence. Parallel specialist execution is an opt-in read-only runtime and recompiles the plan server-side immediately before execution, so caller-authored task graphs are never executed. When `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`, an advisory model may prioritize optional branches, but executable tasks are still compiled exclusively from server-owned templates. Kubernetes, metrics and traces remain mandatory whenever they are deterministically eligible; unknown/ineligible model choices are rejected and malformed/model-failure responses preserve the deterministic plan. The `/investigate` path then revalidates the shared envelope, recalculates deterministic hypothesis scores, reapplies trace/stateful causal gates, enforces Kubernetes precedence and produces an explanation graph before a root-cause verdict is allowed. The LLM still cannot create graph facts, attach evidence, invoke arbitrary tools or mutate infrastructure.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.md) · [Agentic Investigation](docs/agentic-investigation.md).
+
+## GitHub-first delivery
+
+Pull-request and `main` validation are orchestrated by a single **GitHub-first gate**. It calls the reusable CI, CodeQL and real-environment workflows and exposes one final merge decision.
+
+Releases are promoted from **Actions → Promote release**. The workflow requires `main`, checks that the requested tag matches `VERSION`, requires a successful GitHub-first gate for the exact SHA, verifies that the attached real-environment report belongs to the same commit, and only then creates the tag and GitHub release.
+
+Local validation remains useful for fast feedback, but it is not merge or release authority.
+
+Full contract: [GitHub-first delivery](docs/github-first.md).
 
 ## What changed in v0.7
 

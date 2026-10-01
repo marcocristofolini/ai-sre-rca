@@ -1,0 +1,75 @@
+name: GitHub-first gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: read
+
+concurrency:
+  group: github-first-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  codeql:
+    name: CodeQL
+    uses: ./.github/workflows/codeql.yml
+
+  real-environment:
+    name: Real environment validation
+    uses: ./.github/workflows/real-environment-validation.yml
+
+  gate:
+    name: gate
+    if: always()
+    needs:
+      - ci
+      - codeql
+      - real-environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required workflows
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          REAL_ENV_RESULT: ${{ needs.real-environment.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'CI=%s\nCodeQL=%s\nReal environment=%s\n' \
+            "$CI_RESULT" "$CODEQL_RESULT" "$REAL_ENV_RESULT"
+
+          test "$CI_RESULT" = success
+          test "$CODEQL_RESULT" = success
+          test "$REAL_ENV_RESULT" = success
+
+      - name: Publish gate summary
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          REAL_ENV_RESULT: ${{ needs.real-environment.result }}
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # GitHub-first gate passed
+
+          | Required workflow | Result |
+          | --- | --- |
+          | CI | $CI_RESULT |
+          | CodeQL | $CODEQL_RESULT |
+          | Real environment validation | $REAL_ENV_RESULT |
+
+          Commit: \`${GITHUB_SHA}\`
+          Ref: \`${GITHUB_REF}\`
+          EOF

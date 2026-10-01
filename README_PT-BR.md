@@ -1,6 +1,6 @@
 # AI SRE RCA — v0.8.0-rc.2
 
-[![Validação em Ambiente Real](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/real-environment-validation.yml) [![CI](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/ci.yml) [![CodeQL](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/codeql.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Português do Brasil** · [English](README.md)
 
@@ -61,6 +61,16 @@ POST /api/v1/planner/investigate
 O planner continua sendo a superfície de preview/compilação. Cada plano compilado agora congela um Operational Context Snapshot bounded vindo do Persistent Awareness Graph e carrega o mesmo snapshot para a execução dos especialistas e para o shared envelope. Assim os especialistas enxergam estado atual confirmado junto com contexto stale/histórico/tombstoned/de mudanças sem reinterpretar esses registros como evidência causal live. A execução paralela de especialistas é um runtime read-only opt-in e recompila o plano no servidor imediatamente antes de executar, portanto grafos de tarefas escritos pelo caller nunca são executados. Quando `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`, um modelo advisory pode priorizar ramos opcionais, porém as tarefas executáveis continuam sendo compiladas exclusivamente a partir de templates controlados pelo servidor. Kubernetes, métricas e traces permanecem obrigatórios sempre que forem deterministicamente elegíveis; escolhas desconhecidas ou inelegíveis são rejeitadas e respostas inválidas/falhas do modelo preservam o plano determinístico. O caminho `/investigate` então revalida o shared envelope, recalcula scores determinísticos, reaplica gates causais de trace/stateful, preserva a precedência do Kubernetes e gera um explanation graph antes de permitir um verdict de causa raiz. O LLM continua sem poder criar fatos no grafo, anexar evidências, invocar ferramentas arbitrárias ou mutar infraestrutura.
 
 Design: [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md) · [Investigação Agentic](docs/agentic-investigation.pt-BR.md).
+
+## Entrega GitHub-first
+
+A validação de pull requests e de `main` é orquestrada por um único **GitHub-first gate**. Ele chama os workflows reutilizáveis de CI, CodeQL e validação em ambiente real e expõe uma decisão final única para merge.
+
+Releases são promovidas em **Actions → Promote release**. O workflow exige `main`, verifica se a tag solicitada corresponde ao `VERSION`, exige um GitHub-first gate aprovado para o SHA exato, valida se o relatório de ambiente real pertence ao mesmo commit e só então cria a tag e a GitHub release.
+
+A validação local continua útil para feedback rápido, mas não tem autoridade de merge ou release.
+
+Contrato completo: [Fluxo GitHub-first](docs/github-first.pt-BR.md).
 
 ## O que mudou na v0.7
 
