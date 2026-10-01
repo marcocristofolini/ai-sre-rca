@@ -605,8 +605,8 @@ async def validate_backend(
             (
                 "crashloop",
                 "KubePodCrashLooping",
-                "inconclusive",
-                None,
+                "resolved",
+                "container-crash-loop",
             ),
             (
                 "failed-scheduling",
