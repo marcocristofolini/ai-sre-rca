@@ -1229,15 +1229,7 @@ async def investigate_recovery_scenario(
         agentic.root_cause.hypothesis_id
         if agentic.root_cause is not None else None
     )
-    forbidden_prefixes = (
-        "postgres-connection-exhaustion:",
-        "postgres-lock-contention:",
-        "postgres-deadlocks:",
-        "postgres-replication-lag:",
-        "postgres-long-transaction:",
-        "kafka-",
-        "redis-",
-    )
+    forbidden_prefixes = ("postgres-", "kafka-", "redis-")
 
     def root_is_safe(root: str | None) -> bool:
         if root is None:
@@ -1634,6 +1626,43 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
             "",
         ]
     )
+    stateful = validation.get("stateful_postgresql") or {}
+    stateful_classic = stateful.get("classic") or {}
+    stateful_agentic = stateful.get("agentic") or {}
+    stateful_exporter = stateful.get("postgres_exporter") or {}
+    recovery = validation.get("recovery") or {}
+    recovery_classic = recovery.get("classic") or {}
+    recovery_agentic = recovery.get("agentic") or {}
+    recovery_postgres = recovery.get("recovered_postgres") or {}
+    recovery_fresh = recovery.get("fresh_telemetry") or {}
+    lines.extend(
+        [
+            "",
+            "## Stateful PostgreSQL RCA",
+            "",
+            f"- Exporter connections: {stateful_exporter.get('connections')}",
+            f"- Exporter max_connections: {stateful_exporter.get('max_connections')}",
+            f"- Exporter utilization: {stateful_exporter.get('utilization')}",
+            f"- Critical threshold: {stateful_exporter.get('critical_threshold')}",
+            f"- Classic root cause: {stateful_classic.get('root_cause')}",
+            f"- Agentic root cause: {stateful_agentic.get('root_cause')}",
+            f"- Evidence integrity: {'ok' if stateful.get('evidence_integrity_ok') else 'failed'}",
+            f"- Result: **{'PASS' if stateful.get('passed') else 'FAIL'}**",
+            "",
+            "## Recovery validation",
+            "",
+            f"- Recovered PostgreSQL utilization: {recovery_postgres.get('utilization')}",
+            f"- Healthy Prometheus requests: {recovery_fresh.get('prometheus_success_requests')}",
+            f"- Recovery Loki entries: {recovery_fresh.get('loki_recovery_entries')}",
+            f"- Recovery Tempo traces: {recovery_fresh.get('tempo_recovery_trace_count')}",
+            f"- Classic root after recovery: {recovery_classic.get('root_cause')}",
+            f"- Agentic root after recovery: {recovery_agentic.get('root_cause')}",
+            f"- Fresh trace causal evidence count: {recovery_classic.get('trace_causal_evidence_count')}",
+            f"- Evidence integrity: {'ok' if recovery.get('evidence_integrity_ok') else 'failed'}",
+            f"- Result: **{'PASS' if recovery.get('passed') else 'FAIL'}**",
+            "",
+        ]
+    )
     inventory = validation.get("inventory") or {}
     lines.extend(
         [
@@ -1667,8 +1696,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Provision a disposable Kind cluster with Prometheus, Loki and "
-            "Tempo, inject real failures, and validate deterministic plus "
-            "agentic RCA across Kubernetes and distributed telemetry."
+            "Tempo and real stateful exporters, inject failure/recovery cycles, "
+            "and validate deterministic plus agentic RCA across Kubernetes, "
+            "distributed telemetry and PostgreSQL."
         )
     )
     parser.add_argument(
