@@ -221,7 +221,25 @@ class InvestigationEngine:
         scenario = classify_pod_scenario(incident, pod, preloaded_events)
         if scenario != "eviction":
             if scenario == "generic-pod":
-                return self._generic_result(incident_id, incident, similar)
+                result = self._generic_result(
+                    incident_id,
+                    incident,
+                    similar,
+                )
+                for source, error_type in integration_errors:
+                    result.evidence.append(
+                        Evidence(
+                            source=source,
+                            category="integration-error",
+                            summary=(
+                                f"{source} evidence was unavailable while "
+                                "classifying the Kubernetes scenario."
+                            ),
+                            facts={"error_type": error_type},
+                            strength="weak",
+                        )
+                    )
+                return result
             return await investigate_pod_scenario(
                 incident_id=incident_id,
                 incident=incident,

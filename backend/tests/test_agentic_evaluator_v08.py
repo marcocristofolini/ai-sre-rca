@@ -268,6 +268,124 @@ async def test_investigate_endpoint_is_disabled_by_default():
     assert exc.value.status_code == 404
 
 
+class HealthyKubernetesStatefulTools(StatefulDemoTools):
+    async def get_pod(self, namespace: str, pod: str):
+        return {
+            "metadata": {
+                "name": pod,
+                "namespace": namespace,
+                "labels": {"app": "frontend"},
+            },
+            "spec": {
+                "nodeName": "node-a",
+                "containers": [
+                    {
+                        "name": "frontend",
+                        "resources": {},
+                    }
+                ],
+            },
+            "status": {
+                "phase": "Running",
+                "conditions": [
+                    {"type": "Ready", "status": "True"}
+                ],
+                "containerStatuses": [
+                    {
+                        "name": "frontend",
+                        "restartCount": 0,
+                        "state": {"running": {}},
+                        "lastState": {},
+                    }
+                ],
+            },
+        }
+
+    async def get_events(self, namespace: str, object_name: str):
+        return []
+
+
+class BrokenKubernetesEventsStatefulTools(
+    HealthyKubernetesStatefulTools
+):
+    async def get_events(self, namespace: str, object_name: str):
+        raise RuntimeError("kubernetes events unavailable")
+
+
+@pytest.mark.asyncio
+async def test_clean_kubernetes_stage_allows_downstream_stateful_promotion():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_execution_enabled=True,
+        query_budget_enabled=False,
+    )
+    plan = await build_investigation_plan(
+        repo,
+        incident=kubernetes_incident(),
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=HealthyKubernetesStatefulTools("postgresql"),
+        settings=settings,
+    )
+    by_specialist = {
+        result.specialist: result
+        for result in execution.specialist_results
+    }
+
+    assert by_specialist["kubernetes"].status == "completed"
+    assert not by_specialist["kubernetes"].evidence
+    assert "without a deterministic Kubernetes failure signal" in (
+        by_specialist["kubernetes"].reason
+    )
+
+    evaluation = evaluate_shared_evidence(execution)
+
+    assert evaluation.status == "resolved"
+    assert evaluation.root_cause is not None
+    assert evaluation.root_cause.hypothesis_id is not None
+    assert evaluation.root_cause.hypothesis_id.startswith("postgres-")
+
+
+@pytest.mark.asyncio
+async def test_generic_kubernetes_stage_fails_when_event_context_is_missing():
+    repo = MemoryRepository()
+    settings = Settings(
+        agentic_execution_enabled=True,
+        query_budget_enabled=False,
+    )
+    plan = await build_investigation_plan(
+        repo,
+        incident=kubernetes_incident(),
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=BrokenKubernetesEventsStatefulTools("postgresql"),
+        settings=settings,
+    )
+    by_specialist = {
+        result.specialist: result
+        for result in execution.specialist_results
+    }
+
+    assert by_specialist["kubernetes"].status == "failed"
+    assert any(
+        item.category == "integration-error"
+        for item in by_specialist["kubernetes"].evidence
+    )
+
+    evaluation = evaluate_shared_evidence(execution)
+
+    assert evaluation.status == "inconclusive"
+    assert evaluation.root_cause is None
+    assert any(
+        item.decision == "blocked_by_incomplete_context"
+        for item in evaluation.evaluated_hypotheses
+    )
+
+
 class BrokenKubernetesStatefulTools(StatefulDemoTools):
     async def get_pod(self, namespace: str, pod: str):
         raise RuntimeError("kubernetes unavailable")

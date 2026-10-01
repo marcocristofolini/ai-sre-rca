@@ -5,7 +5,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.agentic.models import PlannerGraphContext, SpecialistResult, SpecialistTask
+from app.agentic.models import (
+    PlannerGraphContext,
+    SpecialistExecutionStatus,
+    SpecialistResult,
+    SpecialistTask,
+)
 from app.config import Settings
 from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
@@ -332,6 +337,7 @@ def _result(
     stateful_dependencies: list[StatefulDependencyAnalysis] | None = None,
     hypotheses: list[Hypothesis] | None = None,
     reason: str | None = None,
+    status_override: SpecialistExecutionStatus | None = None,
 ) -> SpecialistResult:
     evidence = list(evidence or [])
     trace_analyses = list(trace_analyses or [])
@@ -341,6 +347,9 @@ def _result(
         evidence=evidence,
         structured_count=len(trace_analyses) + len(stateful_dependencies),
     )
+    if status_override is not None and not budget.exhausted:
+        status = status_override
+        default_reason = ""
     integrity_ok = all(verify_evidence_hash(item) for item in evidence)
     return SpecialistResult(
         task_id=task.id,
@@ -408,6 +417,36 @@ async def _kubernetes(
             reason="Kubernetes specialist query budget exhausted",
         )
 
+    playbook_hypotheses = [
+        item
+        for item in result.hypotheses
+        if item.origin == "playbook"
+    ]
+    generic_only = (
+        len(playbook_hypotheses) == 1
+        and playbook_hypotheses[0].id == "generic"
+    )
+    classification_errors = [
+        item
+        for item in result.evidence
+        if item.category == "integration-error"
+    ]
+
+    status_override = None
+    reason = None
+    if generic_only and classification_errors:
+        status_override = "failed"
+        reason = (
+            "Kubernetes scenario classification was incomplete because "
+            "required live context was unavailable"
+        )
+    elif generic_only:
+        status_override = "completed"
+        reason = (
+            "Kubernetes stage completed without a deterministic "
+            "Kubernetes failure signal"
+        )
+
     return _result(
         task,
         budget,
@@ -415,11 +454,9 @@ async def _kubernetes(
         evidence=result.evidence,
         entities=result.entities,
         graph_edges=result.graph_edges,
-        hypotheses=[
-            item
-            for item in result.hypotheses
-            if item.origin == "playbook"
-        ],
+        hypotheses=playbook_hypotheses,
+        reason=reason,
+        status_override=status_override,
     )
 
 
