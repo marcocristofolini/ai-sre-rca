@@ -40,12 +40,12 @@ DEFAULT_NODE_IMAGE = (
 )
 POSTGRES_CONTAINER = "ai-sre-rca-validation-postgres"
 POSTGRES_PORT = 15439
-REPORT_SCHEMA = "ai-sre-rca.validation.v2"
+REPORT_SCHEMA = "ai-sre-rca.validation.v3"
 PROMETHEUS_PORT = 19090
 LOKI_PORT = 13100
 TEMPO_PORT = 13200
 WORKLOAD_PORT = 18080
-WORKLOAD_IMAGE = "ai-sre-rc2-workload:local"
+WORKLOAD_IMAGE = "ai-sre-rc3-workload:local"
 PORT_FORWARDS: list[subprocess.Popen[str]] = []
 
 
@@ -380,7 +380,15 @@ def deploy_observability(context: str, cluster_name: str) -> None:
         "-f",
         str(ROOT / "validation" / "manifests" / "observability.yaml"),
     )
-    for deployment in ("prometheus", "loki", "tempo", "rc2-workload"):
+    for deployment in (
+        "orders-db",
+        "postgres-exporter",
+        "postgres-connection-loader",
+        "prometheus",
+        "loki",
+        "tempo",
+        "rc3-workload",
+    ):
         kubectl(
             context,
             "rollout",
@@ -394,7 +402,7 @@ def deploy_observability(context: str, cluster_name: str) -> None:
     start_port_forward(context, "prometheus", PROMETHEUS_PORT, 9090)
     start_port_forward(context, "loki", LOKI_PORT, 3100)
     start_port_forward(context, "tempo", TEMPO_PORT, 3200)
-    start_port_forward(context, "rc2-workload", WORKLOAD_PORT, 8080)
+    start_port_forward(context, "rc3-workload", WORKLOAD_PORT, 8080)
     wait_http(f"http://127.0.0.1:{PROMETHEUS_PORT}/-/ready", "Prometheus readiness")
     wait_http(f"http://127.0.0.1:{LOKI_PORT}/ready", "Loki readiness")
     wait_http(f"http://127.0.0.1:{TEMPO_PORT}/ready", "Tempo readiness")
@@ -403,10 +411,10 @@ def deploy_observability(context: str, cluster_name: str) -> None:
 
 
 def generate_observability_failure(context: str) -> dict[str, Any]:
-    pods = pods_for_label(context, "app=rc2-workload")
+    pods = pods_for_label(context, "app=rc3-workload")
     if len(pods) != 1:
         raise RuntimeError(
-            f"expected exactly one rc2 workload pod, found {len(pods)}"
+            f"expected exactly one rc3 workload pod, found {len(pods)}"
         )
     pod_name, node_name = pod_identity(pods[0])
     started_at = utcnow()
