@@ -12,6 +12,11 @@ on:
         required: true
         default: true
         type: boolean
+      dry_run:
+        description: Validate promotion without creating a tag or release
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -35,6 +40,7 @@ jobs:
         id: version
         env:
           RELEASE_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |
           set -euo pipefail
@@ -57,8 +63,12 @@ jobs:
           fi
 
           if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Tag already exists: $RELEASE_TAG" >&2
-            exit 1
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "Dry-run: existing tag is allowed for validation: $RELEASE_TAG"
+            else
+              echo "Tag already exists: $RELEASE_TAG" >&2
+              exit 1
+            fi
           fi
 
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -186,6 +196,7 @@ jobs:
             -o "dist/ai-sre-rca-${RELEASE_TAG}.tar.gz" "$GITHUB_SHA"
 
       - name: Create validated tag
+        if: ${{ !inputs.dry_run }}
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
         shell: bash
@@ -197,6 +208,7 @@ jobs:
           git push origin "refs/tags/$RELEASE_TAG"
 
       - name: Publish GitHub release
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -213,6 +225,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           GATE_RUN_URL: ${{ steps.gate.outputs.run_url }}
+          DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
@@ -223,4 +236,6 @@ jobs:
           Commit: \`$GITHUB_SHA\`
 
           Gate: $GATE_RUN_URL
+
+          Dry run: `$DRY_RUN`
           EOF
