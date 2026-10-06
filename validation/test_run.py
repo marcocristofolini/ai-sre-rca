@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from validation import run as harness
 
 
@@ -286,3 +288,25 @@ def test_report_writer_includes_full_stack_sections(tmp_path):
     assert "## Recovery validation" in markdown
     assert "Recovered PostgreSQL utilization: 0.05" in markdown
     assert "Fresh trace causal evidence count: 0" in markdown
+
+
+def test_recovery_dependencies_require_no_active_stateful_anomaly():
+    healthy = [
+        SimpleNamespace(
+            health="healthy",
+            hypothesis_id=None,
+        ),
+        SimpleNamespace(
+            health="unknown",
+            hypothesis_id=None,
+        ),
+    ]
+    stale = [
+        SimpleNamespace(
+            health="critical",
+            hypothesis_id="postgres-connection-exhaustion:dependency",
+        )
+    ]
+
+    assert harness.recovery_dependencies_are_safe(healthy) is True
+    assert harness.recovery_dependencies_are_safe(stale) is False
