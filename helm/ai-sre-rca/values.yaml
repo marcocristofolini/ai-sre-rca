@@ -120,7 +120,7 @@ inventoryCollector:
 remediator:
   enabled: false
   image:
-    repository: ghcr.io/your-org/ai-sre-rca-backend
+    repository: ghcr.io/marcocristofolini/ai-sre-rca-backend
     tag: "0.8.0-rc.3"
   replicas: 1
   existingSecret: ""
