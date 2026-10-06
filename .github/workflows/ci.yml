@@ -115,6 +115,16 @@ jobs:
       - name: Render default chart
         run: helm template ai-sre-rca helm/ai-sre-rca > /tmp/ai-sre-rca-default.yaml
 
+      - name: Validate test-environment chart
+        run: |
+          helm lint --strict helm/ai-sre-rca -f helm/ai-sre-rca/values-test.yaml
+          helm template ai-sre-rca-test helm/ai-sre-rca \
+            -f helm/ai-sre-rca/values-test.yaml \
+            > /tmp/ai-sre-rca-test.yaml
+          grep -q "ghcr.io/marcocristofolini/ai-sre-rca-backend:edge" /tmp/ai-sre-rca-test.yaml
+          grep -q "ghcr.io/marcocristofolini/ai-sre-rca-frontend:edge" /tmp/ai-sre-rca-test.yaml
+          grep -q "name: ghcr-pull" /tmp/ai-sre-rca-test.yaml
+
       - name: Render hardened chart
         run: |
           helm template ai-sre-rca helm/ai-sre-rca \
