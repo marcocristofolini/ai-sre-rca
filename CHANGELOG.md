@@ -5,30 +5,25 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
-- GitHub-first publication of validated backend/frontend test images to private GHCR with both `edge` and immutable `sha-<commit>` tags.
-- Manual `Deploy test environment` workflow with kubeconfig validation, GHCR pull-secret creation, Helm deployment, rollout verification and backend/frontend smoke tests.
-- Safe `helm/ai-sre-rca/values-test.yaml` baseline plus optional secret test-environment overrides.
-- Helm-wide `imagePullSecrets` support for private registry images.
-- Bilingual test-environment runbook.
-
-### Changed
-- Development version metadata is aligned to `0.8.0-rc.3` across backend, remediator, frontend and Helm.
-- Default image repositories now point to the project GHCR namespace.
-- CI renders and validates the test-environment Helm configuration.
-
-### Added
 - v0.8.0-rc.3 development adds a real PostgreSQL 17 + postgres_exporter validation path inside the disposable Kind environment.
 - A bounded PostgreSQL connection loader creates live connection-capacity pressure that must promote the typed `postgres-connection-exhaustion` root in both classic and agentic RCA.
 - Recovery validation scales the loader to zero, requires exporter utilization to normalize, emits fresh healthy metrics/logs/traces, and rejects stale trace/stateful root promotion.
 - Validation report schema v3 adds stateful exporter and recovery evidence.
 - GitHub-first gate that orchestrates CI, CodeQL and real-environment validation as reusable workflows for every pull request and push to `main`.
 - GitHub-only release promotion workflow that verifies `VERSION`, the exact validated SHA and real-environment evidence before creating a release tag.
-- Bilingual GitHub-first delivery documentation with PR, release, recovery and permission contracts.
+- GitHub-first publication of validated backend/frontend test images to private GHCR with both `edge` and immutable `sha-<commit>` tags.
+- Manual `Deploy test environment` workflow with kubeconfig validation, GHCR pull-secret creation, Helm deployment, rollout verification and backend/frontend smoke tests.
+- Safe `helm/ai-sre-rca/values-test.yaml` baseline plus optional secret test-environment overrides.
+- Helm-wide `imagePullSecrets` support for private registry images.
+- Bilingual GitHub-first delivery and test-environment runbooks.
 
 ### Changed
-- CI, CodeQL and real-environment validation now expose `workflow_call` and are orchestrated by the aggregate gate instead of running independently on pull requests and `main`.
+- CI, CodeQL and real-environment validation are orchestrated by the aggregate GitHub-first gate instead of running independently on pull requests and `main`.
 - Release creation no longer starts from a workstation-pushed tag; validated tags and release assets are created by the `Promote release` workflow.
-- README status badges now point to the aggregate GitHub-first gate.
+- Development version metadata is aligned to `0.8.0-rc.3` across backend, remediator, frontend and Helm.
+- Default image repositories now point to the project GHCR namespace.
+- CI renders and validates the test-environment Helm configuration.
+- README status badges point to the aggregate GitHub-first gate.
 
 ## [0.8.0-rc.2] - 2026-10-01
 
