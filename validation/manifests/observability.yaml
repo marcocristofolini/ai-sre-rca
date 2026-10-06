@@ -9,9 +9,15 @@ data:
       scrape_interval: 2s
       evaluation_interval: 2s
     scrape_configs:
-      - job_name: rc2-workload
+      - job_name: rc3-workload
         static_configs:
-          - targets: ["rc2-workload:8080"]
+          - targets: ["rc3-workload:8080"]
+      - job_name: postgres-exporter
+        static_configs:
+          - targets: ["postgres-exporter:9187"]
+        relabel_configs:
+          - target_label: instance
+            replacement: "orders-db:5432"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -50,6 +56,104 @@ spec:
   selector: {app: prometheus}
   ports:
     - {name: http, port: 9090, targetPort: 9090}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-db
+  namespace: rca-validation
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: orders-db}
+  template:
+    metadata:
+      labels: {app: orders-db}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+          args: ["postgres", "-c", "max_connections=20"]
+          env:
+            - {name: POSTGRES_DB, value: "orders"}
+            - {name: POSTGRES_USER, value: "postgres"}
+            - {name: POSTGRES_PASSWORD, value: "validation"}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "orders"]
+            initialDelaySeconds: 2
+            periodSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-db
+  namespace: rca-validation
+spec:
+  selector: {app: orders-db}
+  ports:
+    - {name: postgres, port: 5432, targetPort: 5432}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: rca-validation
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres-exporter}
+  template:
+    metadata:
+      labels: {app: postgres-exporter}
+    spec:
+      containers:
+        - name: exporter
+          image: prometheuscommunity/postgres-exporter:v0.19.0@sha256:e8a170b85eab07c75c2b0f3aa2806be5c2fe5bba46fd0336914e1f36572cde08
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://postgres:validation@orders-db:5432/orders?sslmode=disable"
+          ports:
+            - {name: metrics, containerPort: 9187}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: rca-validation
+spec:
+  selector: {app: postgres-exporter}
+  ports:
+    - {name: metrics, port: 9187, targetPort: 9187}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-connection-loader
+  namespace: rca-validation
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres-connection-loader}
+  template:
+    metadata:
+      labels: {app: postgres-connection-loader}
+    spec:
+      containers:
+        - name: loader
+          image: postgres:17.6-alpine@sha256:ef257d85f76e48da1c64832459b59fcaba1a4dac97bf5d7450c77753542eee94
+          command: ["sh", "-c"]
+          args:
+            - |
+              until pg_isready -h orders-db -U postgres -d orders; do sleep 1; done
+              i=0
+              while [ "$i" -lt 15 ]; do
+                (echo "select 1;"; sleep 3600) | PGPASSWORD=validation psql -h orders-db -U postgres -d orders &
+                i=$((i + 1))
+              done
+              wait
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -183,21 +287,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rc2-workload
+  name: rc3-workload
   namespace: rca-validation
 spec:
   replicas: 1
   selector:
-    matchLabels: {app: rc2-workload}
+    matchLabels: {app: rc3-workload}
   template:
     metadata:
       labels:
-        app: rc2-workload
+        app: rc3-workload
         app.kubernetes.io/name: frontend
     spec:
       containers:
         - name: workload
-          image: ai-sre-rc2-workload:local
+          image: ai-sre-rc3-workload:local
           imagePullPolicy: IfNotPresent
           env:
             - name: POD_NAME
@@ -212,9 +316,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: rc2-workload
+  name: rc3-workload
   namespace: rca-validation
 spec:
-  selector: {app: rc2-workload}
+  selector: {app: rc3-workload}
   ports:
     - {name: http, port: 8080, targetPort: 8080}

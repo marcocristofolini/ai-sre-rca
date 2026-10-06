@@ -1,4 +1,22 @@
-# Roadmap — v0.8.0-rc.2
+# Roadmap — v0.8.0-rc.3 development
+
+## v0.8.0-rc.3 — stateful telemetry + recovery validation
+
+- [x] real PostgreSQL 17 dependency deployed inside the disposable Kind environment
+- [x] real postgres_exporter scraped by the existing Prometheus instance
+- [x] exporter target relabeled to the same `orders-db:5432` identity carried by distributed traces
+- [x] bounded connection loader creates a real PostgreSQL connection-capacity anomaly
+- [x] classic and agentic stateful validation code requires `postgres-connection-exhaustion:...`
+- [x] agentic database specialist must complete before the stateful root can pass the gate
+- [x] explicit recovery transition scales the connection loader to zero
+- [x] exporter utilization must fall below the recovery threshold
+- [x] post-recovery workload emits fresh HTTP 200 metrics, Loki logs and healthy OTLP traces
+- [x] recovery RCA blocks stale trace/stateful root promotion
+- [x] validation report schema v3 includes stateful and recovery evidence
+- [ ] GitHub-first real-environment gate passes the PostgreSQL stateful/recovery path end-to-end
+- [ ] real Redis + redis_exporter failure/recovery validation
+- [ ] real Kafka + kafka_exporter failure/recovery validation
+- [ ] v0.8.0-rc.3 version/release metadata and final prerelease promotion
 
 ## v0.8.0-rc.1 — real environment validation gate
 

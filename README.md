@@ -8,6 +8,18 @@ Evidence-first, read-only SRE incident investigator for Kubernetes, distributed 
 
 The service receives an incident, resolves Kubernetes ownership and runtime topology, reconstructs distributed-trace causality, promotes typed PostgreSQL/Kafka/Redis dependency nodes into deterministic investigators, gathers evidence from Kubernetes, Prometheus, Loki, Tempo/OpenTelemetry, Argo CD, GitHub and Karpenter, retrieves similar historical incidents from PostgreSQL/pgvector, evaluates explicit hypotheses, and returns a structured RCA.
 
+## v0.8.0-rc.3 development — stateful telemetry and recovery
+
+The next candidate is now under active validation. The first rc.3 slice adds a **real PostgreSQL 17 dependency and postgres_exporter** to the disposable Kind environment instead of relying only on trace-level dependency identity.
+
+The validation harness drives PostgreSQL connection utilization above a controlled threshold with a bounded connection-loader workload. With the same failing distributed traces used by rc.2, the production adapters must independently observe the database anomaly and both classic and agentic evaluation must converge on a typed `postgres-connection-exhaustion:...` root. The agentic database specialist must complete, and evidence integrity remains mandatory.
+
+The harness then scales the loader to zero, waits for exporter utilization to normalize, emits fresh healthy HTTP 200 metrics, Loki logs and OTLP traces, and runs a recovery investigation scoped only to the post-recovery trace window. That investigation must not promote the previous trace or stateful causal root.
+
+This work is intentionally marked **development** until the GitHub-first real-environment gate passes end-to-end. Redis/redis_exporter and Kafka/kafka_exporter are the remaining rc.3 stateful targets.
+
+See [validation/README.md](validation/README.md) and [the roadmap](docs/roadmap.md).
+
 ## v0.8.0-rc.2 — full-stack observability validation
 
 Previous baseline: [v0.8.0-rc.1](https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.8.0-rc.1). The rc.2 candidate keeps that Kubernetes/Persistent Awareness Graph gate and adds live Prometheus, Loki and Tempo/OpenTelemetry validation.

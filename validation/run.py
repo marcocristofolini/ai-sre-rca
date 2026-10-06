@@ -40,12 +40,12 @@ DEFAULT_NODE_IMAGE = (
 )
 POSTGRES_CONTAINER = "ai-sre-rca-validation-postgres"
 POSTGRES_PORT = 15439
-REPORT_SCHEMA = "ai-sre-rca.validation.v2"
+REPORT_SCHEMA = "ai-sre-rca.validation.v3"
 PROMETHEUS_PORT = 19090
 LOKI_PORT = 13100
 TEMPO_PORT = 13200
 WORKLOAD_PORT = 18080
-WORKLOAD_IMAGE = "ai-sre-rc2-workload:local"
+WORKLOAD_IMAGE = "ai-sre-rc3-workload:local"
 PORT_FORWARDS: list[subprocess.Popen[str]] = []
 
 
@@ -380,7 +380,15 @@ def deploy_observability(context: str, cluster_name: str) -> None:
         "-f",
         str(ROOT / "validation" / "manifests" / "observability.yaml"),
     )
-    for deployment in ("prometheus", "loki", "tempo", "rc2-workload"):
+    for deployment in (
+        "orders-db",
+        "postgres-exporter",
+        "postgres-connection-loader",
+        "prometheus",
+        "loki",
+        "tempo",
+        "rc3-workload",
+    ):
         kubectl(
             context,
             "rollout",
@@ -394,7 +402,7 @@ def deploy_observability(context: str, cluster_name: str) -> None:
     start_port_forward(context, "prometheus", PROMETHEUS_PORT, 9090)
     start_port_forward(context, "loki", LOKI_PORT, 3100)
     start_port_forward(context, "tempo", TEMPO_PORT, 3200)
-    start_port_forward(context, "rc2-workload", WORKLOAD_PORT, 8080)
+    start_port_forward(context, "rc3-workload", WORKLOAD_PORT, 8080)
     wait_http(f"http://127.0.0.1:{PROMETHEUS_PORT}/-/ready", "Prometheus readiness")
     wait_http(f"http://127.0.0.1:{LOKI_PORT}/ready", "Loki readiness")
     wait_http(f"http://127.0.0.1:{TEMPO_PORT}/ready", "Tempo readiness")
@@ -403,10 +411,10 @@ def deploy_observability(context: str, cluster_name: str) -> None:
 
 
 def generate_observability_failure(context: str) -> dict[str, Any]:
-    pods = pods_for_label(context, "app=rc2-workload")
+    pods = pods_for_label(context, "app=rc3-workload")
     if len(pods) != 1:
         raise RuntimeError(
-            f"expected exactly one rc2 workload pod, found {len(pods)}"
+            f"expected exactly one rc3 workload pod, found {len(pods)}"
         )
     pod_name, node_name = pod_identity(pods[0])
     started_at = utcnow()
@@ -434,6 +442,84 @@ def generate_observability_failure(context: str) -> dict[str, Any]:
         "pod": pod_name,
         "node": node_name,
     }
+
+
+def generate_observability_recovery(context: str) -> dict[str, Any]:
+    pods = pods_for_label(context, "app=rc3-workload")
+    if len(pods) != 1:
+        raise RuntimeError(
+            f"expected exactly one rc3 workload pod, found {len(pods)}"
+        )
+    pod_name, node_name = pod_identity(pods[0])
+    started_at = utcnow()
+
+    with urllib.request.urlopen(
+        f"http://127.0.0.1:{WORKLOAD_PORT}/recover",
+        timeout=10,
+    ) as response:
+        if response.status != 200:
+            raise RuntimeError(
+                f"validation recovery transition returned {response.status}"
+            )
+
+    responses: list[str] = []
+    for _ in range(3):
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{WORKLOAD_PORT}/ok",
+            timeout=10,
+        ) as response:
+            body = response.read().decode(errors="replace")
+            if response.status != 200:
+                raise RuntimeError(
+                    f"validation healthy request returned {response.status}: {body}"
+                )
+            responses.append(body.strip())
+        time.sleep(0.3)
+
+    time.sleep(5)
+    return {
+        "started_at": started_at,
+        "requests": len(responses),
+        "responses": responses,
+        "pod": pod_name,
+        "node": node_name,
+    }
+
+
+def release_postgres_connections(context: str) -> None:
+    kubectl(
+        context,
+        "scale",
+        "deployment/postgres-connection-loader",
+        "-n",
+        NAMESPACE,
+        "--replicas=0",
+    )
+    wait = run(
+        [
+            "kubectl",
+            "--context",
+            context,
+            "wait",
+            "--for=delete",
+            "pod",
+            "-l",
+            "app=postgres-connection-loader",
+            "-n",
+            NAMESPACE,
+            "--timeout=60s",
+        ],
+        check=False,
+    )
+    if wait.returncode != 0:
+        remaining = pods_for_label(
+            context,
+            "app=postgres-connection-loader",
+        )
+        if remaining:
+            raise RuntimeError(
+                "PostgreSQL connection-loader Pod did not terminate during recovery"
+            )
 
 
 def start_postgres(port: int) -> str:
@@ -700,6 +786,121 @@ def _loki_entry_count(payload: dict[str, Any]) -> int:
     )
 
 
+def _stateful_signal_value(payload: dict[str, Any], name: str) -> float | None:
+    try:
+        value = payload["signals"][name]["value"]
+        return float(value) if value is not None else None
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+async def wait_for_postgres_utilization(
+    tools: ReadOnlyHTTPTools,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            metrics = await tools.postgres_dependency_metrics(
+                "orders",
+                utcnow(),
+                1,
+                "orders-db:5432",
+            )
+            connections = _stateful_signal_value(metrics, "connections")
+            max_connections = _stateful_signal_value(metrics, "max_connections")
+            utilization = (
+                connections / max_connections
+                if connections is not None
+                and max_connections not in {None, 0}
+                else None
+            )
+            last = {
+                "connections": connections,
+                "max_connections": max_connections,
+                "utilization": utilization,
+                "metrics": metrics,
+            }
+            above_ok = minimum is None or (
+                utilization is not None and utilization >= minimum
+            )
+            below_ok = maximum is None or (
+                utilization is not None and utilization <= maximum
+            )
+            if above_ok and below_ok:
+                return last
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+
+    raise RuntimeError(
+        "PostgreSQL exporter utilization did not reach the required state: "
+        f"minimum={minimum}, maximum={maximum}, last={last}"
+    )
+
+
+async def validate_recovery_observability(
+    tools: ReadOnlyHTTPTools,
+    signal: dict[str, Any],
+) -> dict[str, Any]:
+    started_at = signal["started_at"]
+    deadline = time.monotonic() + 45
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            now = utcnow()
+            metric_payload, log_payload, traces = await asyncio.gather(
+                tools.prometheus_query(
+                    'sum(ai_sre_validation_requests_total{service="frontend",status="200"})',
+                    now,
+                ),
+                tools.loki_query_range(
+                    '{namespace="rca-validation",app="frontend",level="info"}',
+                    started_at,
+                    now + timedelta(minutes=1),
+                    100,
+                ),
+                tools.tempo_search_traces(
+                    "frontend",
+                    started_at,
+                    now + timedelta(minutes=1),
+                    8,
+                ),
+            )
+            last = {
+                "prometheus_success_requests": _prometheus_value(metric_payload),
+                "loki_recovery_entries": _loki_entry_count(log_payload),
+                "tempo_recovery_trace_count": len(traces),
+                "tempo_recovery_trace_ids": [
+                    str(item.get("traceID"))
+                    for item in traces
+                    if item.get("traceID")
+                ],
+            }
+            if (
+                (last["prometheus_success_requests"] or 0) >= 3
+                and last["loki_recovery_entries"] >= 3
+                and last["tempo_recovery_trace_count"] >= 2
+            ):
+                break
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+
+    last["passed"] = (
+        (last.get("prometheus_success_requests") or 0) >= 3
+        and last.get("loki_recovery_entries", 0) >= 3
+        and last.get("tempo_recovery_trace_count", 0) >= 2
+    )
+    return last
+
+
 async def validate_observability(
     tools: ReadOnlyHTTPTools,
     signal: dict[str, Any],
@@ -876,6 +1077,266 @@ async def investigate_trace_scenario(
     }
 
 
+async def investigate_postgres_stateful_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+    postgres_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    incident = IncidentInput(
+        title="Stateful validation: PostgreSQL connection exhaustion",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="PostgreSQLHighConnections",
+        severity="critical",
+        starts_at=signal["started_at"] + timedelta(seconds=1),
+        labels={"validation_scenario": "stateful-postgresql"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    prefix = "postgres-connection-exhaustion:"
+    postgres = next(
+        (
+            item
+            for item in classic.stateful_dependencies
+            if item.kind == "postgresql"
+        ),
+        None,
+    )
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+    parity_ok = (
+        classic.status == agentic.status
+        and classic_root == agentic_root
+    )
+    passed = (
+        classic.status == "resolved"
+        and agentic.status == "resolved"
+        and bool(classic_root and classic_root.startswith(prefix))
+        and bool(agentic_root and agentic_root.startswith(prefix))
+        and parity_ok
+        and postgres is not None
+        and postgres.health == "critical"
+        and postgres.causal_role == "origin"
+        and bool(
+            postgres.hypothesis_id
+            and postgres.hypothesis_id.startswith(prefix)
+        )
+        and specialists.get("traces") == "completed"
+        and specialists.get("database") == "completed"
+        and integrity_ok
+        and (postgres_metrics.get("utilization") or 0)
+        >= settings.postgres_connection_utilization_critical
+    )
+    return {
+        "name": "stateful-postgresql",
+        "expected_root_prefix": prefix,
+        "postgres_exporter": {
+            "connections": postgres_metrics.get("connections"),
+            "max_connections": postgres_metrics.get("max_connections"),
+            "utilization": postgres_metrics.get("utilization"),
+            "critical_threshold": settings.postgres_connection_utilization_critical,
+        },
+        "classic_agentic_parity_ok": parity_ok,
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "stateful_dependencies": len(classic.stateful_dependencies),
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "postgresql": (
+            {
+                "health": postgres.health,
+                "causal_role": postgres.causal_role,
+                "hypothesis_id": postgres.hypothesis_id,
+                "signal_count": len(postgres.signals),
+            }
+            if postgres is not None else None
+        ),
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
+def recovery_dependencies_are_safe(items: list[Any]) -> bool:
+    return all(
+        getattr(item, "health", None) not in {"critical", "degraded"}
+        and getattr(item, "hypothesis_id", None) is None
+        for item in items
+    )
+
+
+async def investigate_recovery_scenario(
+    *,
+    repo: SQLRepository,
+    tools: ReadOnlyHTTPTools,
+    settings: Settings,
+    signal: dict[str, Any],
+    recovery_observability: dict[str, Any],
+    postgres_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    incident = IncidentInput(
+        title="Recovery validation: healthy checkout after PostgreSQL recovery",
+        tenant_id="validation",
+        cluster=LOGICAL_CLUSTER,
+        namespace=NAMESPACE,
+        service="frontend",
+        alert_name="RecoveryVerification",
+        severity="warning",
+        starts_at=signal["started_at"],
+        labels={"validation_scenario": "stateful-recovery"},
+    )
+    engine = InvestigationEngine(
+        tools=tools,
+        memory=repo,
+        settings=settings,
+    )
+    classic = await engine.investigate(incident)
+    plan = await build_investigation_plan(
+        repo,
+        incident=incident,
+        settings=settings,
+    )
+    execution = await execute_investigation_plan(
+        plan,
+        tools=tools,
+        settings=settings,
+    )
+    agentic = evaluate_shared_evidence(execution)
+
+    classic_root = (
+        classic.root_cause.hypothesis_id
+        if classic.root_cause is not None else None
+    )
+    agentic_root = (
+        agentic.root_cause.hypothesis_id
+        if agentic.root_cause is not None else None
+    )
+    forbidden_prefixes = ("postgres-", "kafka-", "redis-")
+
+    def root_is_safe(root: str | None) -> bool:
+        if root is None:
+            return True
+        if root == "trace-causal-propagation":
+            return False
+        return not any(root.startswith(prefix) for prefix in forbidden_prefixes)
+
+    trace_evidence = [
+        item
+        for item in classic.evidence
+        if item.source == "tempo"
+        and item.category == "trace-causal-chain"
+    ]
+    specialists = {
+        item.specialist: item.status
+        for item in execution.specialist_results
+    }
+    integrity_ok = all(
+        verify_evidence_hash(item)
+        for item in classic.evidence
+    ) and execution.shared_evidence.evidence_integrity_ok
+    parity_ok = (
+        classic.status == agentic.status
+        and classic_root == agentic_root
+    )
+    stateful_safe = recovery_dependencies_are_safe(
+        classic.stateful_dependencies
+    )
+    utilization = postgres_metrics.get("utilization")
+    passed = (
+        signal.get("requests") == 3
+        and recovery_observability.get("passed") is True
+        and utilization is not None
+        and utilization <= 0.30
+        and root_is_safe(classic_root)
+        and root_is_safe(agentic_root)
+        and stateful_safe
+        and specialists.get("metrics") == "completed"
+        and specialists.get("logs") == "completed"
+        and specialists.get("traces") == "completed"
+        and specialists.get("database") == "completed"
+        and parity_ok
+        and integrity_ok
+    )
+    return {
+        "name": "stateful-recovery",
+        "recovered_postgres": {
+            "connections": postgres_metrics.get("connections"),
+            "max_connections": postgres_metrics.get("max_connections"),
+            "utilization": utilization,
+        },
+        "fresh_telemetry": recovery_observability,
+        "classic_agentic_parity_ok": parity_ok,
+        "classic": {
+            "status": classic.status,
+            "root_cause": classic_root,
+            "trace_causal_evidence_count": len(trace_evidence),
+            "stateful_dependencies": [
+                {
+                    "kind": item.kind,
+                    "health": item.health,
+                    "causal_role": item.causal_role,
+                    "hypothesis_id": item.hypothesis_id,
+                }
+                for item in classic.stateful_dependencies
+            ],
+            "evidence_count": len(classic.evidence),
+        },
+        "agentic": {
+            "status": agentic.status,
+            "root_cause": agentic_root,
+            "execution_status": execution.status,
+            "specialists": specialists,
+            "evidence_count": len(execution.shared_evidence.evidence),
+        },
+        "forbidden_root": "trace-causal-propagation or stateful anomaly root",
+        "stateful_anomaly_suppressed": stateful_safe,
+        "evidence_integrity_ok": integrity_ok,
+        "passed": passed,
+    }
+
+
 async def validate_inventory(
     repo: SQLRepository,
     tools: ReadOnlyHTTPTools,
@@ -1001,6 +1462,50 @@ async def validate_backend(
             settings=settings,
             signal=observability_signal,
         )
+
+        stateful_settings = settings.model_copy(
+            update={
+                "stateful_dependency_analysis_enabled": True,
+                "postgres_connection_utilization_critical": 0.70,
+            }
+        )
+        saturated_postgres = await wait_for_postgres_utilization(
+            tools,
+            minimum=stateful_settings.postgres_connection_utilization_critical,
+        )
+        stateful_postgresql = await investigate_postgres_stateful_scenario(
+            repo=repo,
+            tools=tools,
+            settings=stateful_settings,
+            signal=observability_signal,
+            postgres_metrics=saturated_postgres,
+        )
+
+        release_postgres_connections(context)
+        recovered_postgres = await wait_for_postgres_utilization(
+            tools,
+            maximum=0.30,
+        )
+        recovery_signal = generate_observability_recovery(context)
+        recovery_observability = await validate_recovery_observability(
+            tools,
+            recovery_signal,
+        )
+        recovery_settings = stateful_settings.model_copy(
+            update={
+                "trace_window_minutes": 0,
+                "service_graph_window_minutes": 1,
+            }
+        )
+        recovery = await investigate_recovery_scenario(
+            repo=repo,
+            tools=tools,
+            settings=recovery_settings,
+            signal=recovery_signal,
+            recovery_observability=recovery_observability,
+            postgres_metrics=recovered_postgres,
+        )
+
         scenarios = []
         definitions = [
             (
@@ -1056,11 +1561,15 @@ async def validate_backend(
             "inventory": inventory,
             "observability": observability,
             "distributed_trace": distributed_trace,
+            "stateful_postgresql": stateful_postgresql,
+            "recovery": recovery,
             "scenarios": scenarios,
             "passed": (
                 inventory["passed"]
                 and observability["passed"]
                 and distributed_trace["passed"]
+                and stateful_postgresql["passed"]
+                and recovery["passed"]
                 and all(item["passed"] for item in scenarios)
             ),
         }
@@ -1146,6 +1655,43 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
             "",
         ]
     )
+    stateful = validation.get("stateful_postgresql") or {}
+    stateful_classic = stateful.get("classic") or {}
+    stateful_agentic = stateful.get("agentic") or {}
+    stateful_exporter = stateful.get("postgres_exporter") or {}
+    recovery = validation.get("recovery") or {}
+    recovery_classic = recovery.get("classic") or {}
+    recovery_agentic = recovery.get("agentic") or {}
+    recovery_postgres = recovery.get("recovered_postgres") or {}
+    recovery_fresh = recovery.get("fresh_telemetry") or {}
+    lines.extend(
+        [
+            "",
+            "## Stateful PostgreSQL RCA",
+            "",
+            f"- Exporter connections: {stateful_exporter.get('connections')}",
+            f"- Exporter max_connections: {stateful_exporter.get('max_connections')}",
+            f"- Exporter utilization: {stateful_exporter.get('utilization')}",
+            f"- Critical threshold: {stateful_exporter.get('critical_threshold')}",
+            f"- Classic root cause: {stateful_classic.get('root_cause')}",
+            f"- Agentic root cause: {stateful_agentic.get('root_cause')}",
+            f"- Evidence integrity: {'ok' if stateful.get('evidence_integrity_ok') else 'failed'}",
+            f"- Result: **{'PASS' if stateful.get('passed') else 'FAIL'}**",
+            "",
+            "## Recovery validation",
+            "",
+            f"- Recovered PostgreSQL utilization: {recovery_postgres.get('utilization')}",
+            f"- Healthy Prometheus requests: {recovery_fresh.get('prometheus_success_requests')}",
+            f"- Recovery Loki entries: {recovery_fresh.get('loki_recovery_entries')}",
+            f"- Recovery Tempo traces: {recovery_fresh.get('tempo_recovery_trace_count')}",
+            f"- Classic root after recovery: {recovery_classic.get('root_cause')}",
+            f"- Agentic root after recovery: {recovery_agentic.get('root_cause')}",
+            f"- Fresh trace causal evidence count: {recovery_classic.get('trace_causal_evidence_count')}",
+            f"- Evidence integrity: {'ok' if recovery.get('evidence_integrity_ok') else 'failed'}",
+            f"- Result: **{'PASS' if recovery.get('passed') else 'FAIL'}**",
+            "",
+        ]
+    )
     inventory = validation.get("inventory") or {}
     lines.extend(
         [
@@ -1179,8 +1725,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Provision a disposable Kind cluster with Prometheus, Loki and "
-            "Tempo, inject real failures, and validate deterministic plus "
-            "agentic RCA across Kubernetes and distributed telemetry."
+            "Tempo and real stateful exporters, inject failure/recovery cycles, "
+            "and validate deterministic plus agentic RCA across Kubernetes, "
+            "distributed telemetry and PostgreSQL."
         )
     )
     parser.add_argument(
