@@ -1,0 +1,41 @@
+# Baseline values for the shared test environment.
+# Sensitive or environment-specific overrides should be supplied by the
+# TEST_HELM_VALUES_B64 GitHub Environment secret used by deploy-test.yml.
+
+imagePullSecrets:
+  - name: ghcr-pull
+
+backend:
+  image:
+    repository: ghcr.io/marcocristofolini/ai-sre-rca-backend
+    tag: edge
+  replicas: 1
+  existingSecret: ""
+  env:
+    DEMO_MODE: "true"
+    AUTH_ENABLED: "false"
+    NOTIFICATIONS_ENABLED: "false"
+    LLM_ENABLED: "false"
+    AGENTIC_EXECUTION_ENABLED: "true"
+    AGENTIC_MODEL_PLANNER_ENABLED: "false"
+    CLUSTER_CONFIG_JSON: "{}"
+
+frontend:
+  image:
+    repository: ghcr.io/marcocristofolini/ai-sre-rca-frontend
+    tag: edge
+  replicas: 1
+  env:
+    DEFAULT_CLUSTER: "prod-india-exchange"
+
+remediator:
+  enabled: false
+
+inventoryCollector:
+  enabled: false
+
+awarenessRetention:
+  enabled: false
+
+networkPolicy:
+  enabled: false
