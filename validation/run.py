@@ -1199,6 +1199,14 @@ async def investigate_postgres_stateful_scenario(
     }
 
 
+def recovery_dependencies_are_safe(items: list[Any]) -> bool:
+    return all(
+        getattr(item, "health", None) not in {"critical", "degraded"}
+        and getattr(item, "hypothesis_id", None) is None
+        for item in items
+    )
+
+
 async def investigate_recovery_scenario(
     *,
     repo: SQLRepository,
@@ -1272,6 +1280,9 @@ async def investigate_recovery_scenario(
         classic.status == agentic.status
         and classic_root == agentic_root
     )
+    stateful_safe = recovery_dependencies_are_safe(
+        classic.stateful_dependencies
+    )
     utilization = postgres_metrics.get("utilization")
     passed = (
         signal.get("requests") == 3
@@ -1280,10 +1291,11 @@ async def investigate_recovery_scenario(
         and utilization <= 0.30
         and root_is_safe(classic_root)
         and root_is_safe(agentic_root)
-        and len(trace_evidence) == 0
+        and stateful_safe
         and specialists.get("metrics") == "completed"
         and specialists.get("logs") == "completed"
         and specialists.get("traces") == "completed"
+        and specialists.get("database") == "completed"
         and parity_ok
         and integrity_ok
     )
@@ -1319,6 +1331,7 @@ async def investigate_recovery_scenario(
             "evidence_count": len(execution.shared_evidence.evidence),
         },
         "forbidden_root": "trace-causal-propagation or stateful anomaly root",
+        "stateful_anomaly_suppressed": stateful_safe,
         "evidence_integrity_ok": integrity_ok,
         "passed": passed,
     }
