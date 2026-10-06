@@ -5,6 +5,18 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
+- GitHub-first publication of validated backend/frontend test images to private GHCR with both `edge` and immutable `sha-<commit>` tags.
+- Manual `Deploy test environment` workflow with kubeconfig validation, GHCR pull-secret creation, Helm deployment, rollout verification and backend/frontend smoke tests.
+- Safe `helm/ai-sre-rca/values-test.yaml` baseline plus optional secret test-environment overrides.
+- Helm-wide `imagePullSecrets` support for private registry images.
+- Bilingual test-environment runbook.
+
+### Changed
+- Development version metadata is aligned to `0.8.0-rc.3` across backend, remediator, frontend and Helm.
+- Default image repositories now point to the project GHCR namespace.
+- CI renders and validates the test-environment Helm configuration.
+
+### Added
 - v0.8.0-rc.3 development adds a real PostgreSQL 17 + postgres_exporter validation path inside the disposable Kind environment.
 - A bounded PostgreSQL connection loader creates live connection-capacity pressure that must promote the typed `postgres-connection-exhaustion` root in both classic and agentic RCA.
 - Recovery validation scales the loader to zero, requires exporter utilization to normalize, emits fresh healthy metrics/logs/traces, and rejects stale trace/stateful root promotion.
