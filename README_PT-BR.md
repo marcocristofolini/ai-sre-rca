@@ -84,6 +84,8 @@ A validação local continua útil para feedback rápido, mas não tem autoridad
 
 Contrato completo: [Fluxo GitHub-first](docs/github-first.pt-BR.md).
 
+Runbook do cluster: [Ambiente de testes](docs/test-environment.pt-BR.md).
+
 ## O que mudou na v0.7
 
 A v0.7 adiciona um **plano de remediação guardada** sem tirar o investigator do modo read-only:
