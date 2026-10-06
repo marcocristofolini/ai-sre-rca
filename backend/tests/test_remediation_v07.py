@@ -461,7 +461,7 @@ def test_remediator_is_a_separate_fastapi_application():
     paths = set(remediator_app.openapi()["paths"])
     assert "/api/v1/remediation/plans" in paths
     assert "/api/v1/incidents/investigate" not in paths
-    assert remediator_app.version == "0.8.0-rc.2"
+    assert remediator_app.version == "0.8.0-rc.3"
 
 
 
