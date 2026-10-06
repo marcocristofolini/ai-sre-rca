@@ -84,6 +84,8 @@ Local validation remains useful for fast feedback, but it is not merge or releas
 
 Full contract: [GitHub-first delivery](docs/github-first.md).
 
+Test cluster runbook: [Test environment](docs/test-environment.md).
+
 ## What changed in v0.7
 
 v0.7 adds a **guarded remediation plane** while keeping the RCA investigator read-only:
