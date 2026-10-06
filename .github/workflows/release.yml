@@ -76,7 +76,7 @@ jobs:
 
       - name: Require successful GitHub-first gate on this SHA
         id: gate
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const response = await github.rest.actions.listWorkflowRunsForRepo({
