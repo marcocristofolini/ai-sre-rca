@@ -15,6 +15,10 @@ spec:
       labels: { app: {{ .Release.Name }}-remediator }
     spec:
       serviceAccountName: {{ .Values.remediator.serviceAccount.name }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+{{ toYaml . | indent 12 }}
+          {{- end }}
       containers:
         - name: remediator
           image: "{{ .Values.remediator.image.repository }}:{{ .Values.remediator.image.tag }}"
