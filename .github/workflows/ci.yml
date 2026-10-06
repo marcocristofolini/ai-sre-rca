@@ -115,6 +115,16 @@ jobs:
       - name: Render default chart
         run: helm template ai-sre-rca helm/ai-sre-rca > /tmp/ai-sre-rca-default.yaml
 
+      - name: Validate test-environment chart
+        run: |
+          helm lint --strict helm/ai-sre-rca -f helm/ai-sre-rca/values-test.yaml
+          helm template ai-sre-rca-test helm/ai-sre-rca \
+            -f helm/ai-sre-rca/values-test.yaml \
+            > /tmp/ai-sre-rca-test.yaml
+          grep -q "ghcr.io/marcocristofolini/ai-sre-rca-backend:edge" /tmp/ai-sre-rca-test.yaml
+          grep -q "ghcr.io/marcocristofolini/ai-sre-rca-frontend:edge" /tmp/ai-sre-rca-test.yaml
+          grep -q "name: ghcr-pull" /tmp/ai-sre-rca-test.yaml
+
       - name: Render hardened chart
         run: |
           helm template ai-sre-rca helm/ai-sre-rca \
@@ -282,13 +292,13 @@ jobs:
 
           health = json.loads(get(f"{BACKEND}/healthz"))
           assert health["status"] == "ok"
-          assert health["version"] == "0.8.0-rc.2"
+          assert health["version"] == "0.8.0-rc.3"
           assert health["demo_mode"] is True
           assert health["stateful_dependency_rca"] is True
 
           remediator_health = json.loads(get(f"{REMEDIATOR}/healthz"))
           assert remediator_health["status"] == "ok"
-          assert remediator_health["version"] == "0.8.0-rc.2"
+          assert remediator_health["version"] == "0.8.0-rc.3"
           assert remediator_health["service"] == "remediator"
           assert remediator_health["separate_identity"] is True
           remediator_openapi = json.loads(get(f"{REMEDIATOR}/openapi.json"))
@@ -458,7 +468,7 @@ jobs:
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/awareness)" = "200"
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:13001/stateful/mysql)" = "404"
 
-          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.8.0-rc.2"'
+          curl -fsS http://127.0.0.1:18081/healthz | grep -q '"version":"0.8.0-rc.3"'
           curl -fsS http://127.0.0.1:18082/healthz | grep -q '"service":"remediator"'
           echo "Production container smoke test passed"
 

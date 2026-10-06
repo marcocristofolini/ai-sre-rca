@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-sre-rca"
-version = "0.8.0rc2"
+version = "0.8.0rc3"
 description = "Evidence-verified SRE investigation platform with persistent operational awareness"
 requires-python = ">=3.12"
 dependencies = [

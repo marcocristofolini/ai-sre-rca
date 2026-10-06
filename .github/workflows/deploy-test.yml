@@ -1,0 +1,192 @@
+name: Deploy test environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Image tag published by Publish test images
+        required: true
+        default: edge
+        type: string
+      namespace:
+        description: Kubernetes namespace
+        required: true
+        default: ai-sre-rca-test
+        type: string
+      release_name:
+        description: Helm release name
+        required: true
+        default: ai-sre-rca-test
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-environment-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: test
+    env:
+      TEST_KUBECONFIG_B64: ${{ secrets.TEST_KUBECONFIG_B64 }}
+      GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+      TEST_HELM_VALUES_B64: ${{ secrets.TEST_HELM_VALUES_B64 }}
+      TEST_NAMESPACE: ${{ inputs.namespace }}
+      TEST_RELEASE: ${{ inputs.release_name }}
+      TEST_IMAGE_TAG: ${{ inputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate test environment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TEST_KUBECONFIG_B64" || {
+            echo "GitHub Environment secret TEST_KUBECONFIG_B64 is required" >&2
+            exit 1
+          }
+          test -n "$GHCR_READ_TOKEN" || {
+            echo "GitHub Environment secret GHCR_READ_TOKEN is required for private GHCR images" >&2
+            exit 1
+          }
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$TEST_KUBECONFIG_B64" | base64 --decode > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Install kubectl 1.37.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl -o /tmp/kubectl
+          curl -fsSL https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl.sha256 -o /tmp/kubectl.sha256
+          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum -c -
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Install Helm 4.3.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLO https://get.helm.sh/helm-v4.3.0-linux-amd64.tar.gz
+          echo "86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb  helm-v4.3.0-linux-amd64.tar.gz" | sha256sum -c -
+          tar -xzf helm-v4.3.0-linux-amd64.tar.gz
+          sudo install -m 0755 linux-amd64/helm /usr/local/bin/helm
+          helm version
+
+      - name: Verify cluster access
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Prepare namespace and GHCR pull secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl create namespace "$TEST_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n "$TEST_NAMESPACE" create secret docker-registry ghcr-pull             --docker-server=ghcr.io             --docker-username="${GITHUB_REPOSITORY_OWNER}"             --docker-password="$GHCR_READ_TOKEN"             --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Decode optional environment overrides
+        id: overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$TEST_HELM_VALUES_B64" ]; then
+            printf '%s' "$TEST_HELM_VALUES_B64" | base64 --decode > /tmp/test-overrides.yaml
+            chmod 600 /tmp/test-overrides.yaml
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy with Helm
+        shell: bash
+        run: |
+          set -euo pipefail
+          values=(
+            -f helm/ai-sre-rca/values-test.yaml
+          )
+          if [ "${{ steps.overrides.outputs.present }}" = "true" ]; then
+            values+=(-f /tmp/test-overrides.yaml)
+          fi
+
+          helm upgrade --install "$TEST_RELEASE" helm/ai-sre-rca             --namespace "$TEST_NAMESPACE"             --wait             --timeout 8m             "${values[@]}"             --set-string backend.image.tag="$TEST_IMAGE_TAG"             --set-string frontend.image.tag="$TEST_IMAGE_TAG"             --set-string remediator.image.tag="$TEST_IMAGE_TAG"
+
+      - name: Verify rollouts
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl -n "$TEST_NAMESPACE" rollout status             deployment/"$TEST_RELEASE"-backend --timeout=180s
+          kubectl -n "$TEST_NAMESPACE" rollout status             deployment/"$TEST_RELEASE"-frontend --timeout=180s
+
+      - name: Smoke test deployed services
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl -n "$TEST_NAMESPACE" port-forward             service/"$TEST_RELEASE"-backend 18080:8080 >/tmp/backend-port-forward.log 2>&1 &
+          BACKEND_PF=$!
+          kubectl -n "$TEST_NAMESPACE" port-forward             service/"$TEST_RELEASE"-frontend 13000:3000 >/tmp/frontend-port-forward.log 2>&1 &
+          FRONTEND_PF=$!
+
+          cleanup() {
+            kill "$BACKEND_PF" "$FRONTEND_PF" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          def get(url, attempts=40):
+              last = None
+              for _ in range(attempts):
+                  try:
+                      with urllib.request.urlopen(url, timeout=3) as response:
+                          if response.status != 200:
+                              raise RuntimeError(f"{url}: status={response.status}")
+                          return response.read()
+                  except Exception as exc:
+                      last = exc
+                      time.sleep(0.5)
+              raise RuntimeError(f"{url} did not become ready: {last}")
+
+          health = json.loads(get("http://127.0.0.1:18080/healthz"))
+          assert health["status"] == "ok"
+          assert health["version"] == "0.8.0-rc.3"
+          html = get("http://127.0.0.1:13000/")
+          assert b"AI SRE RCA" in html or b"SRE" in html
+          print("test environment smoke passed")
+          PY
+
+      - name: Print deployment diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          kubectl -n "$TEST_NAMESPACE" get pods -o wide || true
+          kubectl -n "$TEST_NAMESPACE" get events --sort-by=.lastTimestamp | tail -100 || true
+          kubectl -n "$TEST_NAMESPACE" describe deployment "$TEST_RELEASE"-backend || true
+          kubectl -n "$TEST_NAMESPACE" describe deployment "$TEST_RELEASE"-frontend || true
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Test environment deployed
+
+          Namespace: `$TEST_NAMESPACE`
+          Release: `$TEST_RELEASE`
+          Image tag: `$TEST_IMAGE_TAG`
+          Backend version: `0.8.0-rc.3`
+          EOF

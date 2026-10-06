@@ -13,10 +13,13 @@
 - [x] post-recovery workload emits fresh HTTP 200 metrics, Loki logs and healthy OTLP traces
 - [x] recovery RCA blocks stale trace/stateful root promotion
 - [x] validation report schema v3 includes stateful and recovery evidence
-- [ ] GitHub-first real-environment gate passes the PostgreSQL stateful/recovery path end-to-end
+- [x] GitHub-first real-environment gate passes the PostgreSQL stateful/recovery path end-to-end
 - [ ] real Redis + redis_exporter failure/recovery validation
 - [ ] real Kafka + kafka_exporter failure/recovery validation
-- [ ] v0.8.0-rc.3 version/release metadata and final prerelease promotion
+- [x] v0.8.0-rc.3 runtime, frontend and Helm version metadata aligned
+- [x] validated main builds can publish immutable GHCR test images
+- [x] test-environment Helm values and GitHub deployment/smoke workflow
+- [ ] final v0.8.0-rc.3 prerelease promotion after Redis/Kafka validation
 
 ## v0.8.0-rc.1 — real environment validation gate
 

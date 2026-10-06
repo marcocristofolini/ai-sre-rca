@@ -2,7 +2,7 @@ from app.main import app
 
 
 def test_application_imports_with_runtime_dependencies():
-    assert app.version == "0.8.0-rc.2"
+    assert app.version == "0.8.0-rc.3"
     assert app.title == "AI SRE RCA"
     paths = app.openapi()["paths"]
     assert "/api/v1/awareness/graph" in paths

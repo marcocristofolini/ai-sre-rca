@@ -1,4 +1,4 @@
-# AI SRE RCA — v0.8.0-rc.2
+# AI SRE RCA — v0.8.0-rc.3 (desenvolvimento)
 
 [![GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml) [![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -83,6 +83,8 @@ Releases são promovidas em **Actions → Promote release**. O workflow exige `m
 A validação local continua útil para feedback rápido, mas não tem autoridade de merge ou release.
 
 Contrato completo: [Fluxo GitHub-first](docs/github-first.pt-BR.md).
+
+Runbook do cluster: [Ambiente de testes](docs/test-environment.pt-BR.md).
 
 ## O que mudou na v0.7
 
