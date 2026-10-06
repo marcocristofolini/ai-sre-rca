@@ -45,6 +45,35 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "short=${sha:0:12}" >> "$GITHUB_OUTPUT"
 
+      - name: Require successful GitHub-first gate for target SHA
+        uses: actions/github-script@v9
+        env:
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        with:
+          script: |
+            const response = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main',
+              head_sha: process.env.TARGET_SHA,
+              event: 'push',
+              per_page: 100,
+            });
+
+            const gate = response.data.workflow_runs.find(run =>
+              run.name === 'GitHub-first gate' &&
+              run.status === 'completed' &&
+              run.conclusion === 'success'
+            );
+
+            if (!gate) {
+              core.setFailed(
+                `No successful GitHub-first gate exists for ${process.env.TARGET_SHA}`
+              );
+              return;
+            }
+            core.info(`Validated by gate run ${gate.id}: ${gate.html_url}`);
+
       - uses: actions/checkout@v7
         with:
           ref: ${{ steps.target.outputs.sha }}
