@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import base64
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -380,10 +381,13 @@ def deploy_observability(context: str, cluster_name: str) -> None:
         "-f",
         str(ROOT / "validation" / "manifests" / "observability.yaml"),
     )
+    kubectl(context, "apply", "-f", str(ROOT / "validation" / "manifests" / "redis.yaml"))
     for deployment in (
         "orders-db",
         "postgres-exporter",
         "postgres-connection-loader",
+        "cache",
+        "redis-exporter",
         "prometheus",
         "loki",
         "tempo",
@@ -410,7 +414,7 @@ def deploy_observability(context: str, cluster_name: str) -> None:
     time.sleep(3)
 
 
-def generate_observability_failure(context: str) -> dict[str, Any]:
+def generate_observability_failure(context: str, *, redis: bool = False) -> dict[str, Any]:
     pods = pods_for_label(context, "app=rc3-workload")
     if len(pods) != 1:
         raise RuntimeError(
@@ -422,7 +426,7 @@ def generate_observability_failure(context: str) -> dict[str, Any]:
     for _ in range(3):
         try:
             urllib.request.urlopen(
-                f"http://127.0.0.1:{WORKLOAD_PORT}/fail",
+                f"http://127.0.0.1:{WORKLOAD_PORT}" + ("/redis/fail" if redis else "/fail"),
                 timeout=10,
             )
             raise RuntimeError("validation workload unexpectedly returned success")
@@ -437,6 +441,7 @@ def generate_observability_failure(context: str) -> dict[str, Any]:
     time.sleep(5)
     return {
         "started_at": started_at,
+        "service": "cache-frontend" if redis else "frontend",
         "requests": len(responses),
         "responses": responses,
         "pod": pod_name,
@@ -444,7 +449,7 @@ def generate_observability_failure(context: str) -> dict[str, Any]:
     }
 
 
-def generate_observability_recovery(context: str) -> dict[str, Any]:
+def generate_observability_recovery(context: str, *, redis: bool = False) -> dict[str, Any]:
     pods = pods_for_label(context, "app=rc3-workload")
     if len(pods) != 1:
         raise RuntimeError(
@@ -454,7 +459,7 @@ def generate_observability_recovery(context: str) -> dict[str, Any]:
     started_at = utcnow()
 
     with urllib.request.urlopen(
-        f"http://127.0.0.1:{WORKLOAD_PORT}/recover",
+        f"http://127.0.0.1:{WORKLOAD_PORT}" + ("/redis/recover" if redis else "/recover"),
         timeout=10,
     ) as response:
         if response.status != 200:
@@ -465,7 +470,7 @@ def generate_observability_recovery(context: str) -> dict[str, Any]:
     responses: list[str] = []
     for _ in range(3):
         with urllib.request.urlopen(
-            f"http://127.0.0.1:{WORKLOAD_PORT}/ok",
+            f"http://127.0.0.1:{WORKLOAD_PORT}" + ("/redis/ok" if redis else "/ok"),
             timeout=10,
         ) as response:
             body = response.read().decode(errors="replace")
@@ -479,6 +484,7 @@ def generate_observability_recovery(context: str) -> dict[str, Any]:
     time.sleep(5)
     return {
         "started_at": started_at,
+        "service": "cache-frontend" if redis else "frontend",
         "requests": len(responses),
         "responses": responses,
         "pod": pod_name,
@@ -789,7 +795,8 @@ def _loki_entry_count(payload: dict[str, Any]) -> int:
 def _stateful_signal_value(payload: dict[str, Any], name: str) -> float | None:
     try:
         value = payload["signals"][name]["value"]
-        return float(value) if value is not None else None
+        scalar = float(value) if value is not None else None
+        return scalar if scalar is not None and math.isfinite(scalar) else None
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -844,11 +851,48 @@ async def wait_for_postgres_utilization(
     )
 
 
+def redis_memory_control(*, recover: bool) -> dict[str, Any]:
+    path = "/redis/recover" if recover else "/redis/load"
+    with urllib.request.urlopen(f"http://127.0.0.1:{WORKLOAD_PORT}{path}", timeout=45) as response:
+        if response.status != 200:
+            raise RuntimeError("Redis validation control failed")
+        return json.load(response)
+
+
+async def wait_for_redis_utilization(
+    tools: ReadOnlyHTTPTools,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    timeout_seconds: int = 60,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    last: dict[str, Any] = {}
+    token = tools.set_cluster(LOGICAL_CLUSTER)
+    try:
+        while time.monotonic() < deadline:
+            metrics = await tools.redis_dependency_metrics("cache:6379", utcnow(), 1)
+            used = _stateful_signal_value(metrics, "memory_used_bytes")
+            cap = _stateful_signal_value(metrics, "memory_max_bytes")
+            if cap in {None, 0}:
+                cap = _stateful_signal_value(metrics, "config_maxmemory_bytes")
+            utilization = used / cap if used is not None and used >= 0 and cap is not None and cap > 0 else None
+            last = {"instance": "cache:6379", "memory_used_bytes": used, "memory_max_bytes": cap,
+                    "utilization": utilization, "metrics": metrics}
+            if utilization is not None and (minimum is None or utilization >= minimum) and (maximum is None or utilization <= maximum):
+                return last
+            await asyncio.sleep(2)
+    finally:
+        tools.reset_cluster(token)
+    raise RuntimeError(f"Redis exporter utilization did not reach the required state: minimum={minimum}, maximum={maximum}, last={last}")
+
+
 async def validate_recovery_observability(
     tools: ReadOnlyHTTPTools,
     signal: dict[str, Any],
 ) -> dict[str, Any]:
     started_at = signal["started_at"]
+    service = signal.get("service", "frontend")
     deadline = time.monotonic() + 45
     last: dict[str, Any] = {}
     token = tools.set_cluster(LOGICAL_CLUSTER)
@@ -857,17 +901,17 @@ async def validate_recovery_observability(
             now = utcnow()
             metric_payload, log_payload, traces = await asyncio.gather(
                 tools.prometheus_query(
-                    'sum(ai_sre_validation_requests_total{service="frontend",status="200"})',
+                    f'sum(ai_sre_validation_requests_total{{service="{service}",status="200"}})',
                     now,
                 ),
                 tools.loki_query_range(
-                    '{namespace="rca-validation",app="frontend",level="info"}',
+                    f'{{namespace="rca-validation",app="{service}",level="info"}}',
                     started_at,
                     now + timedelta(minutes=1),
                     100,
                 ),
                 tools.tempo_search_traces(
-                    "frontend",
+                    service,
                     started_at,
                     now + timedelta(minutes=1),
                     8,
@@ -906,6 +950,7 @@ async def validate_observability(
     signal: dict[str, Any],
 ) -> dict[str, Any]:
     started_at = signal["started_at"]
+    service = signal.get("service", "frontend")
     deadline = time.monotonic() + 45
     last: dict[str, Any] = {}
     token = tools.set_cluster(LOGICAL_CLUSTER)
@@ -914,24 +959,24 @@ async def validate_observability(
             now = utcnow()
             metric_payload, log_payload, traces = await asyncio.gather(
                 tools.prometheus_query(
-                    'sum(ai_sre_validation_requests_total{service="frontend",status="500"})',
+                    f'sum(ai_sre_validation_requests_total{{service="{service}",status="500"}})',
                     now,
                 ),
                 tools.loki_query_range(
-                    '{namespace="rca-validation",app="frontend"}',
+                    f'{{namespace="rca-validation",app="{service}"}}',
                     started_at - timedelta(minutes=1),
                     now + timedelta(minutes=1),
                     100,
                 ),
                 tools.tempo_search_traces(
-                    "frontend",
+                    service,
                     started_at - timedelta(minutes=1),
                     now + timedelta(minutes=1),
                     8,
                 ),
             )
             try:
-                graph = await tools.service_graph("frontend", now)
+                graph = await tools.service_graph(service, now)
             except Exception:
                 graph = []
             last = {
@@ -1077,24 +1122,32 @@ async def investigate_trace_scenario(
     }
 
 
-async def investigate_postgres_stateful_scenario(
+async def investigate_stateful_scenario(
     *,
     repo: SQLRepository,
     tools: ReadOnlyHTTPTools,
     settings: Settings,
     signal: dict[str, Any],
-    postgres_metrics: dict[str, Any],
+    dependency_metrics: dict[str, Any],
+    kind: str = "postgresql",
 ) -> dict[str, Any]:
+    specs = {
+        "postgresql": ("PostgreSQL connection exhaustion", "PostgreSQLHighConnections", "postgres-connection-exhaustion:", settings.postgres_connection_utilization_critical, "postgres_exporter", ("connections", "max_connections")),
+        "redis": ("Redis memory pressure", "RedisHighMemory", "redis-memory-pressure:", settings.redis_memory_utilization_critical, "redis_exporter", ("memory_used_bytes", "memory_max_bytes")),
+    }
+    title, alert, prefix, threshold, exporter, metric_names = specs[kind]
+    expected_dependency = "dependency:redis/0@cache:6379" if kind == "redis" else "dependency:postgresql/orders@orders-db:5432"
+    expected_root = prefix + expected_dependency
     incident = IncidentInput(
-        title="Stateful validation: PostgreSQL connection exhaustion",
+        title=f"Stateful validation: {title}",
         tenant_id="validation",
         cluster=LOGICAL_CLUSTER,
         namespace=NAMESPACE,
-        service="frontend",
-        alert_name="PostgreSQLHighConnections",
+        service=signal.get("service", "frontend"),
+        alert_name=alert,
         severity="critical",
-        starts_at=signal["started_at"] + timedelta(seconds=1),
-        labels={"validation_scenario": "stateful-postgresql"},
+        starts_at=signal["started_at"],
+        labels={"validation_scenario": f"stateful-{kind}"},
     )
     engine = InvestigationEngine(
         tools=tools,
@@ -1122,12 +1175,11 @@ async def investigate_postgres_stateful_scenario(
         agentic.root_cause.hypothesis_id
         if agentic.root_cause is not None else None
     )
-    prefix = "postgres-connection-exhaustion:"
-    postgres = next(
+    dependency = next(
         (
             item
             for item in classic.stateful_dependencies
-            if item.kind == "postgresql"
+            if item.kind == kind
         ),
         None,
     )
@@ -1146,30 +1198,32 @@ async def investigate_postgres_stateful_scenario(
     passed = (
         classic.status == "resolved"
         and agentic.status == "resolved"
-        and bool(classic_root and classic_root.startswith(prefix))
-        and bool(agentic_root and agentic_root.startswith(prefix))
+        and classic_root == expected_root
+        and agentic_root == expected_root
         and parity_ok
-        and postgres is not None
-        and postgres.health == "critical"
-        and postgres.causal_role == "origin"
+        and dependency is not None
+        and dependency.dependency_id == expected_dependency
+        and dependency.health == "critical"
+        and dependency.causal_role == "origin"
         and bool(
-            postgres.hypothesis_id
-            and postgres.hypothesis_id.startswith(prefix)
+            dependency.hypothesis_id
+            and dependency.hypothesis_id.startswith(prefix)
         )
         and specialists.get("traces") == "completed"
         and specialists.get("database") == "completed"
         and integrity_ok
-        and (postgres_metrics.get("utilization") or 0)
-        >= settings.postgres_connection_utilization_critical
+        and (dependency_metrics.get("utilization") or 0)
+        >= threshold
     )
     return {
-        "name": "stateful-postgresql",
+        "name": f"stateful-{kind}",
         "expected_root_prefix": prefix,
-        "postgres_exporter": {
-            "connections": postgres_metrics.get("connections"),
-            "max_connections": postgres_metrics.get("max_connections"),
-            "utilization": postgres_metrics.get("utilization"),
-            "critical_threshold": settings.postgres_connection_utilization_critical,
+        "expected_root_cause": expected_root,
+        exporter: {
+            **{name: dependency_metrics.get(name) for name in metric_names},
+            "instance": dependency_metrics.get("instance", "orders-db:5432"),
+            "utilization": dependency_metrics.get("utilization"),
+            "critical_threshold": threshold,
         },
         "classic_agentic_parity_ok": parity_ok,
         "classic": {
@@ -1185,14 +1239,15 @@ async def investigate_postgres_stateful_scenario(
             "specialists": specialists,
             "evidence_count": len(execution.shared_evidence.evidence),
         },
-        "postgresql": (
+        kind: (
             {
-                "health": postgres.health,
-                "causal_role": postgres.causal_role,
-                "hypothesis_id": postgres.hypothesis_id,
-                "signal_count": len(postgres.signals),
+                "dependency_id": dependency.dependency_id,
+                "health": dependency.health,
+                "causal_role": dependency.causal_role,
+                "hypothesis_id": dependency.hypothesis_id,
+                "signal_count": len(dependency.signals),
             }
-            if postgres is not None else None
+            if dependency is not None else None
         ),
         "evidence_integrity_ok": integrity_ok,
         "passed": passed,
@@ -1214,14 +1269,15 @@ async def investigate_recovery_scenario(
     settings: Settings,
     signal: dict[str, Any],
     recovery_observability: dict[str, Any],
-    postgres_metrics: dict[str, Any],
+    dependency_metrics: dict[str, Any],
+    redis: bool = False,
 ) -> dict[str, Any]:
     incident = IncidentInput(
-        title="Recovery validation: healthy checkout after PostgreSQL recovery",
+        title="Recovery validation: healthy checkout after " + ("Redis recovery" if redis else "PostgreSQL recovery"),
         tenant_id="validation",
         cluster=LOGICAL_CLUSTER,
         namespace=NAMESPACE,
-        service="frontend",
+        service=signal.get("service", "frontend"),
         alert_name="RecoveryVerification",
         severity="warning",
         starts_at=signal["started_at"],
@@ -1283,7 +1339,7 @@ async def investigate_recovery_scenario(
     stateful_safe = recovery_dependencies_are_safe(
         classic.stateful_dependencies
     )
-    utilization = postgres_metrics.get("utilization")
+    utilization = dependency_metrics.get("utilization")
     passed = (
         signal.get("requests") == 3
         and recovery_observability.get("passed") is True
@@ -1300,10 +1356,11 @@ async def investigate_recovery_scenario(
         and integrity_ok
     )
     return {
-        "name": "stateful-recovery",
-        "recovered_postgres": {
-            "connections": postgres_metrics.get("connections"),
-            "max_connections": postgres_metrics.get("max_connections"),
+        "name": "redis-recovery" if redis else "stateful-recovery",
+        ("recovered_redis" if redis else "recovered_postgres"): {
+            **{name: dependency_metrics.get(name) for name in (
+                ("memory_used_bytes", "memory_max_bytes") if redis else ("connections", "max_connections")
+            )},
             "utilization": utilization,
         },
         "fresh_telemetry": recovery_observability,
@@ -1473,12 +1530,12 @@ async def validate_backend(
             tools,
             minimum=stateful_settings.postgres_connection_utilization_critical,
         )
-        stateful_postgresql = await investigate_postgres_stateful_scenario(
+        stateful_postgresql = await investigate_stateful_scenario(
             repo=repo,
             tools=tools,
             settings=stateful_settings,
             signal=observability_signal,
-            postgres_metrics=saturated_postgres,
+            dependency_metrics=saturated_postgres,
         )
 
         release_postgres_connections(context)
@@ -1503,7 +1560,32 @@ async def validate_backend(
             settings=recovery_settings,
             signal=recovery_signal,
             recovery_observability=recovery_observability,
-            postgres_metrics=recovered_postgres,
+            dependency_metrics=recovered_postgres,
+        )
+
+        redis_load = redis_memory_control(recover=False)
+        saturated_redis = await wait_for_redis_utilization(
+            tools, minimum=stateful_settings.redis_memory_utilization_critical,
+        )
+        redis_signal = generate_observability_failure(context, redis=True)
+        redis_observability = await validate_observability(tools, redis_signal)
+        stateful_redis = await investigate_stateful_scenario(
+            repo=repo, tools=tools, settings=stateful_settings,
+            signal=redis_signal, dependency_metrics=saturated_redis, kind="redis",
+        )
+        stateful_redis["load"] = redis_load
+        stateful_redis["telemetry"] = redis_observability
+        stateful_redis["passed"] = stateful_redis["passed"] and redis_observability["passed"]
+
+        redis_memory_control(recover=True)
+        recovered_redis = await wait_for_redis_utilization(tools, maximum=0.30)
+        redis_recovery_signal = generate_observability_recovery(context, redis=True)
+        redis_recovery_telemetry = await validate_recovery_observability(tools, redis_recovery_signal)
+        redis_recovery = await investigate_recovery_scenario(
+            repo=repo, tools=tools, settings=recovery_settings,
+            signal=redis_recovery_signal,
+            recovery_observability=redis_recovery_telemetry,
+            dependency_metrics=recovered_redis, redis=True,
         )
 
         scenarios = []
@@ -1563,6 +1645,8 @@ async def validate_backend(
             "distributed_trace": distributed_trace,
             "stateful_postgresql": stateful_postgresql,
             "recovery": recovery,
+            "stateful_redis": stateful_redis,
+            "redis_recovery": redis_recovery,
             "scenarios": scenarios,
             "passed": (
                 inventory["passed"]
@@ -1570,6 +1654,8 @@ async def validate_backend(
                 and distributed_trace["passed"]
                 and stateful_postgresql["passed"]
                 and recovery["passed"]
+                and stateful_redis["passed"]
+                and redis_recovery["passed"]
                 and all(item["passed"] for item in scenarios)
             ),
         }
@@ -1692,6 +1778,33 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
             "",
         ]
     )
+    redis = validation.get("stateful_redis") or {}
+    redis_exporter = redis.get("redis_exporter") or {}
+    redis_recovery = validation.get("redis_recovery") or {}
+    recovered_redis = redis_recovery.get("recovered_redis") or {}
+    redis_fresh = redis_recovery.get("fresh_telemetry") or {}
+    lines.extend([
+        "", "## Stateful Redis RCA", "",
+        f"- Exporter instance: {redis_exporter.get('instance')}",
+        f"- Exporter used memory bytes: {redis_exporter.get('memory_used_bytes')}",
+        f"- Exporter maxmemory bytes: {redis_exporter.get('memory_max_bytes')}",
+        f"- Exporter memory utilization: {redis_exporter.get('utilization')}",
+        f"- Classic root cause: {(redis.get('classic') or {}).get('root_cause')}",
+        f"- Agentic root cause: {(redis.get('agentic') or {}).get('root_cause')}",
+        f"- Classic/agentic parity: {redis.get('classic_agentic_parity_ok')}",
+        f"- Evidence integrity: {'ok' if redis.get('evidence_integrity_ok') else 'failed'}",
+        f"- Result: **{'PASS' if redis.get('passed') else 'FAIL'}**",
+        "", "## Redis recovery validation", "",
+        f"- Recovered Redis memory utilization: {recovered_redis.get('utilization')}",
+        f"- Fresh Loki entries: {redis_fresh.get('loki_recovery_entries')}",
+        f"- Fresh Tempo traces: {redis_fresh.get('tempo_recovery_trace_count')}",
+        f"- Classic root after recovery: {(redis_recovery.get('classic') or {}).get('root_cause')}",
+        f"- Agentic root after recovery: {(redis_recovery.get('agentic') or {}).get('root_cause')}",
+        f"- Stateful anomaly suppressed: {redis_recovery.get('stateful_anomaly_suppressed')}",
+        f"- Evidence integrity: {'ok' if redis_recovery.get('evidence_integrity_ok') else 'failed'}",
+        f"- Result: **{'PASS' if redis_recovery.get('passed') else 'FAIL'}**",
+        "",
+    ])
     inventory = validation.get("inventory") or {}
     lines.extend(
         [

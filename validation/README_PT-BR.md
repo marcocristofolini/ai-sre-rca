@@ -47,48 +47,31 @@ O caminho PostgreSQL da rc3 primeiro exige que a utilização observada pelo exp
 
 Uma falha de fonte opcional nunca pode fabricar evidência. O invariant original da rc1 para crash loop continua valendo: sem a evidência exigida para diagnosticar uma saída específica da aplicação, o engine pode ficar inconclusivo ou selecionar o mecanismo genérico de crash loop, mas não pode afirmar uma especificidade sem suporte.
 
+## Cenário Redis da rc.3
+
+O harness implanta Redis 7.4 e redis_exporter com imagens fixadas por digest. O Redis usa `maxmemory=16mb`, política `noeviction` e persistência desabilitada. O workload de teste grava no máximo 256 chaves de 64 KiB, com prefixo fixo, até alcançar pressão de memória. Uma escrita de 2 MiB precisa ser rejeitada pelo Redis com OOM; os traces de falha registram essa rejeição real.
+
+Esse caminho usa o serviço OTel `cache-frontend`, separado do cenário PostgreSQL. O label instance do exporter é `cache:6379`, igual à identidade do trace `redis/0@cache:6379`. Prometheus, Loki e Tempo precisam observar os três requests com falha. O resultado clássico e o agentic precisam confirmar exatamente `redis-memory-pressure:dependency:redis/0@cache:6379`, concluir o especialista database e preservar a integridade das evidências.
+
+A recuperação remove apenas o conjunto limitado de chaves do teste, exige memória usada abaixo de 30% do maxmemory pelo exporter, e executa três novas operações SET/GET bem-sucedidas. A investigação é restrita aos traces pós-recuperação e não pode promover a causa antiga. Métricas ausentes, capacidade zero ou valores não finitos fazem o check falhar.
+
+As mutações de Redis existem somente no workload descartável de validação. Os adapters do investigador continuam somente leitura. Kafka/kafka_exporter permanece pendente antes da promoção da rc.3.
+
 ## Fluxo
 
 ```mermaid
-flowchart LR
-    CI[GitHub Actions ou execução local] --> H[Validation Harness]
-    H --> K[Cluster Kind descartável com 2 nós]
-    H --> PG[(PostgreSQL + pgvector)]
-
-    K --> KF[Workloads de falha Kubernetes]
-    K --> OBS[Observabilidade full-stack]
-    OBS --> PROM[Prometheus]
-    OBS --> LOKI[Loki]
-    OBS --> TEMPO[Tempo]
-    OBS --> APP[Frontend instrumentado]
-    OBS --> PDB[(PostgreSQL orders-db)]
-    OBS --> PEXP[postgres_exporter]
-    LOAD[Connection loader] --> PDB
-    PDB --> PEXP
-    PEXP -->|scrape| PROM
-
-    APP -->|scrape| PROM
-    APP -->|logs estruturados| LOKI
-    APP -->|OTLP/HTTP| TEMPO
-
-    K --> SA[ServiceAccount read-only]
-    SA --> T[ReadOnlyHTTPTools]
-    PROM --> T
-    LOKI --> T
-    TEMPO --> T
-
-    T --> CLASSIC[Investigation Engine clássico]
-    T --> AGENT[Specialists agentic]
-    T --> INV[Coletor autoritativo de inventário]
-
-    INV --> G[(Persistent Awareness Graph)]
-    CLASSIC --> V[Verdict determinístico]
-    AGENT --> E[Avaliador do shared envelope]
-    G --> R[Topologia + tombstones]
-
-    V --> REP[Evidência JSON + Markdown]
-    E --> REP
-    R --> REP
+flowchart TD
+    GH["GitHub-first gate"] --> KIND["Kind descartável e persistência pgvector"]
+    KIND --> K8S["Falhas Kubernetes e inventário autoritativo"]
+    KIND --> DB["Pressão PostgreSQL e Redis"]
+    DB --> EXP["Exporters e Prometheus"]
+    EXP --> RCA["RCA clássico e agentic"]
+    APP["Workload instrumentado: Loki e Tempo"] --> RCA
+    DB --> APP
+    RCA --> REC["Recuperação e novos traces"]
+    REC --> SAFE["Bloquear causas antigas"]
+    K8S --> REPORT["Relatório JSON e Markdown"]
+    SAFE --> REPORT
 ```
 
 ## Executar localmente
@@ -123,3 +106,4 @@ O processo termina com código diferente de zero se qualquer sinal de runtime, f
 ## Limpeza
 
 Por padrão o harness encerra os port-forwards, remove o cluster Kind descartável e remove o container PostgreSQL pelo caminho de `finally`. Use `--keep` apenas para depuração local.
+

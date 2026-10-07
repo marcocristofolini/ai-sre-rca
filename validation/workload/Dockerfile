@@ -4,6 +4,7 @@ RUN pip install --no-cache-dir \
     opentelemetry-exporter-otlp-proto-http==1.37.0
 WORKDIR /app
 COPY app.py /app/app.py
+COPY redis_scenario.py /app/redis_scenario.py
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["python", "/app/app.py"]

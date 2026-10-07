@@ -389,7 +389,7 @@ It currently validates:
 - Tempo/OpenTelemetry;
 - service graph;
 - trace causality;
-- stateful PostgreSQL;
+- stateful PostgreSQL and Redis failure/recovery;
 - classic/agentic parity;
 - SHA-256 evidence integrity.
 
@@ -433,13 +433,14 @@ Current work includes:
 - deterministic PostgreSQL root-cause promotion;
 - dependency recovery;
 - fresh post-recovery traces;
-- proof that stale causes stop being promoted.
+- proof that stale causes stop being promoted;
+- Redis with 16 MiB maxmemory and redis_exporter scoped to `cache:6379`;
+- actual OOM write rejection, `redis-memory-pressure` RCA and recovery with successful fresh operations.
 
 Next rc.3 targets:
 
-- Redis + redis_exporter;
 - Kafka + kafka_exporter;
-- recovery semantics for all three stateful dependencies;
+- Kafka failure/recovery semantics;
 - release-candidate closure.
 
 Full roadmap: [docs/roadmap.md](docs/roadmap.md).

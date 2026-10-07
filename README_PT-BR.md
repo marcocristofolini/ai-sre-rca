@@ -389,7 +389,7 @@ Atualmente valida:
 - Tempo/OpenTelemetry;
 - service graph;
 - causalidade por traces;
-- PostgreSQL stateful;
+- PostgreSQL e Redis stateful com falha e recuperação;
 - paridade classic/agentic;
 - integridade SHA-256.
 
@@ -433,13 +433,14 @@ O trabalho atual inclui:
 - promoção determinística de causa PostgreSQL;
 - recuperação da dependência;
 - novas traces pós-recuperação;
-- comprovação de que uma causa antiga deixa de ser promovida.
+- comprovação de que uma causa antiga deixa de ser promovida;
+- Redis com maxmemory de 16 MiB e redis_exporter com a identidade `cache:6379`;
+- rejeição real de escrita por OOM, RCA `redis-memory-pressure` e recuperação com novas operações bem-sucedidas.
 
 Próximos alvos da rc.3:
 
-- Redis + redis_exporter;
 - Kafka + kafka_exporter;
-- recovery semantics para as três dependências;
+- ciclo de falha e recuperação do Kafka;
 - fechamento da release candidate.
 
 Roadmap completo: [docs/roadmap.md](docs/roadmap.md).

@@ -721,13 +721,13 @@ Prometheus relabels the exporter instance to `orders-db:5432`, matching the depe
 ```mermaid
 flowchart TD
     KIND["Disposable Kind cluster"] --> BASE["Kubernetes, topology and trace baseline"]
-    KIND --> DB["PostgreSQL 17 and connection loader"]
-    DB --> EXP["postgres_exporter"]
-    EXP --> PROM["Prometheus: orders-db:5432"]
-    PROM --> FAIL["Connection-pressure check and failing traces"]
+    KIND --> DB["PostgreSQL 17 and Redis with bounded loads"]
+    DB --> EXP["postgres_exporter and redis_exporter"]
+    EXP --> PROM["Prometheus: scoped dependency identities"]
+    PROM --> FAIL["Pressure checks and failing traces"]
     FAIL --> RCA["Classic and agentic stateful evaluation"]
-    RCA --> ROOT["Require postgres-connection-exhaustion"]
-    ROOT --> REC["Scale loader to zero and await recovery"]
+    RCA --> ROOT["Require typed root for exact instance"]
+    ROOT --> REC["Release connections and validation keys"]
     REC --> FRESH["Fresh HTTP 200 logs, metrics and traces"]
     FRESH --> VERIFY["Reject stale trace or stateful roots"]
     BASE --> REPORT["JSON and Markdown report for exact SHA"]
@@ -738,6 +738,8 @@ Both classic and agentic evaluation must converge on `postgres-connection-exhaus
 
 The report uses schema v3 and includes source health, telemetry counts, classic/agentic verdict parity, stateful saturation, recovery, evidence integrity and authoritative graph/tombstone checks. Temporary Kubernetes credentials are excluded from uploaded artifacts.
 
-Redis/redis_exporter and Kafka/kafka_exporter failure/recovery scenarios remain pending. The version stays **v0.8.0-rc.3 development** until those gates pass and release promotion succeeds.
+The Redis slice uses OTel service `cache-frontend` and exporter identity `cache:6379`. An actual write rejected at maxmemory must confirm `redis-memory-pressure` in both investigation paths. Recovery deletes only validation keys, waits for memory utilization below 30% and runs fresh SET/GET operations; the healthy trace window cannot promote the previous cause. These writes belong only to the disposable workload.
+
+Kafka/kafka_exporter failure/recovery validation remains pending. The version stays **v0.8.0-rc.3 development** until those gates pass and release promotion succeeds.
 
 See [../validation/README.md](../validation/README.md) for the executable contract and [test-environment.md](test-environment.md) for deployment of validated images.

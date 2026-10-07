@@ -14,7 +14,8 @@
 - [x] recovery RCA blocks stale trace/stateful root promotion
 - [x] validation report schema v3 includes stateful and recovery evidence
 - [x] GitHub-first real-environment gate passes the PostgreSQL stateful/recovery path end-to-end
-- [ ] real Redis + redis_exporter failure/recovery validation
+- [x] Redis + redis_exporter failure/recovery implementation with bounded validation keys and real OOM write rejection
+- [x] GitHub-first real-environment gate passes the Redis failure/recovery path end-to-end
 - [ ] real Kafka + kafka_exporter failure/recovery validation
 - [x] v0.8.0-rc.3 runtime, frontend and Helm version metadata aligned
 - [x] validated main builds can publish immutable GHCR test images

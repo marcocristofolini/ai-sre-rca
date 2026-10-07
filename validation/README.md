@@ -47,48 +47,31 @@ The rc3 PostgreSQL path first requires live exporter utilization to cross a vali
 
 A failure in an optional source must never fabricate evidence. The original rc1 crash-loop invariant remains: without the evidence required for a more specific application-exit diagnosis, the engine may stay inconclusive or select the generic crash-loop mechanism, but it may not overclaim specificity.
 
+## rc.3 Redis scenario
+
+The harness deploys Redis 7.4 and redis_exporter using digest-pinned images. Redis uses `maxmemory=16mb`, `noeviction` and disabled persistence. The validation workload writes at most 256 fixed-prefix 64 KiB keys until memory pressure is reached. A 2 MiB write must be rejected by Redis with OOM; failure traces record that actual rejection.
+
+This path uses the OTel service `cache-frontend`, isolated from the PostgreSQL scenario. The exporter instance label is `cache:6379`, matching the trace identity `redis/0@cache:6379`. Prometheus, Loki and Tempo must observe three failing requests. Classic and agentic evaluation must confirm exactly `redis-memory-pressure:dependency:redis/0@cache:6379`, complete the database specialist and preserve evidence integrity.
+
+Recovery deletes only the bounded validation key set, requires exporter-reported used memory below 30% of maxmemory, and executes three fresh successful SET/GET operations. Investigation is restricted to post-recovery traces and cannot promote the previous cause. Missing metrics, zero capacity or non-finite values fail the check.
+
+Redis mutations exist only in the disposable validation workload. Investigator adapters remain read-only. Kafka/kafka_exporter validation remains pending before rc.3 promotion.
+
 ## Flow
 
 ```mermaid
-flowchart LR
-    CI[GitHub Actions or local runner] --> H[Validation Harness]
-    H --> K[Disposable 2-node Kind cluster]
-    H --> PG[(PostgreSQL + pgvector)]
-
-    K --> KF[Kubernetes failure workloads]
-    K --> OBS[Full-stack observability]
-    OBS --> PROM[Prometheus]
-    OBS --> LOKI[Loki]
-    OBS --> TEMPO[Tempo]
-    OBS --> APP[Instrumented frontend]
-    OBS --> PDB[(PostgreSQL orders-db)]
-    OBS --> PEXP[postgres_exporter]
-    LOAD[Connection loader] --> PDB
-    PDB --> PEXP
-    PEXP -->|scrape| PROM
-
-    APP -->|scrape| PROM
-    APP -->|structured logs| LOKI
-    APP -->|OTLP/HTTP| TEMPO
-
-    K --> SA[Read-only validator ServiceAccount]
-    SA --> T[ReadOnlyHTTPTools]
-    PROM --> T
-    LOKI --> T
-    TEMPO --> T
-
-    T --> CLASSIC[Classic Investigation Engine]
-    T --> AGENT[Agentic Specialists]
-    T --> INV[Authoritative Inventory Collector]
-
-    INV --> G[(Persistent Awareness Graph)]
-    CLASSIC --> V[Deterministic verdict]
-    AGENT --> E[Shared-envelope evaluator]
-    G --> R[Topology + tombstone checks]
-
-    V --> REP[JSON + Markdown evidence]
-    E --> REP
-    R --> REP
+flowchart TD
+    GH["GitHub-first gate"] --> KIND["Disposable Kind and pgvector persistence"]
+    KIND --> K8S["Kubernetes failures and authoritative inventory"]
+    KIND --> DB["PostgreSQL and Redis pressure"]
+    DB --> EXP["Exporters and Prometheus"]
+    EXP --> RCA["Classic and agentic RCA"]
+    APP["Instrumented workload: Loki and Tempo"] --> RCA
+    DB --> APP
+    RCA --> REC["Recovery and fresh traces"]
+    REC --> SAFE["Block stale causes"]
+    K8S --> REPORT["JSON and Markdown report"]
+    SAFE --> REPORT
 ```
 
 ## Run locally
@@ -114,7 +97,7 @@ Every run writes only these shareable artifacts:
 - `validation-artifacts/validation-report.json`
 - `validation-artifacts/validation-report.md`
 
-The v3 report includes Kubernetes scenarios, full-stack source health and telemetry counts, distributed-trace RCA parity, real PostgreSQL exporter saturation, stateful classic/agentic parity, recovery evidence, evidence integrity, and Persistent Awareness Graph reconciliation/tombstones.
+The v3 report includes Kubernetes scenarios, full-stack source health and telemetry counts, distributed-trace RCA parity, real PostgreSQL/Redis exporter saturation, stateful classic/agentic parity, dependency-specific recovery evidence, evidence integrity, and Persistent Awareness Graph reconciliation/tombstones.
 
 Temporary Kubernetes bearer-token and CA files live under `validation-artifacts/runtime/` only while the job is running and are never uploaded by CI.
 
@@ -123,3 +106,4 @@ The process exits non-zero when any required runtime signal, telemetry source, d
 ## Cleanup
 
 By default the harness terminates port-forwards, removes the disposable Kind cluster and removes the PostgreSQL container in a `finally` path. Pass `--keep` only for local debugging.
+
