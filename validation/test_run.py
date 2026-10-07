@@ -205,12 +205,12 @@ async def test_redis_exporter_uses_exact_instance_and_config_fallback():
 async def test_redis_missing_or_invalid_exporter_cannot_pass_recovery(monkeypatch, signals):
     tools = RedisMetricTools(signals)
     times = iter([0, 0, 61])
-    monkeypatch.setattr(harness.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(harness, "time", SimpleNamespace(monotonic=lambda: next(times)))
 
     async def no_wait(_):
         pass
 
-    monkeypatch.setattr(harness.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(harness, "asyncio", SimpleNamespace(sleep=no_wait))
     with pytest.raises(RuntimeError, match="Redis exporter utilization"):
         await harness.wait_for_redis_utilization(tools, maximum=0.3)
     assert tools.restored
