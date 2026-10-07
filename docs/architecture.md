@@ -1,74 +1,43 @@
-# Architecture — v0.8.0-rc.2
+# Architecture: v0.8.0-rc.3 development
 
 [Português do Brasil](architecture.pt-BR.md) · **English**
 
 ## System overview
 
-v0.8.0-rc.2 is split into four explicit planes. Investigation remains read-only, persistent awareness is reconciled separately, remediation uses a distinct identity and approval boundary, and the release-validation plane proves the critical Kubernetes path against a disposable real cluster.
+The platform has four planes. Classic investigation persists incidents and updates the graph. The agentic path uses graph context, collects evidence and returns its API verdict with audit events. Remediation runs with a separate identity, while release validation exercises failure and recovery scenarios in a disposable cluster.
 
 ```mermaid
-flowchart LR
-    IN[Alertmanager / REST API] --> N[Incident Normalizer]
-
+flowchart TD
+    IN["REST API or Alertmanager"] --> CORE["Classic investigation"]
+    IN --> PLAN["Opt-in agentic investigation"]
+    SRC["Typed read-only evidence sources"] --> CORE
+    SRC --> PLAN
     subgraph READ["1. Read-only investigation"]
-      N --> CORE[Deterministic Investigation Engine]
-      N --> PLAN[Bounded Investigation Planner]
-      PLAN --> SPEC[Allow-listed Specialists]
-      SPEC --> ENV[Shared Evidence Envelope]
-      ENV --> AGENT[Deterministic Agentic Evaluator]
-      CORE --> EVAL[Deterministic Evaluator]
-      AGENT --> EVAL
+      CORE --> RCA["Classic RCA"]
+      PLAN --> ENV["Specialists and shared envelope"]
+      ENV --> EVAL["Deterministic evaluator"]
+      EVAL --> AR["Agentic API verdict and audit"]
     end
-
-    subgraph SRC["Typed evidence sources"]
-      K[Kubernetes]
-      P[Prometheus]
-      L[Loki]
-      T[Tempo / OpenTelemetry]
-      C[Argo CD / GitHub]
-      KR[Karpenter]
-    end
-    K --> CORE
-    P --> CORE
-    L --> CORE
-    T --> CORE
-    C --> CORE
-    KR --> CORE
-    K --> SPEC
-    P --> SPEC
-    L --> SPEC
-    T --> SPEC
-    C --> SPEC
-
-    EVAL --> RCA[Evidence-backed RCA]
-    RCA --> API[FastAPI]
-    API --> UI[Next.js Investigator / Ops]
-
     subgraph AWARE["2. Persistent awareness"]
-      KI[Kubernetes Inventory CronJob] --> SNAP[Authoritative Snapshot]
-      SNAP --> PAG[(Persistent Awareness Graph)]
-      CORE --> PAG
-      PAG --> OCS[Frozen Operational Context]
-      OCS --> PLAN
-      PAG --> AX[Awareness Explorer]
-      PAG --> BR[Blast Radius / Change Timeline]
-      PAG --> MEM[(PostgreSQL + pgvector)]
+      RCA --> STORE["Incident persistence"]
+      STORE --> PAG[("Awareness Graph and PostgreSQL/pgvector")]
+      INV["Authoritative inventory"] --> PAG
+      PAG --> CTX["Frozen operational context"]
+      CTX --> PLAN
+      PAG --> VIEW["Explorer, blast radius and change timeline"]
     end
-
     subgraph REM["3. Guarded remediation"]
-      RCA --> RP[Remediation Proposal]
-      RP --> POL[Policy + dry-run + approval]
-      POL --> RID[Separate Remediation Identity]
-      RID --> ACT[Allow-listed Mutation]
+      STORE --> POLICY["Typed proposal, policy, dry-run and approval"]
+      POLICY --> ACT["Separate identity: Deployment scaling"]
     end
     subgraph VAL["4. Release validation"]
-      GH[GitHub Actions] --> KIND[Disposable Kind Cluster]
-      KIND --> VH[Real Environment Validation Harness]
-      VH --> CORE
-      VH --> PAG
-      VH --> REP[JSON / Markdown Evidence]
+      GH["GitHub-first gate"] --> KIND["Disposable Kind and telemetry"]
+      KIND --> HAR["Failure, recovery and topology checks"]
+      HAR --> REP["JSON and Markdown evidence"]
     end
 ```
+
+`AGENTIC_EXECUTION_ENABLED=false` is the default. `/api/v1/planner/plan` compiles a plan; `/execute` collects evidence without a root cause; `/investigate` also runs deterministic evaluation. The agentic result is not currently persisted as an incident or presented in the UI. Model-assisted planning requires `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`.
 
 The main correctness boundary is unchanged: live typed evidence and deterministic gates decide what can be asserted. The planner and optional LLM can narrow or prioritize investigation, but they cannot manufacture graph facts, evidence, scores, or a root-cause verdict.
 
@@ -743,51 +712,32 @@ GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<nam
 The endpoint remains tenant/cluster scoped and returns at most 200 events. Temporal proximity is context only and never upgrades a deployment/source change into root cause without runtime causal evidence.
 
 
-## Real environment validation — v0.8.0-rc.1 baseline + v0.8.0-rc.2 full stack
+## Real environment validation: rc.1, rc.2 and rc.3 development
 
-The release gate keeps the rc1 Kubernetes and Persistent Awareness Graph proof and adds a real telemetry path for rc2. The production read-only adapters query a disposable Prometheus, Loki and Tempo stack fed by an instrumented workload.
+The GitHub-first gate preserves the rc.1 Kubernetes/inventory baseline and the rc.2 Prometheus, Loki and Tempo paths. The current rc.3 PostgreSQL slice adds a real PostgreSQL 17 dependency, postgres_exporter and a bounded connection loader.
+
+Prometheus relabels the exporter instance to `orders-db:5432`, matching the dependency identity in the controlled failing traces. Current exporter telemetry must independently confirm connection pressure before a trace origin can become a PostgreSQL root.
 
 ```mermaid
-flowchart LR
-    GA[GitHub Actions / local] --> VH[Real Environment Validation Harness]
-    VH --> KIND[2-node Kind cluster]
-    VH --> PG[(PostgreSQL + pgvector)]
-
-    KIND --> OOM[OOMKilled]
-    KIND --> CRASH[CrashLoopBackOff]
-    KIND --> SCHED[FailedScheduling]
-
-    KIND --> APP[Instrumented frontend]
-    APP -->|scrape| PROM[Prometheus]
-    APP -->|structured Pod/service logs| LOKI[Loki]
-    APP -->|OTLP/HTTP traces| TEMPO[Tempo]
-
-    KIND --> RBAC[Read-only ServiceAccount]
-    RBAC --> HTTP[Production ReadOnlyHTTPTools]
-    PROM --> HTTP
-    LOKI --> HTTP
-    TEMPO --> HTTP
-
-    HTTP --> CORE[Classic deterministic engine]
-    HTTP --> SPEC[Agentic metrics / logs / traces]
-    HTTP --> INV[Authoritative inventory reconciliation]
-
-    INV --> PAG[(Persistent Awareness Graph)]
-    CORE --> PARITY[Classic / agentic deterministic parity]
-    SPEC --> ENV[Shared Evidence Envelope]
-    ENV --> PARITY
-
-    PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
-    PARITY --> REPORT[JSON + Markdown release evidence]
-    GRAPH --> REPORT
+flowchart TD
+    KIND["Disposable Kind cluster"] --> BASE["Kubernetes, topology and trace baseline"]
+    KIND --> DB["PostgreSQL 17 and connection loader"]
+    DB --> EXP["postgres_exporter"]
+    EXP --> PROM["Prometheus: orders-db:5432"]
+    PROM --> FAIL["Connection-pressure check and failing traces"]
+    FAIL --> RCA["Classic and agentic stateful evaluation"]
+    RCA --> ROOT["Require postgres-connection-exhaustion"]
+    ROOT --> REC["Scale loader to zero and await recovery"]
+    REC --> FRESH["Fresh HTTP 200 logs, metrics and traces"]
+    FRESH --> VERIFY["Reject stale trace or stateful roots"]
+    BASE --> REPORT["JSON and Markdown report for exact SHA"]
+    VERIFY --> REPORT
 ```
 
-The rc2 workload generates repeated checkout failures whose deepest failing span is `postgresql/orders@orders-db:5432`. Prometheus observes the failure counters and service-graph RED metrics, Loki stores logs carrying the trace ID, and Tempo stores OTLP traces emitted by the official OpenTelemetry SDK.
+Both classic and agentic evaluation must converge on `postgres-connection-exhaustion:...`, with the database specialist completed and evidence integrity verified. Recovery requires exporter utilization below its recovery threshold and an investigation restricted to fresh post-recovery traces. No previous trace or PostgreSQL/Kafka/Redis anomaly root may be promoted in that recovery window.
 
-The gate does not promote a trace root from one request. At least two independent traces must converge on the same downstream origin. The agentic metrics, logs and traces specialists must complete against the live telemetry, evidence hashes must validate, and classic/agentic evaluation must converge on `trace-causal-propagation`.
+The report uses schema v3 and includes source health, telemetry counts, classic/agentic verdict parity, stateful saturation, recovery, evidence integrity and authoritative graph/tombstone checks. Temporary Kubernetes credentials are excluded from uploaded artifacts.
 
-The original rc1 Kubernetes invariants remain part of the same run. This preserves the evidence-first behavior when optional sources are unavailable while adding a second path that proves those sources can participate in a causal RCA when they are present.
+Redis/redis_exporter and Kafka/kafka_exporter failure/recovery scenarios remain pending. The version stays **v0.8.0-rc.3 development** until those gates pass and release promotion succeeds.
 
-The Kind, Prometheus, Loki, Tempo and workload base images are pinned by digest. Temporary Kubernetes credentials remain local to the job and are excluded from uploaded artifacts.
-
-See [../validation/README.md](../validation/README.md) for the runnable contract and exact PASS/FAIL conditions.
+See [../validation/README.md](../validation/README.md) for the executable contract and [test-environment.md](test-environment.md) for deployment of validated images.

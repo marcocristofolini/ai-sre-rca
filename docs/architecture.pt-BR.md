@@ -1,74 +1,43 @@
-# Arquitetura — v0.8.0-rc.2
+# Arquitetura: v0.8.0-rc.3 em desenvolvimento
 
 **Português do Brasil** · [English](architecture.md)
 
 ## Visão geral do sistema
 
-A v0.8.0-rc.2 está separada em quatro planos explícitos. A investigação continua read-only, o awareness persistente é reconciliado separadamente, a remediação usa identidade e aprovação próprias, e o plano de validação comprova o caminho crítico de Kubernetes contra um cluster real descartável.
+A plataforma possui quatro planos. A investigação clássica persiste os incidentes e atualiza o grafo. O caminho agentic usa o contexto do grafo, coleta evidências e retorna seu veredito pela API com auditoria. A remediação roda com identidade própria, e a validação de release executa cenários de falha e recuperação em um cluster descartável.
 
 ```mermaid
-flowchart LR
-    IN[Alertmanager / REST API] --> N[Normalizador de Incidente]
-
+flowchart TD
+    IN["REST API ou Alertmanager"] --> CORE["Investigação clássica"]
+    IN --> PLAN["Investigação agentic opcional"]
+    SRC["Fontes tipadas de evidência read-only"] --> CORE
+    SRC --> PLAN
     subgraph READ["1. Investigação read-only"]
-      N --> CORE[Investigation Engine Determinístico]
-      N --> PLAN[Investigation Planner Bounded]
-      PLAN --> SPEC[Especialistas Allow-listed]
-      SPEC --> ENV[Shared Evidence Envelope]
-      ENV --> AGENT[Avaliador Agentic Determinístico]
-      CORE --> EVAL[Avaliador Determinístico]
-      AGENT --> EVAL
+      CORE --> RCA["RCA clássico"]
+      PLAN --> ENV["Especialistas e shared envelope"]
+      ENV --> EVAL["Avaliador determinístico"]
+      EVAL --> AR["Veredito agentic pela API e auditoria"]
     end
-    subgraph SRC["Fontes tipadas de evidência"]
-      K[Kubernetes]
-      P[Prometheus]
-      L[Loki]
-      T[Tempo / OpenTelemetry]
-      C[Argo CD / GitHub]
-      KR[Karpenter]
-    end
-
-    K --> CORE
-    P --> CORE
-    L --> CORE
-    T --> CORE
-    C --> CORE
-    KR --> CORE
-    K --> SPEC
-    P --> SPEC
-    L --> SPEC
-    T --> SPEC
-    C --> SPEC
-
-    EVAL --> RCA[RCA Baseado em Evidências]
-    RCA --> API[FastAPI]
-    API --> UI[Next.js Investigator / Ops]
-
     subgraph AWARE["2. Awareness persistente"]
-      KI[CronJob de Inventário Kubernetes] --> SNAP[Snapshot Autoritativo]
-      SNAP --> PAG[(Persistent Awareness Graph)]
-      CORE --> PAG
-      PAG --> OCS[Operational Context Congelado]
-      OCS --> PLAN
-      PAG --> AX[Awareness Explorer]
-      PAG --> BR[Blast Radius / Timeline de Mudanças]
-      PAG --> MEM[(PostgreSQL + pgvector)]
+      RCA --> STORE["Persistência do incidente"]
+      STORE --> PAG[("Awareness Graph e PostgreSQL/pgvector")]
+      INV["Inventário autoritativo"] --> PAG
+      PAG --> CTX["Contexto operacional congelado"]
+      CTX --> PLAN
+      PAG --> VIEW["Explorer, blast radius e mudanças"]
     end
     subgraph REM["3. Remediação guardada"]
-      RCA --> RP[Proposta de Remediação]
-      RP --> POL[Política + dry-run + aprovação]
-      POL --> RID[Identidade Separada de Remediação]
-      RID --> ACT[Mutação Allow-listed]
+      STORE --> POLICY["Proposta tipada, política, dry-run e aprovação"]
+      POLICY --> ACT["Identidade separada: escala de Deployment"]
     end
-
     subgraph VAL["4. Validação da release"]
-      GH[GitHub Actions] --> KIND[Cluster Kind Descartável]
-      KIND --> VH[Real Environment Validation Harness]
-      VH --> CORE
-      VH --> PAG
-      VH --> REP[Evidência JSON / Markdown]
+      GH["GitHub-first gate"] --> KIND["Kind descartável e telemetria"]
+      KIND --> HAR["Checks de falha, recuperação e topologia"]
+      HAR --> REP["Evidência JSON e Markdown"]
     end
 ```
+
+`AGENTIC_EXECUTION_ENABLED=false` é o padrão. `/api/v1/planner/plan` compila o plano; `/execute` coleta evidências sem causa raiz; `/investigate` também executa a avaliação determinística. Atualmente o resultado agentic não é persistido como incidente nem apresentado na UI. O planejamento assistido por modelo exige `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`.
 
 A fronteira principal de correção não mudou: evidência live tipada e gates determinísticos decidem o que pode ser afirmado. O planner e o LLM opcional podem restringir ou priorizar a investigação, mas não podem fabricar fatos do grafo, evidências, scores ou um verdict de causa raiz.
 
@@ -743,51 +712,32 @@ GET /api/v1/awareness/changes?cluster=<cluster>&service=<service>&namespace=<nam
 O endpoint mantém isolamento por tenant/cluster e retorna no máximo 200 eventos. Proximidade temporal é somente contexto e nunca transforma deploy/source change em causa raiz sem evidência causal de runtime.
 
 
-## Validação em ambiente real — baseline v0.8.0-rc.1 + full stack v0.8.0-rc.2
+## Validação em ambiente real: rc.1, rc.2 e rc.3 em desenvolvimento
 
-O gate preserva a prova da rc1 para Kubernetes e Persistent Awareness Graph e adiciona um caminho real de telemetria para a rc2. Os adapters read-only de produção consultam um stack descartável de Prometheus, Loki e Tempo alimentado por um workload instrumentado.
+O gate GitHub-first preserva o baseline Kubernetes/inventário da rc.1 e os caminhos Prometheus, Loki e Tempo da rc.2. A etapa atual de PostgreSQL da rc.3 adiciona uma dependência real PostgreSQL 17, postgres_exporter e um gerador limitado de conexões.
+
+O Prometheus ajusta o label instance do exporter para `orders-db:5432`, a mesma identidade da dependência nos traces de falha controlados. A telemetria atual do exporter precisa confirmar a pressão de conexões antes que a origem do trace possa virar uma causa PostgreSQL.
 
 ```mermaid
-flowchart LR
-    GA[GitHub Actions / local] --> VH[Real Environment Validation Harness]
-    VH --> KIND[Cluster Kind com 2 nós]
-    VH --> PG[(PostgreSQL + pgvector)]
-
-    KIND --> OOM[OOMKilled]
-    KIND --> CRASH[CrashLoopBackOff]
-    KIND --> SCHED[FailedScheduling]
-
-    KIND --> APP[Frontend instrumentado]
-    APP -->|scrape| PROM[Prometheus]
-    APP -->|logs estruturados Pod/serviço| LOKI[Loki]
-    APP -->|traces OTLP/HTTP| TEMPO[Tempo]
-
-    KIND --> RBAC[ServiceAccount read-only]
-    RBAC --> HTTP[ReadOnlyHTTPTools de produção]
-    PROM --> HTTP
-    LOKI --> HTTP
-    TEMPO --> HTTP
-
-    HTTP --> CORE[Engine determinístico clássico]
-    HTTP --> SPEC[Specialists agentic de métricas / logs / traces]
-    HTTP --> INV[Reconciliação autoritativa de inventário]
-
-    INV --> PAG[(Persistent Awareness Graph)]
-    CORE --> PARITY[Paridade determinística clássico / agentic]
-    SPEC --> ENV[Shared Evidence Envelope]
-    ENV --> PARITY
-
-    PAG --> GRAPH[owned_by / serves / scheduled_on + tombstone]
-    PARITY --> REPORT[Evidência JSON + Markdown]
-    GRAPH --> REPORT
+flowchart TD
+    KIND["Cluster Kind descartável"] --> BASE["Baseline Kubernetes, topologia e traces"]
+    KIND --> DB["PostgreSQL 17 e gerador de conexões"]
+    DB --> EXP["postgres_exporter"]
+    EXP --> PROM["Prometheus: orders-db:5432"]
+    PROM --> FAIL["Check de pressão e traces de falha"]
+    FAIL --> RCA["Avaliação stateful clássica e agentic"]
+    RCA --> ROOT["Exigir postgres-connection-exhaustion"]
+    ROOT --> REC["Escalar gerador para zero e aguardar recuperação"]
+    REC --> FRESH["Novos logs, métricas e traces HTTP 200"]
+    FRESH --> VERIFY["Bloquear causas antigas de trace ou stateful"]
+    BASE --> REPORT["Relatório JSON e Markdown para o SHA exato"]
+    VERIFY --> REPORT
 ```
 
-O workload da rc2 gera falhas repetidas de checkout cuja span mais profunda em falha é `postgresql/orders@orders-db:5432`. Prometheus observa os contadores de falha e métricas RED do service graph, Loki armazena logs com o trace ID e Tempo armazena traces OTLP emitidos pelo SDK oficial do OpenTelemetry.
+As avaliações clássica e agentic precisam convergir em `postgres-connection-exhaustion:...`, com o especialista database concluído e a integridade das evidências verificada. A recuperação exige utilização de conexões abaixo do limite de recuperação e uma investigação restrita aos novos traces pós-recuperação. Nenhuma causa anterior de trace ou anomalia PostgreSQL/Kafka/Redis pode ser promovida nessa janela.
 
-O gate não promove causa por trace a partir de um único request. Pelo menos dois traces independentes precisam convergir para a mesma origem downstream. Os specialists agentic de métricas, logs e traces precisam concluir contra a telemetria live, os hashes das evidências precisam ser válidos e as avaliações clássica e agentic precisam convergir em `trace-causal-propagation`.
+O relatório usa o schema v3 e inclui saúde das fontes, contagem de telemetria, paridade de vereditos, saturação stateful, recuperação, integridade das evidências e checks de grafo/tombstones autoritativos. Credenciais Kubernetes temporárias ficam fora dos artefatos enviados.
 
-Os invariants Kubernetes originais da rc1 continuam na mesma execução. Isso preserva o comportamento evidence-first quando fontes opcionais estão indisponíveis e adiciona um segundo caminho que comprova a participação dessas fontes em um RCA causal quando estão disponíveis.
+Os cenários de falha/recuperação de Redis/redis_exporter e Kafka/kafka_exporter ainda estão pendentes. A versão continua **v0.8.0-rc.3 em desenvolvimento** até esses gates passarem e a promoção da release ser concluída.
 
-As imagens do Kind, Prometheus, Loki, Tempo e da base do workload ficam presas por digest. Credenciais temporárias do Kubernetes permanecem locais ao job e são excluídas dos artefatos enviados.
-
-Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e as condições exatas de PASS/FAIL.
+Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e [test-environment.pt-BR.md](test-environment.pt-BR.md) para implantar as imagens validadas.
