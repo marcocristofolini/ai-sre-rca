@@ -18,6 +18,12 @@ data:
         relabel_configs:
           - target_label: instance
             replacement: "orders-db:5432"
+      - job_name: redis-exporter
+        static_configs:
+          - targets: ["redis-exporter:9121"]
+        relabel_configs:
+          - target_label: instance
+            replacement: "cache:6379"
 ---
 apiVersion: apps/v1
 kind: Deployment

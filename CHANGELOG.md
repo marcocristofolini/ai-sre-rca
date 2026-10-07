@@ -5,6 +5,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
+- Digest-pinned disposable Redis + redis_exporter with exact trace/exporter instance identity.
+- Bounded Redis memory-pressure injection with real OOM write rejection, classic/agentic `redis-memory-pressure` parity, fresh SET/GET recovery and stale-cause suppression.
+- Redis failure/recovery sections in the v3 validation report and regression checks for bounded cleanup, malformed replies and missing/non-finite exporter telemetry.
 - v0.8.0-rc.3 development adds a real PostgreSQL 17 + postgres_exporter validation path inside the disposable Kind environment.
 - A bounded PostgreSQL connection loader creates live connection-capacity pressure that must promote the typed `postgres-connection-exhaustion` root in both classic and agentic RCA.
 - Recovery validation scales the loader to zero, requires exporter utilization to normalize, emits fresh healthy metrics/logs/traces, and rejects stale trace/stateful root promotion.
@@ -391,3 +394,4 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 [0.1.0]: https://github.com/marcocristofolini/ai-sre-rca/releases/tag/v0.1.0
 
 [0.5.1]: https://github.com/marcocristofolini/ai-sre-rca/compare/v0.5.0...v0.5.1
+

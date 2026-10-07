@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from validation import run as harness
 
 
@@ -162,6 +164,75 @@ def test_stateful_signal_value_reads_exporter_scalar():
     assert harness._stateful_signal_value(payload, "max_connections") == 20.0
     assert harness._stateful_signal_value(payload, "missing") is None
     assert harness._stateful_signal_value(payload, "unknown") is None
+
+
+def test_exporter_scalar_rejects_non_finite_values():
+    for value in ("NaN", "Inf", "-Inf", None):
+        assert harness._stateful_signal_value({"signals": {"memory": {"value": value}}}, "memory") is None
+
+
+class RedisMetricTools:
+    def __init__(self, signals):
+        self.signals = signals
+        self.calls = []
+        self.restored = False
+
+    def set_cluster(self, cluster):
+        assert cluster == harness.LOGICAL_CLUSTER
+        return "prior-cluster"
+
+    def reset_cluster(self, token):
+        assert token == "prior-cluster"
+        self.restored = True
+
+    async def redis_dependency_metrics(self, instance, at, window):
+        self.calls.append((instance, window))
+        return {"signals": {name: {"value": value} for name, value in self.signals.items()}}
+
+
+@pytest.mark.asyncio
+async def test_redis_exporter_uses_exact_instance_and_config_fallback():
+    tools = RedisMetricTools({"memory_used_bytes": 95, "memory_max_bytes": 0, "config_maxmemory_bytes": 100})
+    observed = await harness.wait_for_redis_utilization(tools, minimum=0.9)
+    assert observed["utilization"] == 0.95
+    assert observed["instance"] == "cache:6379"
+    assert tools.calls == [("cache:6379", 1)]
+    assert tools.restored
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signals", [{}, {"memory_used_bytes": "NaN", "memory_max_bytes": 100}, {"memory_used_bytes": 0, "memory_max_bytes": 0}])
+async def test_redis_missing_or_invalid_exporter_cannot_pass_recovery(monkeypatch, signals):
+    tools = RedisMetricTools(signals)
+    times = iter([0, 0, 61])
+    monkeypatch.setattr(harness.time, "monotonic", lambda: next(times))
+
+    async def no_wait(_):
+        pass
+
+    monkeypatch.setattr(harness.asyncio, "sleep", no_wait)
+    with pytest.raises(RuntimeError, match="Redis exporter utilization"):
+        await harness.wait_for_redis_utilization(tools, maximum=0.3)
+    assert tools.restored
+
+
+def test_report_includes_redis_failure_and_recovery_outcomes(tmp_path):
+    harness.write_reports(tmp_path, {
+        "schema_version": harness.REPORT_SCHEMA, "passed": False,
+        "validation": {
+            "stateful_redis": {"redis_exporter": {"instance": "cache:6379", "utilization": 0.95},
+                              "classic": {"root_cause": "redis-memory-pressure:dependency:redis/0@cache:6379"},
+                              "passed": True},
+            "redis_recovery": {"recovered_redis": {"utilization": None}, "passed": False},
+        },
+    })
+    report = (tmp_path / "validation-report.md").read_text()
+    assert "## Stateful Redis RCA" in report
+    assert "cache:6379" in report
+    assert "redis-memory-pressure:" in report
+    assert "## Redis recovery validation" in report
+    assert "Recovered Redis memory utilization: None" in report
+    assert "Result: **FAIL**" in report.split("## Redis recovery validation")[1]
 
 
 def test_validation_settings_switches_full_stack_sources(tmp_path):

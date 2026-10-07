@@ -721,13 +721,13 @@ O Prometheus ajusta o label instance do exporter para `orders-db:5432`, a mesma 
 ```mermaid
 flowchart TD
     KIND["Cluster Kind descartável"] --> BASE["Baseline Kubernetes, topologia e traces"]
-    KIND --> DB["PostgreSQL 17 e gerador de conexões"]
-    DB --> EXP["postgres_exporter"]
-    EXP --> PROM["Prometheus: orders-db:5432"]
-    PROM --> FAIL["Check de pressão e traces de falha"]
+    KIND --> DB["PostgreSQL 17 e Redis com cargas limitadas"]
+    DB --> EXP["postgres_exporter e redis_exporter"]
+    EXP --> PROM["Prometheus: identidades das dependências"]
+    PROM --> FAIL["Checks de pressão e traces de falha"]
     FAIL --> RCA["Avaliação stateful clássica e agentic"]
-    RCA --> ROOT["Exigir postgres-connection-exhaustion"]
-    ROOT --> REC["Escalar gerador para zero e aguardar recuperação"]
+    RCA --> ROOT["Exigir causa tipada para a instância"]
+    ROOT --> REC["Liberar conexões e chaves do teste"]
     REC --> FRESH["Novos logs, métricas e traces HTTP 200"]
     FRESH --> VERIFY["Bloquear causas antigas de trace ou stateful"]
     BASE --> REPORT["Relatório JSON e Markdown para o SHA exato"]
@@ -738,6 +738,8 @@ As avaliações clássica e agentic precisam convergir em `postgres-connection-e
 
 O relatório usa o schema v3 e inclui saúde das fontes, contagem de telemetria, paridade de vereditos, saturação stateful, recuperação, integridade das evidências e checks de grafo/tombstones autoritativos. Credenciais Kubernetes temporárias ficam fora dos artefatos enviados.
 
-Os cenários de falha/recuperação de Redis/redis_exporter e Kafka/kafka_exporter ainda estão pendentes. A versão continua **v0.8.0-rc.3 em desenvolvimento** até esses gates passarem e a promoção da release ser concluída.
+A etapa Redis usa `cache-frontend` como serviço OTel e `cache:6379` como identidade do exporter. Uma escrita real rejeitada por maxmemory precisa confirmar `redis-memory-pressure` nos dois caminhos de investigação. A recuperação remove apenas chaves do teste, aguarda memória abaixo de 30% e executa novos SET/GET; a janela de traces saudáveis não pode promover a causa antiga. Essas escritas pertencem somente ao workload descartável.
+
+O cenário de falha/recuperação de Kafka/kafka_exporter ainda está pendente. A versão continua **v0.8.0-rc.3 em desenvolvimento** até esses gates passarem e a promoção da release ser concluída.
 
 Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e [test-environment.pt-BR.md](test-environment.pt-BR.md) para implantar as imagens validadas.
