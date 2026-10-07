@@ -54,38 +54,25 @@ Ele pode responder perguntas como:
 
 ## Como uma investigação funciona
 
+`POST /api/v1/incidents/investigate` usa o engine clássico e persiste o incidente, atualizando o grafo. O caminho agentic em `/api/v1/planner/investigate` é experimental e exige `AGENTIC_EXECUTION_ENABLED=true`. Ele retorna execução, avaliação e explicação pela API e registra auditoria; atualmente não persiste esse resultado como incidente nem o publica na UI.
+
 ~~~mermaid
 flowchart TD
-    I[Incidente / Alertmanager] --> N[Normalizar identidade e escopo]
-    N --> C[Congelar contexto operacional]
-    C --> P[Planejar especialistas read-only]
-
-    P --> K[Kubernetes]
-    P --> M[Metrics]
-    P --> L[Logs]
-    P --> T[Traces]
-    T --> D[Database / Stateful]
-    P --> CH[Changes]
-
-    K --> E[Shared Evidence Envelope]
-    M --> E
-    L --> E
-    T --> E
-    D --> E
-    CH --> E
-
-    E --> H{Integridade das evidências OK?}
-    H -->|Não| INC[Inconclusivo]
-    H -->|Sim| S[Recalcular hipóteses determinísticas]
-
-    S --> G1[Gate de causalidade por traces]
-    G1 --> G2[Gate stateful]
-    G2 --> G3[Precedência de fontes]
-    G3 --> RCA[RCA estruturado]
-
-    RCA --> MEM[(PostgreSQL / pgvector)]
-    RCA --> PAG[(Persistent Awareness Graph)]
-    RCA --> UI[API + UI]
+    I["Incidente com tenant e cluster definidos"] --> MODE{"Rota da API"}
+    MODE -->|"/incidents/investigate"| CORE["Engine determinístico clássico"]
+    CORE --> SAVE["Persistir incidente e observações do grafo"]
+    SAVE --> UI["API e interface de investigação"]
+    MODE -->|"/planner/investigate"| CTX["Congelar contexto operacional"]
+    CTX --> PLAN["Compilar plano limitado de especialistas"]
+    PLAN --> READ["Especialistas read-only"]
+    READ -->|"Traces fornecem identidade da dependência"| DEP["Especialista database"]
+    READ --> ENV["Shared Evidence Envelope"]
+    DEP --> ENV
+    ENV --> VERIFY{"Integridade e gates causais passam?"}
+    VERIFY -->|Sim| RESULT["Veredito determinístico e explicação"]
+    VERIFY -->|Não| INC["Avaliação inconclusiva"]
+    RESULT --> RESP["Resposta da API e auditoria"]
+    INC --> RESP
 ~~~
 
 O LLM opcional pode ajudar a **priorizar ramos de investigação**, mas não pode criar evidência, escolher ferramentas arbitrárias, alterar budgets, escrever no grafo ou confirmar uma causa raiz.
@@ -97,60 +84,33 @@ O LLM opcional pode ajudar a **priorizar ramos de investigação**, mas não pod
 A plataforma é dividida em quatro planos para manter investigação, contexto, mutação e validação separados.
 
 ~~~mermaid
-flowchart LR
-    IN[Alertmanager / REST API] --> ENG[Investigation Engine]
-
+flowchart TD
+    IN["REST API ou Alertmanager"] --> CORE["Investigação clássica"]
+    IN --> PLAN["Investigação agentic opcional"]
+    SRC["Fontes tipadas de evidência read-only"] --> CORE
+    SRC --> PLAN
     subgraph READ["1. Investigação read-only"]
-      ENG --> PLAN[Bounded Investigation Planner]
-      PLAN --> SPEC[Especialistas allow-listed]
-      SPEC --> ENV[Shared Evidence Envelope]
-      ENV --> DET[Avaliador determinístico]
+      CORE --> RCA["RCA clássico"]
+      PLAN --> ENV["Especialistas e shared envelope"]
+      ENV --> EVAL["Avaliador determinístico"]
+      EVAL --> AR["Veredito agentic pela API e auditoria"]
     end
-
-    subgraph SOURCES["Fontes de evidência"]
-      K8S[Kubernetes]
-      PROM[Prometheus]
-      LOKI[Loki]
-      TEMPO[Tempo / OpenTelemetry]
-      ARGO[Argo CD]
-      GIT[GitHub]
-      KARP[Karpenter]
-    end
-
-    K8S --> SPEC
-    PROM --> SPEC
-    LOKI --> SPEC
-    TEMPO --> SPEC
-    ARGO --> SPEC
-    GIT --> SPEC
-    KARP --> SPEC
-
-    DET --> RCA[RCA baseado em evidências]
-    RCA --> API[FastAPI]
-    API --> WEB[Next.js]
-
     subgraph AWARE["2. Awareness persistente"]
-      INV[Inventário autoritativo Kubernetes] --> PAG[(Persistent Awareness Graph)]
-      RCA --> PAG
-      PAG --> CTX[Operational Context Snapshot]
+      RCA --> STORE["Persistência do incidente"]
+      STORE --> PAG[("Awareness Graph e PostgreSQL/pgvector")]
+      INV["Inventário autoritativo"] --> PAG
+      PAG --> CTX["Contexto operacional congelado"]
       CTX --> PLAN
-      PAG --> BR[Blast Radius / Change Timeline]
-      PAG --> DB[(PostgreSQL + pgvector)]
+      PAG --> VIEW["Explorer, blast radius e mudanças"]
     end
-
     subgraph REM["3. Remediação guardada"]
-      RCA --> RP[Remediation Proposal]
-      RP --> POLICY[Policy + dry-run + aprovação]
-      POLICY --> RID[Identidade separada]
-      RID --> ACT[Mutação allow-listed]
+      STORE --> POLICY["Proposta tipada, política, dry-run e aprovação"]
+      POLICY --> ACT["Identidade separada: escala de Deployment"]
     end
-
     subgraph VAL["4. Validação da release"]
-      GH[GitHub Actions] --> KIND[Kind descartável]
-      KIND --> STACK[Prometheus + Loki + Tempo + workloads]
-      STACK --> ENG
-      KIND --> PAG
-      ENG --> REP[JSON / Markdown evidence]
+      GH["GitHub-first gate"] --> KIND["Kind descartável e telemetria"]
+      KIND --> HAR["Checks de falha, recuperação e topologia"]
+      HAR --> REP["Evidência JSON e Markdown"]
     end
 ~~~
 
@@ -160,7 +120,7 @@ Arquitetura detalhada: [docs/architecture.pt-BR.md](docs/architecture.pt-BR.md).
 
 ## Aplicação em execução
 
-As imagens abaixo são **screenshots reais da aplicação renderizada**, não mockups.
+As capturas abaixo mostram a **v0.8.0-rc.1 executando localmente com `DEMO_MODE=true`**, usando os adapters de demonstração. São telas renderizadas pela aplicação. A validação com fontes reais está registrada nos relatórios do gate em Kind.
 
 ### Investigação Kubernetes
 
@@ -334,6 +294,8 @@ Telas de demonstração:
 /ops                      Saúde das integrações
 ~~~
 
+O Compose inicia em modo demo e define o ambiente do backend diretamente em `docker-compose.yml`. Alterar apenas `.env` não ativa as integrações reais; configure o Compose ou use os overrides Helm descritos no runbook.
+
 Backend isolado:
 
 ~~~bash
@@ -344,10 +306,10 @@ pip install -e '.[dev]'
 DEMO_MODE=true uvicorn app.main:app --reload --port 8080
 ~~~
 
-Testes:
+Testes, a partir da raiz do repositório:
 
 ~~~bash
-pytest -q
+(cd backend && pytest -q)
 ~~~
 
 ---
@@ -356,26 +318,18 @@ pytest -q
 
 O repositório possui uma cadeia GitHub-first para gerar e implantar imagens sem depender de uma workstation.
 
-~~~mermaid
-flowchart LR
-    PR[Pull Request] --> G[GitHub-first gate]
-    G -->|main validado| P[Publish test images]
-    P --> GHCR[GHCR]
-    GHCR --> D[Deploy test environment]
-    D --> K[Test Kubernetes cluster]
-    K --> SMOKE[Backend + frontend smoke]
-~~~
+Após o gate passar em `main`, `Publish test images` publica as imagens no GHCR. O deploy é iniciado manualmente em **Actions → Deploy test environment** e exige as credenciais do cluster configuradas no GitHub Environment `test`. O workflow aguarda os rollouts e executa o smoke de backend e frontend.
 
 Imagens publicadas:
 
 ~~~text
 ghcr.io/marcocristofolini/ai-sre-rca-backend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-backend:sha-<sha>
+ghcr.io/marcocristofolini/ai-sre-rca-backend:sha-<sha-de-12-caracteres>
 ghcr.io/marcocristofolini/ai-sre-rca-frontend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-frontend:sha-<sha>
+ghcr.io/marcocristofolini/ai-sre-rca-frontend:sha-<sha-de-12-caracteres>
 ~~~
 
-Runbook: [docs/test-environment.md](docs/test-environment.md).
+Runbook: [docs/test-environment.md](docs/test-environment.pt-BR.md).
 
 ---
 
@@ -411,6 +365,8 @@ POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
 ~~~
+
+`/plan` somente compila o plano. `/execute` coleta evidências e não retorna causa raiz. `/investigate` também executa a avaliação determinística. Os dois últimos retornam 404 enquanto `AGENTIC_EXECUTION_ENABLED=false`, que é o padrão. A escolha assistida por modelo exige também `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`.
 
 O Swagger completo fica em <code>/docs</code>.
 
@@ -457,7 +413,7 @@ branch
 → gate
 → merge em main
 → Publish test images
-→ Deploy test environment
+→ Deploy test environment (manual)
 ~~~
 
 A promoção de release valida o SHA, o <code>VERSION</code> e o relatório de ambiente real antes de criar a tag.
@@ -516,7 +472,7 @@ docs/                   arquitetura, operação e runbooks
 - [Persistent Awareness Graph](docs/persistent-awareness-graph.pt-BR.md)
 - [Remediação guardada](docs/remediation.pt-BR.md)
 - [Operação e segurança](docs/operations.pt-BR.md)
-- [Ambiente de testes](docs/test-environment.md)
+- [Ambiente de testes](docs/test-environment.pt-BR.md)
 - [GitHub-first delivery](docs/github-first.pt-BR.md)
 - [Roadmap](docs/roadmap.md)
 - [Validation harness](validation/README_PT-BR.md)

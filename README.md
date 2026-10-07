@@ -54,38 +54,25 @@ It can answer questions such as:
 
 ## How an investigation works
 
+`POST /api/v1/incidents/investigate` uses the classic engine and persists the incident, updating the graph. The agentic path at `/api/v1/planner/investigate` is experimental and requires `AGENTIC_EXECUTION_ENABLED=true`. It returns execution, evaluation and explanation through the API and records audit events; it does not currently persist that result as an incident or publish it in the UI.
+
 ~~~mermaid
 flowchart TD
-    I[Incident / Alertmanager] --> N[Normalize identity and scope]
-    N --> C[Freeze operational context]
-    C --> P[Plan read-only specialists]
-
-    P --> K[Kubernetes]
-    P --> M[Metrics]
-    P --> L[Logs]
-    P --> T[Traces]
-    T --> D[Database / Stateful]
-    P --> CH[Changes]
-
-    K --> E[Shared Evidence Envelope]
-    M --> E
-    L --> E
-    T --> E
-    D --> E
-    CH --> E
-
-    E --> H{Evidence integrity OK?}
-    H -->|No| INC[Inconclusive]
-    H -->|Yes| S[Re-score deterministic hypotheses]
-
-    S --> G1[Trace causality gate]
-    G1 --> G2[Stateful gate]
-    G2 --> G3[Source precedence gate]
-    G3 --> RCA[Structured RCA]
-
-    RCA --> MEM[(PostgreSQL / pgvector)]
-    RCA --> PAG[(Persistent Awareness Graph)]
-    RCA --> UI[API + UI]
+    I["Incident with tenant and cluster scope"] --> MODE{"API route"}
+    MODE -->|"/incidents/investigate"| CORE["Classic deterministic engine"]
+    CORE --> SAVE["Persist incident and graph observations"]
+    SAVE --> UI["API and investigator UI"]
+    MODE -->|"/planner/investigate"| CTX["Freeze operational context"]
+    CTX --> PLAN["Compile bounded specialist plan"]
+    PLAN --> READ["Read-only specialists"]
+    READ -->|"Traces provide dependency identity"| DEP["Database specialist"]
+    READ --> ENV["Shared Evidence Envelope"]
+    DEP --> ENV
+    ENV --> VERIFY{"Integrity and causal gates pass?"}
+    VERIFY -->|Yes| RESULT["Deterministic verdict and explanation"]
+    VERIFY -->|No| INC["Inconclusive evaluation"]
+    RESULT --> RESP["API response and audit"]
+    INC --> RESP
 ~~~
 
 The optional LLM may help **prioritize investigation branches**, but it cannot create evidence, choose arbitrary tools, change budgets, write graph facts or confirm a root cause.
@@ -97,60 +84,33 @@ The optional LLM may help **prioritize investigation branches**, but it cannot c
 The platform is divided into four planes so investigation, persistent context, mutation and release validation remain separate.
 
 ~~~mermaid
-flowchart LR
-    IN[Alertmanager / REST API] --> ENG[Investigation Engine]
-
+flowchart TD
+    IN["REST API or Alertmanager"] --> CORE["Classic investigation"]
+    IN --> PLAN["Opt-in agentic investigation"]
+    SRC["Typed read-only evidence sources"] --> CORE
+    SRC --> PLAN
     subgraph READ["1. Read-only investigation"]
-      ENG --> PLAN[Bounded Investigation Planner]
-      PLAN --> SPEC[Allow-listed Specialists]
-      SPEC --> ENV[Shared Evidence Envelope]
-      ENV --> DET[Deterministic Evaluator]
+      CORE --> RCA["Classic RCA"]
+      PLAN --> ENV["Specialists and shared envelope"]
+      ENV --> EVAL["Deterministic evaluator"]
+      EVAL --> AR["Agentic API verdict and audit"]
     end
-
-    subgraph SOURCES["Evidence sources"]
-      K8S[Kubernetes]
-      PROM[Prometheus]
-      LOKI[Loki]
-      TEMPO[Tempo / OpenTelemetry]
-      ARGO[Argo CD]
-      GIT[GitHub]
-      KARP[Karpenter]
-    end
-
-    K8S --> SPEC
-    PROM --> SPEC
-    LOKI --> SPEC
-    TEMPO --> SPEC
-    ARGO --> SPEC
-    GIT --> SPEC
-    KARP --> SPEC
-
-    DET --> RCA[Evidence-backed RCA]
-    RCA --> API[FastAPI]
-    API --> WEB[Next.js]
-
     subgraph AWARE["2. Persistent awareness"]
-      INV[Authoritative Kubernetes inventory] --> PAG[(Persistent Awareness Graph)]
-      RCA --> PAG
-      PAG --> CTX[Operational Context Snapshot]
+      RCA --> STORE["Incident persistence"]
+      STORE --> PAG[("Awareness Graph and PostgreSQL/pgvector")]
+      INV["Authoritative inventory"] --> PAG
+      PAG --> CTX["Frozen operational context"]
       CTX --> PLAN
-      PAG --> BR[Blast Radius / Change Timeline]
-      PAG --> DB[(PostgreSQL + pgvector)]
+      PAG --> VIEW["Explorer, blast radius and change timeline"]
     end
-
     subgraph REM["3. Guarded remediation"]
-      RCA --> RP[Remediation Proposal]
-      RP --> POLICY[Policy + dry-run + approval]
-      POLICY --> RID[Separate identity]
-      RID --> ACT[Allow-listed mutation]
+      STORE --> POLICY["Typed proposal, policy, dry-run and approval"]
+      POLICY --> ACT["Separate identity: Deployment scaling"]
     end
-
     subgraph VAL["4. Release validation"]
-      GH[GitHub Actions] --> KIND[Disposable Kind]
-      KIND --> STACK[Prometheus + Loki + Tempo + workloads]
-      STACK --> ENG
-      KIND --> PAG
-      ENG --> REP[JSON / Markdown evidence]
+      GH["GitHub-first gate"] --> KIND["Disposable Kind and telemetry"]
+      KIND --> HAR["Failure, recovery and topology checks"]
+      HAR --> REP["JSON and Markdown evidence"]
     end
 ~~~
 
@@ -160,7 +120,7 @@ Detailed architecture: [docs/architecture.md](docs/architecture.md).
 
 ## Application running
 
-The screenshots below are **real rendered application screens**, not design mockups.
+The screenshots below show **v0.8.0-rc.1 running locally with `DEMO_MODE=true`**, using demo adapters. They are rendered application screens. Real-source validation is recorded separately in the Kind gate reports.
 
 ### Kubernetes investigation
 
@@ -334,6 +294,8 @@ Demo surfaces:
 /ops                      source health
 ~~~
 
+Compose starts in demo mode and defines the backend environment directly in `docker-compose.yml`. Editing `.env` alone does not activate real integrations; configure Compose or use the Helm overrides described in the runbook.
+
 Backend only:
 
 ~~~bash
@@ -344,10 +306,10 @@ pip install -e '.[dev]'
 DEMO_MODE=true uvicorn app.main:app --reload --port 8080
 ~~~
 
-Tests:
+Tests, from the repository root:
 
 ~~~bash
-pytest -q
+(cd backend && pytest -q)
 ~~~
 
 ---
@@ -356,23 +318,15 @@ pytest -q
 
 The repository has a GitHub-first chain that builds and deploys validated images without depending on a developer workstation.
 
-~~~mermaid
-flowchart LR
-    PR[Pull Request] --> G[GitHub-first gate]
-    G -->|validated main| P[Publish test images]
-    P --> GHCR[GHCR]
-    GHCR --> D[Deploy test environment]
-    D --> K[Test Kubernetes cluster]
-    K --> SMOKE[Backend + frontend smoke]
-~~~
+After the gate passes on `main`, `Publish test images` publishes images to GHCR. Deployment is started manually in **Actions → Deploy test environment** and requires cluster credentials configured in the GitHub Environment `test`. The workflow waits for rollouts and runs backend/frontend smoke checks.
 
 Published images:
 
 ~~~text
 ghcr.io/marcocristofolini/ai-sre-rca-backend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-backend:sha-<sha>
+ghcr.io/marcocristofolini/ai-sre-rca-backend:sha-<12-character-sha>
 ghcr.io/marcocristofolini/ai-sre-rca-frontend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-frontend:sha-<sha>
+ghcr.io/marcocristofolini/ai-sre-rca-frontend:sha-<12-character-sha>
 ~~~
 
 Runbook: [docs/test-environment.md](docs/test-environment.md).
@@ -411,6 +365,8 @@ POST /api/v1/planner/plan
 POST /api/v1/planner/execute
 POST /api/v1/planner/investigate
 ~~~
+
+`/plan` only compiles the plan. `/execute` collects evidence and returns no root cause. `/investigate` also runs deterministic evaluation. The last two return 404 while `AGENTIC_EXECUTION_ENABLED=false`, the default. Model-assisted planning additionally requires `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`.
 
 The full OpenAPI interface is available at <code>/docs</code>.
 
@@ -457,7 +413,7 @@ branch
 → gate
 → merge to main
 → Publish test images
-→ Deploy test environment
+→ Deploy test environment (manual)
 ~~~
 
 Release promotion validates the SHA, <code>VERSION</code> and real-environment evidence before creating the tag.
