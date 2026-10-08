@@ -20,6 +20,7 @@ export default async function OpsPage({ searchParams }: Props) {
         <header className="topbar">
           <div className="brand"><span className="brandMark">SRE</span><span>Operations</span></div>
           <div className="topActions">
+            <a className="demoLink" href="/incidents">INCIDENTES</a>
             <a className="demoLink" href="/">K8S DEMO</a>
             <a className="demoLink" href="/trace">TRACE DEMO</a>
             <a className="demoLink" href="/stateful">STATEFUL</a>

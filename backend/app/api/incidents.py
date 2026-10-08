@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.auth import (
     Principal,
@@ -13,7 +13,7 @@ from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
 from app.integrations.demo import StatefulDemoTools, TraceDemoTools
 from app.operations import append_audit, persist_investigation
-from app.schemas import IncidentExport, IncidentInput, InvestigationResult
+from app.schemas import IncidentExport, IncidentInput, IncidentList, InvestigationResult
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
 
@@ -24,7 +24,10 @@ def _require_demo(request: Request) -> None:
 
 
 def _tenant_incident(incident: IncidentInput, principal: Principal) -> IncidentInput:
-    return incident.model_copy(update={"tenant_id": principal.tenant_id})
+    tenant_id = incident.tenant_id if principal.tenant_id == "*" else principal.tenant_id
+    if tenant_id == "*":
+        raise HTTPException(status_code=422, detail="a concrete tenant_id is required")
+    return incident.model_copy(update={"tenant_id": tenant_id})
 
 
 async def _authorized_result(
@@ -170,6 +173,27 @@ async def investigate(
         notify=True,
     )
     return result
+
+
+@router.get("", response_model=IncidentList)
+async def list_incidents(
+    request: Request,
+    principal: Principal = Depends(require_role("viewer")),
+    cluster: str | None = Query(default=None, min_length=1, max_length=255),
+    status: Literal["investigating", "resolved", "inconclusive"] | None = None,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=10000),
+):
+    if cluster is not None:
+        authorize_cluster(principal, cluster)
+    items = await request.app.state.repo.list_incidents(
+        tenant_id=None if principal.tenant_id == "*" else principal.tenant_id,
+        allowed_clusters=None if "*" in principal.clusters else principal.clusters,
+        cluster=cluster, status=status, query=q.strip(), limit=limit + 1, offset=offset,
+    )
+    next_offset = offset + limit if len(items) > limit and offset + limit <= 10000 else None
+    return IncidentList(items=items[:limit], limit=limit, offset=offset, next_offset=next_offset)
 
 
 @router.get("/{incident_id}", response_model=InvestigationResult)

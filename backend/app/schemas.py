@@ -173,6 +173,26 @@ class SimilarIncident(BaseModel):
     namespace: str | None = None
 
 
+class IncidentSummary(BaseModel):
+    incident_id: str
+    title: str
+    tenant_id: str
+    cluster: str
+    namespace: str | None = None
+    status: Literal["investigating", "resolved", "inconclusive"]
+    severity: str
+    root_cause: str
+    investigation_mode: Literal["classic", "agentic"]
+    created_at: datetime
+
+
+class IncidentList(BaseModel):
+    items: list[IncidentSummary]
+    limit: int
+    offset: int
+    next_offset: int | None = None
+
+
 class SpecialistExecutionSummary(BaseModel):
     task_id: str
     specialist: str

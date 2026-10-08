@@ -33,6 +33,14 @@ Ele pode responder perguntas como:
 
 ---
 
+## Histórico e investigação pela interface
+
+Abra `/incidents` para listar diagnósticos autorizados, buscar por título ou ID e filtrar por cluster e estado. A lista usa paginação de 25 itens e não carrega evidências completas. `resolved` significa diagnóstico concluído, não recuperação confirmada.
+
+Em `/incidents/new`, usuários com permissão de investigador informam título, cluster, alerta, severidade e alvo conhecido. O tenant vem da sessão; uma sessão global precisa informar um tenant concreto. O modo agentic aparece somente quando habilitado no servidor. O envio usa Server Actions com autenticação encaminhada no servidor, validação de campos e bloqueio enquanto a chamada está em andamento. Ao concluir, abre o diagnóstico salvo.
+
+O fluxo é síncrono e ainda não mostra progresso por especialista em tempo real. Se a chamada falhar sem confirmação, consulte o histórico antes de reenviar. No modo demo, listagem e formulário informam que a coleta usa adapters de demonstração.
+
 ## Tela de diagnóstico do incidente
 
 A tela de diagnóstico usa tema escuro e um grafo SVG com setas gerado pelas relações retornadas pelo motor. O grafo mostra até 48 entidades conectadas e 96 relações, informa cortes e mantém todas as relações em uma lista textual expansível. A topologia isolada não confirma causalidade.
@@ -44,7 +52,7 @@ A interface apresenta o alerta, o diagnóstico resumido, entidades e relações,
 - “Causa confirmada” exige um resultado concluído com a hipótese raiz confirmada por playbook. Resultados inconclusivos e propostas LLM não recebem esse rótulo. `resolved` descreve a conclusão da investigação, não comprova a recuperação do serviço.
 - As recomendações são informativas nesta tela. As contagens descrevem contexto observado, sem afirmar blast radius ou indisponibilidade. O hash exibido não representa uma nova verificação de integridade.
 
-O CI verifica a navegação, a expansão das hipóteses e evidências, os estados inconclusivo e de acesso restrito, o encaminhamento de autenticação e o layout mobile. As capturas reais renderizadas em Chromium e o relatório ficam no artefato `diagnosis-ui-<run_id>` do [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). As capturas usam o motor em modo demo, não telemetria de produção. A tela agentic inclui execução e decisões do avaliador. A lista de incidentes e o formulário de início de investigação continuam pendentes.
+O CI verifica a navegação, a expansão das hipóteses e evidências, os estados inconclusivo e de acesso restrito, o encaminhamento de autenticação e o layout mobile. As capturas reais renderizadas em Chromium e o relatório ficam no artefato `diagnosis-ui-<run_id>` do [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). As capturas usam o motor em modo demo, não telemetria de produção. A tela agentic inclui execução e decisões do avaliador. A lista e o formulário estão disponíveis; o progresso em tempo real continua pendente.
 
 
 ## O que a aplicação faz
@@ -355,6 +363,7 @@ Runbook: [docs/test-environment.md](docs/test-environment.pt-BR.md).
 
 ~~~text
 GET  /healthz
+GET  /api/v1/incidents?q=&cluster=&status=&limit=25&offset=0
 GET  /api/v1/incidents/{id}
 POST /api/v1/incidents/investigate
 POST /api/v1/webhooks/alertmanager

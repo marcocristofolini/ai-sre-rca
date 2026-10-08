@@ -19,6 +19,9 @@ async def me(
         "roles": sorted(principal.roles),
         "clusters": sorted(principal.clusters),
         "auth_enabled": request.app.state.settings.auth_enabled,
+        "can_investigate": principal.has_role("investigator", request.app.state.settings),
+        "agentic_execution_enabled": request.app.state.settings.agentic_planner_enabled and request.app.state.settings.agentic_execution_enabled,
+        "demo_mode": request.app.state.settings.demo_mode,
     }
 
 

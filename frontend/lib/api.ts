@@ -233,6 +233,9 @@ export type SystemIdentity = {
   roles: string[];
   clusters: string[];
   auth_enabled: boolean;
+  can_investigate?: boolean;
+  agentic_execution_enabled?: boolean;
+  demo_mode?: boolean;
 };
 
 export type CapabilityReport = {
@@ -255,9 +258,10 @@ export async function fetchIdentity(): Promise<SystemIdentity> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
   const res = await fetch(`${base}/api/v1/system/me`, {
     cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
     headers: await forwardedAuthHeaders(),
   });
-  if (!res.ok) throw new Error(`API returned ${res.status}`);
+  if (!res.ok) throw new IncidentFetchError(res.status);
   return res.json();
 }
 
@@ -412,3 +416,37 @@ export async function fetchAwarenessChanges(
 }
 
 
+
+export type IncidentSummary = {
+  incident_id: string; title: string; tenant_id: string; cluster: string;
+  namespace?: string | null; status: string; severity: string; root_cause: string;
+  investigation_mode: 'classic' | 'agentic'; created_at: string;
+};
+export type IncidentList = {
+  items: IncidentSummary[]; limit: number; offset: number; next_offset?: number | null;
+};
+
+export async function fetchIncidents(params: URLSearchParams): Promise<IncidentList> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const response = await fetch(`${base}/api/v1/incidents?${params}`, {
+    cache: 'no-store', headers: await forwardedAuthHeaders(), signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new IncidentFetchError(response.status);
+  return response.json();
+}
+
+export async function startInvestigation(input: Record<string, string>, mode: 'classic' | 'agentic'): Promise<string> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const path = mode === 'agentic' ? '/api/v1/planner/investigate' : '/api/v1/incidents/investigate';
+  const response = await fetch(`${base}${path}`, {
+    method: 'POST', cache: 'no-store',
+    headers: { ...await forwardedAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input), signal: AbortSignal.timeout(180_000),
+  });
+  if (!response.ok) throw new IncidentFetchError(response.status);
+  const result = await response.json();
+  if (typeof result.incident_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(result.incident_id)) {
+    throw new Error('Invalid incident ID returned');
+  }
+  return result.incident_id;
+}

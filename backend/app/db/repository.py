@@ -42,13 +42,18 @@ from app.db.models import (
     RemediationPlanRecord,
 )
 from app.memory.embedding import cosine_similarity, hash_embedding
-from app.schemas import AuditEvent, IncidentInput, InvestigationResult, RemediationPlan, SimilarIncident
+from app.schemas import AuditEvent, IncidentInput, IncidentSummary, InvestigationResult, RemediationPlan, SimilarIncident
 
 
 class InvestigationRepository(Protocol):
     async def initialize(self) -> None: ...
     async def save(self, result: InvestigationResult) -> None: ...
     async def get(self, incident_id: str, tenant_id: str | None = None) -> InvestigationResult | None: ...
+    async def list_incidents(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None = None, status: str | None = None, query: str = "",
+        limit: int = 51, offset: int = 0,
+    ) -> list[IncidentSummary]: ...
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]: ...
     async def get_awareness_graph(
         self,
@@ -294,6 +299,29 @@ class MemoryRepository:
         if tenant_id is not None and result.incident.tenant_id != tenant_id:
             return None
         return result
+
+    async def list_incidents(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None = None, status: str | None = None, query: str = "",
+        limit: int = 51, offset: int = 0,
+    ) -> list[IncidentSummary]:
+        needle = query.casefold()
+        values = [item for item in self._items.values()
+                  if (tenant_id is None or item.incident.tenant_id == tenant_id)
+                  and (allowed_clusters is None or item.incident.cluster in allowed_clusters)
+                  and (cluster is None or item.incident.cluster == cluster)
+                  and (status is None or item.status == status)
+                  and (not needle or needle in item.incident.title.casefold()
+                       or needle in item.incident_id.casefold())]
+        values.sort(key=lambda item: (item.created_at, item.incident_id), reverse=True)
+        return [IncidentSummary(
+            incident_id=item.incident_id, title=item.incident.title,
+            tenant_id=item.incident.tenant_id, cluster=item.incident.cluster,
+            namespace=item.incident.namespace, status=item.status,
+            severity=item.incident.severity, root_cause=item.root_cause.title,
+            investigation_mode="agentic" if item.agentic else "classic",
+            created_at=item.created_at,
+        ) for item in values[offset:offset + limit]]
 
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]:
         query = hash_embedding(incident_fingerprint(incident))
@@ -1207,6 +1235,45 @@ class SQLRepository:
             if not record:
                 return None
             return InvestigationResult.model_validate(record.payload)
+
+    async def list_incidents(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None = None, status: str | None = None, query: str = "",
+        limit: int = 51, offset: int = 0,
+    ) -> list[IncidentSummary]:
+        if allowed_clusters is not None and not allowed_clusters:
+            return []
+        # Select summary fields only, keeping evidence and execution payloads out of list reads.
+        statement = select(
+            InvestigationRecord.id.label("incident_id"), InvestigationRecord.title,
+            InvestigationRecord.tenant_id, InvestigationRecord.cluster,
+            InvestigationRecord.namespace, InvestigationRecord.status,
+            InvestigationRecord.root_cause, InvestigationRecord.created_at,
+            InvestigationRecord.payload["incident"]["severity"].as_string().label("severity"),
+            InvestigationRecord.payload["agentic"]["plan_id"].as_string().label("plan_id"),
+        )
+        if tenant_id is not None:
+            statement = statement.where(InvestigationRecord.tenant_id == tenant_id)
+        if allowed_clusters is not None:
+            statement = statement.where(InvestigationRecord.cluster.in_(allowed_clusters))
+        if cluster is not None:
+            statement = statement.where(InvestigationRecord.cluster == cluster)
+        if status is not None:
+            statement = statement.where(InvestigationRecord.status == status)
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            statement = statement.where(or_(
+                InvestigationRecord.title.ilike(pattern, escape="\\"),
+                InvestigationRecord.id.ilike(pattern, escape="\\"),
+            ))
+        statement = statement.order_by(InvestigationRecord.created_at.desc(), InvestigationRecord.id.desc()).offset(offset).limit(limit)
+        async with self.sessions() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return [IncidentSummary(
+            **{key: value for key, value in row.items() if key != "plan_id"},
+            investigation_mode="agentic" if row["plan_id"] else "classic",
+        ) for row in rows]
 
     async def search_similar(self, incident: IncidentInput, limit: int = 3) -> list[SimilarIncident]:
         vector = hash_embedding(incident_fingerprint(incident))
