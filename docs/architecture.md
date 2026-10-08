@@ -20,6 +20,7 @@ flowchart TD
     end
     subgraph AWARE["2. Persistent awareness"]
       RCA --> STORE["Incident persistence"]
+      STORE --> DIAG["Per-incident diagnosis UI"]
       STORE --> PAG[("Awareness Graph and PostgreSQL/pgvector")]
       INV["Authoritative inventory"] --> PAG
       PAG --> CTX["Frozen operational context"]
@@ -743,3 +744,12 @@ The Redis slice uses OTel service `cache-frontend` and exporter identity `cache:
 Kafka/kafka_exporter failure/recovery validation remains pending. The version stays **v0.8.0-rc.3 development** until those gates pass and release promotion succeeds.
 
 See [../validation/README.md](../validation/README.md) for the executable contract and [test-environment.md](test-environment.md) for deployment of validated images.
+
+
+## Per-incident diagnosis
+
+`InvestigationView` presents classic results in the same workspace on demo routes and `/incidents/{incident_id}`. The persisted route uses the existing authorized API and forwards authentication headers server-side. Access failures and missing incidents never trigger a demo fallback.
+
+The UI retains the `root_cause.hypothesis_id` link to the confirmed hypothesis, exposes supporting and contradicting evidence, and collapses ruled-out hypotheses through native `details/summary` controls. Facts, queries and hashes preserve provenance without claiming an additional integrity verification. Dates render consistently in UTC. Recommendations do not execute actions.
+
+Chromium checks cover demos, persisted results, direct/proxy authentication, missing data, LLM proposals and inconclusive results. Desktop/mobile screenshots and the report are uploaded as `diagnosis-ui-<run_id>`. These document demo data rendered by the application.

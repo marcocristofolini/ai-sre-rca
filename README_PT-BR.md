@@ -33,6 +33,18 @@ Ele pode responder perguntas como:
 
 ---
 
+## Tela de diagnóstico do incidente
+
+A interface apresenta o alerta, o diagnóstico resumido, entidades e relações, hipóteses expansíveis, telemetria, evidências, linha do tempo, RCA final e recomendações de remediação. Hipóteses descartadas começam recolhidas; cada hipótese mantém seus vínculos com evidências de suporte e contrárias. É possível consultar fatos, consulta de origem, horário, referência e hash registrado de cada evidência.
+
+- As rotas `/`, `/trace` e `/stateful/{postgresql|kafka|redis}` usam dados dos adapters de demonstração e exibem essa origem.
+- `/incidents/{incident_id}` consulta uma investigação clássica persistida por `GET /api/v1/incidents/{incident_id}`, encaminhando a autenticação no servidor. O link **Abrir investigação salva** nas demos abre o resultado persistido. Um incidente recebido via webhook ou API pode ser acessado diretamente pelo seu ID nessa rota.
+- “Causa confirmada” exige um resultado concluído com a hipótese raiz confirmada por playbook. Resultados inconclusivos e propostas LLM não recebem esse rótulo. `resolved` descreve a conclusão da investigação, não comprova a recuperação do serviço.
+- As recomendações são informativas nesta tela. As contagens descrevem contexto observado, sem afirmar blast radius ou indisponibilidade. O hash exibido não representa uma nova verificação de integridade.
+
+O CI verifica a navegação, a expansão das hipóteses e evidências, os estados inconclusivo e de acesso restrito, o encaminhamento de autenticação e o layout mobile. As capturas reais renderizadas em Chromium e o relatório ficam no artefato `diagnosis-ui-<run_id>` do [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). As capturas usam o motor em modo demo, não telemetria de produção. A UI agentic continua pendente.
+
+
 ## O que a aplicação faz
 
 | Capacidade | O que entrega |
@@ -486,3 +498,4 @@ docs/                   arquitetura, operação e runbooks
 **Contexto orienta. Evidência prova. O evaluator determinístico decide.**
 
 Esse princípio vale para Kubernetes, traces, dependências stateful, mudanças, memória de incidentes e investigação agentic.
+

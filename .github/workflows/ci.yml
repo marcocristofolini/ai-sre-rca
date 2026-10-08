@@ -230,6 +230,11 @@ jobs:
           cp -r .next/static .next/standalone/.next/static
           if [ -d public ]; then cp -r public .next/standalone/public; fi
 
+      - name: Install diagnosis browser checks
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+
       - name: End-to-end demo smoke test
         shell: bash
         run: |
@@ -360,9 +365,23 @@ jobs:
               html = get(f"{FRONTEND}{path}")
               assert b"AI SRE RCA" in html or b"SRE" in html
 
+          saved_html = get(f"{FRONTEND}/incidents/{incident_id}")
+          assert "Investigação persistida".encode() in saved_html
+          assert kube["root_cause"]["title"].encode() in saved_html
+          get(f"{FRONTEND}/incidents/missing-incident", expected=404)
           get(f"{FRONTEND}/stateful/mysql", expected=404)
           print("E2E smoke test passed")
           PY
+
+          python scripts/validate-diagnosis-ui.py
+
+      - name: Upload diagnosis browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: diagnosis-ui-${{ github.run_id }}
+          path: artifacts/diagnosis-ui/
+          if-no-files-found: warn
 
       - name: Print service logs on failure
         if: failure()
@@ -482,3 +501,4 @@ jobs:
               docker logs "$container" || true
             fi
           done
+
