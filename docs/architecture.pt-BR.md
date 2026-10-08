@@ -20,6 +20,7 @@ flowchart TD
     end
     subgraph AWARE["2. Awareness persistente"]
       RCA --> STORE["Persistência do incidente"]
+      STORE --> DIAG["UI de diagnóstico por incidente"]
       STORE --> PAG[("Awareness Graph e PostgreSQL/pgvector")]
       INV["Inventário autoritativo"] --> PAG
       PAG --> CTX["Contexto operacional congelado"]
@@ -743,3 +744,12 @@ A etapa Redis usa `cache-frontend` como serviço OTel e `cache:6379` como identi
 O cenário de falha/recuperação de Kafka/kafka_exporter ainda está pendente. A versão continua **v0.8.0-rc.3 em desenvolvimento** até esses gates passarem e a promoção da release ser concluída.
 
 Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contrato executável e [test-environment.pt-BR.md](test-environment.pt-BR.md) para implantar as imagens validadas.
+
+
+## Diagnóstico por incidente
+
+`InvestigationView` apresenta o resultado clássico no mesmo workspace nas demos e em `/incidents/{incident_id}`. A rota persistida usa a API autorizada existente e encaminha os headers de autenticação no servidor. Falhas de acesso e incidentes ausentes não acionam fallback para demo.
+
+A UI mantém o vínculo `root_cause.hypothesis_id` com a hipótese confirmada, mostra evidências favoráveis e contrárias e recolhe hipóteses descartadas usando controles nativos `details/summary`. A exibição de fatos, consultas e hashes preserva a proveniência sem afirmar uma verificação de integridade adicional. Datas são exibidas em UTC de forma consistente. Recomendações não executam ações.
+
+Os testes em Chromium exercitam demos, resultados persistidos, autenticação direta/proxy, ausência de dados, proposta LLM e resultado inconclusivo. Capturas desktop/mobile e o relatório ficam no artefato `diagnosis-ui-<run_id>`. Elas documentam dados demo renderizados pela aplicação.

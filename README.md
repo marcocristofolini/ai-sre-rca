@@ -33,6 +33,18 @@ It can answer questions such as:
 
 ---
 
+## Incident diagnosis workspace
+
+The interface presents alert context, diagnosis summary, entities and relationships, expandable hypotheses, runtime telemetry, evidence, timeline, final RCA and remediation recommendations. Ruled-out hypotheses start collapsed. Each hypothesis retains its supporting and contradicting evidence links; evidence exposes collected facts, source query, timestamp, reference and recorded hash.
+
+- `/`, `/trace` and `/stateful/{postgresql|kafka|redis}` use demo adapters and visibly identify that data origin.
+- `/incidents/{incident_id}` reads a persisted classic investigation through `GET /api/v1/incidents/{incident_id}`, forwarding authentication server-side. The saved-investigation link on demo pages opens the persisted result. Webhook/API investigations can be opened directly using their incident ID.
+- A confirmed-cause badge requires a completed result whose root hypothesis is confirmed by a playbook. Inconclusive results and LLM proposals cannot receive that badge. `resolved` means the investigation concluded; it does not establish service recovery.
+- Recommendations remain informational in this view. Counts describe observed context rather than confirmed blast radius or downtime. Displaying a recorded hash does not reverify evidence integrity.
+
+CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic UI remains pending.
+
+
 ## What the application does
 
 | Capability | What it delivers |
@@ -486,3 +498,4 @@ docs/                   architecture, operations and runbooks
 **Context guides. Evidence proves. The deterministic evaluator decides.**
 
 That principle applies to Kubernetes, traces, stateful dependencies, changes, incident memory and agentic investigation.
+

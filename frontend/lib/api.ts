@@ -21,6 +21,7 @@ export type Investigation = {
     service?: string;
     severity: string;
     alert_name: string;
+    starts_at?: string;
   };
   entities: Array<{
     id: string;
@@ -38,6 +39,10 @@ export type Investigation = {
     summary: string;
     strength: string;
     facts: Record<string, unknown>;
+    observed_at?: string;
+    query?: string | null;
+    raw_reference?: string | null;
+    integrity_sha256?: string | null;
   }>;
   hypotheses: Array<{
     id: string;
@@ -61,13 +66,15 @@ export type Investigation = {
   }>;
   timeline: Array<{ timestamp: string; source: string; message: string }>;
   root_cause: {
+    hypothesis_id?: string | null;
     title: string;
     summary: string;
     evidence_strength: string;
     supporting_signals: number;
     contradicting_signals: number;
   };
-  remediation: Array<{ priority: string; action: string; reason: string }>;
+  remediation: Array<{ priority: string; action: string; reason: string; requires_approval?: boolean }>;
+  created_at?: string;
   trace_analyses: Array<{
     trace_id: string;
     root_service: string;
@@ -142,6 +149,23 @@ async function forwardedAuthHeaders(): Promise<Record<string, string>> {
       ? proxiedToken
       : `Bearer ${proxiedToken}`,
   };
+}
+
+export class IncidentFetchError extends Error {
+  constructor(public readonly status: number) {
+    super(`Incident API returned ${status}`);
+  }
+}
+
+export async function fetchIncident(incidentId: string): Promise<Investigation> {
+  const base = process.env.API_URL ?? 'http://localhost:8080';
+  const res = await fetch(`${base}/api/v1/incidents/${encodeURIComponent(incidentId)}`, {
+    cache: 'no-store',
+    headers: await forwardedAuthHeaders(),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new IncidentFetchError(res.status);
+  return res.json();
 }
 
 export async function fetchDemo(): Promise<Investigation> {
@@ -362,4 +386,5 @@ export async function fetchAwarenessChanges(
   if (!res.ok) throw new Error(`Awareness changes API returned ${res.status}`);
   return res.json();
 }
+
 
