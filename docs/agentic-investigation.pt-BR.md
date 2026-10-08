@@ -256,3 +256,12 @@ O resultado inclui `root_cause` determinística somente quando todos esses gates
 A release candidate já inclui ChangeEvents first-class, o explorer read-only do Persistent Awareness Graph, reconciliação autoritativa com tombstones, Operational Context Snapshot congelado, compilação assistida por modelo atrás de gates determinísticos no servidor, scoping determinístico dos especialistas, execução paralela read-only atrás de feature flag opt-in e avaliação do shared envelope.
 
 O gate de ambiente real da v0.8.0-rc.1 valida a paridade do specialist Kubernetes e a reconciliação do grafo persistente contra um cluster real descartável. O próximo alvo, v0.8.0-rc.2, deve executar planner e executor contra dados reais de Prometheus, Loki e Tempo/OpenTelemetry produzidos por um workload instrumentado. O modelo de autoridade continua igual: modelo/planner escolhem o trabalho de investigação, enquanto evidência live tipada e gates determinísticos decidem o verdict.
+
+
+## Diagnóstico salvo e UI
+
+Após a avaliação, `/planner/investigate` salva uma projeção do diagnóstico, inclusive quando inconclusivo, e retorna `incident_id` e `investigation_url`. `GET /api/v1/incidents/{id}` e `/incidents/{id}` permitem reabrir o resultado usando as mesmas permissões de tenant/cluster dos incidentes clássicos. A feature flag controla novas execuções; diagnósticos já persistidos continuam acessíveis aos viewers autorizados.
+
+A projeção mantém evidências e hashes, análises trace/stateful, hipóteses avaliadas, linha do tempo, budgets e metadata `agentic` versionada. Essa metadata contém estados e limites de cada especialista, decisões/motivos e o explanation graph. Não é uma cópia integral do plano nem do contexto operacional congelado. Bloqueios do avaliador são exibidos como inconclusivos; apenas a hipótese `selected` pode ser destacada como raiz. A conclusão da investigação não comprova recuperação do serviço.
+
+O caminho é síncrono, sem fila ou atualização em tempo real. `/plan` e `/execute` permanecem sem persistência de diagnóstico. Notificações e geração de remediação não são ativadas nesse fluxo.

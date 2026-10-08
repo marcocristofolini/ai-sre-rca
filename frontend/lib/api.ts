@@ -8,7 +8,31 @@ export type GraphEdge = {
   evidence_ids: string[];
 };
 
+export type AgenticDiagnosis = {
+  schema_version: 'ai-sre-rca.agentic-diagnosis.v1';
+  plan_id: string;
+  planner_origin: 'deterministic' | 'model-assisted';
+  execution_status: 'completed' | 'partial' | 'failed';
+  evidence_integrity_ok: boolean;
+  started_at: string;
+  finished_at: string;
+  specialists: Array<{
+    task_id: string; specialist: string; status: string;
+    query_count: number; query_limit: number; integrity_ok: boolean;
+    reason: string; error_type?: string | null;
+    started_at: string; finished_at: string;
+  }>;
+  decisions: Array<{
+    hypothesis_id: string; specialist: string; decision: string; reasons: string[];
+  }>;
+  explanation_graph: {
+    nodes: Array<{ id: string; kind: string; label: string; status: string; metadata: Record<string, unknown> }>;
+    edges: Array<{ source: string; target: string; relationship: string }>;
+  };
+};
+
 export type Investigation = {
+  agentic?: AgenticDiagnosis | null;
   incident_id: string;
   status: string;
   incident: {

@@ -242,7 +242,7 @@ jobs:
 
           (
             cd backend
-            DEMO_MODE=true DATABASE_URL= LLM_ENABLED=false \
+            DEMO_MODE=true DATABASE_URL= LLM_ENABLED=false AGENTIC_EXECUTION_ENABLED=true \
               python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
           ) >/tmp/ai-sre-backend.log 2>&1 &
           BACKEND_PID=$!

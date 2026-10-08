@@ -4,7 +4,7 @@
 
 ## System overview
 
-The platform has four planes. Classic investigation persists incidents and updates the graph. The agentic path uses graph context, collects evidence and returns its API verdict with audit events. Remediation runs with a separate identity, while release validation exercises failure and recovery scenarios in a disposable cluster.
+The platform has four planes. Classic investigation persists incidents and updates the graph. The agentic path uses graph context, collects evidence and persists the evaluated diagnosis for the API/UI with audit events. Remediation runs with a separate identity, while release validation exercises failure and recovery scenarios in a disposable cluster.
 
 ```mermaid
 flowchart TD
@@ -16,7 +16,8 @@ flowchart TD
       CORE --> RCA["Classic RCA"]
       PLAN --> ENV["Specialists and shared envelope"]
       ENV --> EVAL["Deterministic evaluator"]
-      EVAL --> AR["Agentic API verdict and audit"]
+      EVAL --> AR["Evaluated agentic diagnosis"]
+      AR --> STORE
     end
     subgraph AWARE["2. Persistent awareness"]
       RCA --> STORE["Incident persistence"]
@@ -38,7 +39,7 @@ flowchart TD
     end
 ```
 
-`AGENTIC_EXECUTION_ENABLED=false` is the default. `/api/v1/planner/plan` compiles a plan; `/execute` collects evidence without a root cause; `/investigate` also runs deterministic evaluation. The agentic result is not currently persisted as an incident or presented in the UI. Model-assisted planning requires `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`.
+`AGENTIC_EXECUTION_ENABLED=false` is the default. `/api/v1/planner/plan` compiles a plan; `/execute` collects evidence without a root cause; `/investigate` also runs deterministic evaluation. The evaluated agentic diagnosis is persisted and presented in the incident UI. Model-assisted planning requires `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`.
 
 The main correctness boundary is unchanged: live typed evidence and deterministic gates decide what can be asserted. The planner and optional LLM can narrow or prioritize investigation, but they cannot manufacture graph facts, evidence, scores, or a root-cause verdict.
 
@@ -753,3 +754,10 @@ See [../validation/README.md](../validation/README.md) for the executable contra
 The UI retains the `root_cause.hypothesis_id` link to the confirmed hypothesis, exposes supporting and contradicting evidence, and collapses ruled-out hypotheses through native `details/summary` controls. Facts, queries and hashes preserve provenance without claiming an additional integrity verification. Dates render consistently in UTC. Recommendations do not execute actions.
 
 Chromium checks cover demos, persisted results, direct/proxy authentication, missing data, LLM proposals and inconclusive results. Desktop/mobile screenshots and the report are uploaded as `diagnosis-ui-<run_id>`. These document demo data rendered by the application.
+
+
+### Agentic persistence
+
+`/planner/investigate` materializes evaluated hypotheses into `InvestigationResult`. Optional `agentic` metadata stores plan ID/origin, integrity, timing, specialist summaries, decisions and explanation graph. Evidence, entities and edges come from the shared envelope; frozen Awareness Graph context is never reingested as a current observation. Existing JSON storage needs no migration and remains compatible with older incidents.
+
+Hypotheses blocked by precedence, incomplete context or invalid evidence are projected as inconclusive while retaining original decisions and reasons. The UI requires a `selected` decision and valid integrity to highlight an agentic cause. An inconclusive result gets an explicit conclusion without a root hypothesis. The API retains execution/evaluation and adds the saved incident ID/link. Audit events link to that ID; this flow does not automatically send notifications or generate remediations.

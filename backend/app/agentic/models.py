@@ -317,5 +317,7 @@ class AgenticExecutionResult(BaseModel):
 
 
 class AgenticInvestigationResult(BaseModel):
+    incident_id: str | None = None
+    investigation_url: str | None = None
     execution: AgenticExecutionResult
     evaluation: AgenticEvaluationResult

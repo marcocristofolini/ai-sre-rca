@@ -44,7 +44,7 @@ The interface presents alert context, diagnosis summary, entities and relationsh
 - A confirmed-cause badge requires a completed result whose root hypothesis is confirmed by a playbook. Inconclusive results and LLM proposals cannot receive that badge. `resolved` means the investigation concluded; it does not establish service recovery.
 - Recommendations remain informational in this view. Counts describe observed context rather than confirmed blast radius or downtime. Displaying a recorded hash does not reverify evidence integrity.
 
-CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic UI remains pending.
+CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic workspace includes execution and evaluator decisions. An incident list and investigation form remain pending.
 
 
 ## What the application does
@@ -68,7 +68,7 @@ CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted
 
 ## How an investigation works
 
-`POST /api/v1/incidents/investigate` uses the classic engine and persists the incident, updating the graph. The agentic path at `/api/v1/planner/investigate` is experimental and requires `AGENTIC_EXECUTION_ENABLED=true`. It returns execution, evaluation and explanation through the API and records audit events; it does not currently persist that result as an incident or publish it in the UI.
+`POST /api/v1/incidents/investigate` uses the classic engine and persists the incident, updating the graph. The experimental `/api/v1/planner/investigate` path requires `AGENTIC_EXECUTION_ENABLED=true`. It returns execution, evaluation, `incident_id` and `investigation_url`, persists the evaluated diagnosis and records incident-linked audit events. Open the returned link to inspect specialists, budgets, decisions and evidence in the same workspace. `/plan` and `/execute` still do not persist a diagnosis.
 
 ~~~mermaid
 flowchart TD
@@ -85,8 +85,9 @@ flowchart TD
     ENV --> VERIFY{"Integrity and causal gates pass?"}
     VERIFY -->|Yes| RESULT["Deterministic verdict and explanation"]
     VERIFY -->|No| INC["Inconclusive evaluation"]
-    RESULT --> RESP["API response and audit"]
-    INC --> RESP
+    RESULT --> PERSIST["Persist evaluated diagnosis"]
+    INC --> PERSIST
+    PERSIST --> RESP["API, audit and incident UI"]
 ~~~
 
 The optional LLM may help **prioritize investigation branches**, but it cannot create evidence, choose arbitrary tools, change budgets, write graph facts or confirm a root cause.
@@ -107,7 +108,8 @@ flowchart TD
       CORE --> RCA["Classic RCA"]
       PLAN --> ENV["Specialists and shared envelope"]
       ENV --> EVAL["Deterministic evaluator"]
-      EVAL --> AR["Agentic API verdict and audit"]
+      EVAL --> AR["Persisted and audited agentic diagnosis"]
+      AR --> STORE
     end
     subgraph AWARE["2. Persistent awareness"]
       RCA --> STORE["Incident persistence"]

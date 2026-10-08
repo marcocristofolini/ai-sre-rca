@@ -44,7 +44,7 @@ A interface apresenta o alerta, o diagnóstico resumido, entidades e relações,
 - “Causa confirmada” exige um resultado concluído com a hipótese raiz confirmada por playbook. Resultados inconclusivos e propostas LLM não recebem esse rótulo. `resolved` descreve a conclusão da investigação, não comprova a recuperação do serviço.
 - As recomendações são informativas nesta tela. As contagens descrevem contexto observado, sem afirmar blast radius ou indisponibilidade. O hash exibido não representa uma nova verificação de integridade.
 
-O CI verifica a navegação, a expansão das hipóteses e evidências, os estados inconclusivo e de acesso restrito, o encaminhamento de autenticação e o layout mobile. As capturas reais renderizadas em Chromium e o relatório ficam no artefato `diagnosis-ui-<run_id>` do [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). As capturas usam o motor em modo demo, não telemetria de produção. A UI agentic continua pendente.
+O CI verifica a navegação, a expansão das hipóteses e evidências, os estados inconclusivo e de acesso restrito, o encaminhamento de autenticação e o layout mobile. As capturas reais renderizadas em Chromium e o relatório ficam no artefato `diagnosis-ui-<run_id>` do [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). As capturas usam o motor em modo demo, não telemetria de produção. A tela agentic inclui execução e decisões do avaliador. A lista de incidentes e o formulário de início de investigação continuam pendentes.
 
 
 ## O que a aplicação faz
@@ -68,7 +68,7 @@ O CI verifica a navegação, a expansão das hipóteses e evidências, os estado
 
 ## Como uma investigação funciona
 
-`POST /api/v1/incidents/investigate` usa o engine clássico e persiste o incidente, atualizando o grafo. O caminho agentic em `/api/v1/planner/investigate` é experimental e exige `AGENTIC_EXECUTION_ENABLED=true`. Ele retorna execução, avaliação e explicação pela API e registra auditoria; atualmente não persiste esse resultado como incidente nem o publica na UI.
+`POST /api/v1/incidents/investigate` usa o engine clássico e persiste o incidente, atualizando o grafo. O caminho agentic em `/api/v1/planner/investigate` é experimental e exige `AGENTIC_EXECUTION_ENABLED=true`. Ele retorna execução, avaliação, `incident_id` e `investigation_url`, persiste o diagnóstico avaliado e registra auditoria vinculada ao incidente. Abra o link retornado para consultar especialistas, budgets, decisões e evidências na mesma tela. `/plan` e `/execute` continuam sem persistir um diagnóstico.
 
 ~~~mermaid
 flowchart TD
@@ -85,8 +85,9 @@ flowchart TD
     ENV --> VERIFY{"Integridade e gates causais passam?"}
     VERIFY -->|Sim| RESULT["Veredito determinístico e explicação"]
     VERIFY -->|Não| INC["Avaliação inconclusiva"]
-    RESULT --> RESP["Resposta da API e auditoria"]
-    INC --> RESP
+    RESULT --> PERSIST["Persistir diagnóstico avaliado"]
+    INC --> PERSIST
+    PERSIST --> RESP["API, auditoria e tela do incidente"]
 ~~~
 
 O LLM opcional pode ajudar a **priorizar ramos de investigação**, mas não pode criar evidência, escolher ferramentas arbitrárias, alterar budgets, escrever no grafo ou confirmar uma causa raiz.
@@ -107,7 +108,8 @@ flowchart TD
       CORE --> RCA["RCA clássico"]
       PLAN --> ENV["Especialistas e shared envelope"]
       ENV --> EVAL["Avaliador determinístico"]
-      EVAL --> AR["Veredito agentic pela API e auditoria"]
+      EVAL --> AR["Diagnóstico agentic persistido e auditado"]
+      AR --> STORE
     end
     subgraph AWARE["2. Awareness persistente"]
       RCA --> STORE["Persistência do incidente"]

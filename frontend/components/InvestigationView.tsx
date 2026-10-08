@@ -1,5 +1,6 @@
 import type { Investigation } from '../lib/api';
 import IncidentGraph from './IncidentGraph';
+import AgenticExecution from './AgenticExecution';
 
 type Evidence = Investigation['evidence'][number];
 type StatefulSignal = Investigation['stateful_dependencies'][number]['signals'][number];
@@ -8,6 +9,7 @@ const statusLabel: Record<string, string> = {
   confirmed: 'Confirmada', ruled_out: 'Descartada', testing: 'Em análise',
   proposed: 'Proposta', inconclusive: 'Inconclusiva',
 };
+const decisionLabel: Record<string, string> = { selected: 'Selecionada como causa raiz', supported: 'Sustentada pelas evidências', testing: 'Em análise', ruled_out: 'Descartada', inconclusive: 'Inconclusiva', blocked_by_precedence: 'Bloqueada por precedência', blocked_by_incomplete_context: 'Bloqueada por contexto incompleto', invalid_evidence: 'Evidência inválida' };
 const strengthLabel: Record<string, string> = { strong: 'Forte', medium: 'Moderada', weak: 'Fraca' };
 const statusSymbol: Record<string, string> = { confirmed: '✓', ruled_out: '×', testing: '…', proposed: '?', inconclusive: '?' };
 
@@ -74,7 +76,8 @@ export default function InvestigationView({ data, mode = 'demo' }: {
   const evidence = new Map(data.evidence.map((item) => [item.id, item]));
   const entities = new Map(data.entities.map((item) => [item.id, item]));
   const rootHypothesis = data.hypotheses.find((item) => item.id === data.root_cause.hypothesis_id);
-  const hasConfirmedRoot = data.status === 'resolved' && rootHypothesis?.status === 'confirmed' && rootHypothesis.origin !== 'llm';
+  const rootDecision = data.agentic?.decisions.find((item) => item.hypothesis_id === rootHypothesis?.id);
+  const hasConfirmedRoot = data.status === 'resolved' && rootHypothesis?.status === 'confirmed' && rootHypothesis.origin !== 'llm' && (!data.agentic || (data.agentic.evidence_integrity_ok && rootDecision?.decision === 'selected'));
   const groups = new Map<string, Investigation['entities']>();
   for (const entity of data.entities) groups.set(entity.kind, [...(groups.get(entity.kind) ?? []), entity]);
   const observedServices = new Set([
@@ -115,6 +118,7 @@ export default function InvestigationView({ data, mode = 'demo' }: {
             <a href="#alert-info">Informações do alerta</a>
             <a href="#entities">Entidades e relações</a>
             <a href="#hypotheses">Hipóteses</a>
+            {data.agentic && <a href="#agentic-execution">Execução agentic</a>}
             <a href="#runtime">Telemetria e traces</a>
             <a href="#evidence">Evidências</a>
             <a href="#timeline">Linha do tempo</a>
@@ -167,17 +171,21 @@ export default function InvestigationView({ data, mode = 'demo' }: {
             </details>}
             {!data.graph_edges.length && <p className="muted">Nenhuma relação retornada pelo motor.</p>}
           </section>
+          {data.agentic && <AgenticExecution data={data.agentic} />}
           <section id="hypotheses" className="panel diagnosisSection">
             <div className="sectionLabel">03 · Caminhos da investigação</div><h2>Hipóteses e verificações</h2>
             <p className="muted">Abra uma hipótese para consultar o raciocínio, os sinais de suporte e as evidências que a contradizem.</p>
             <div className="diagnosisHypothesisTree">{sortedHypotheses.map((h) => {
-              const status = h.origin === 'llm' ? 'proposed' : h.status;
+              const decision = data.agentic?.decisions.find((item) => item.hypothesis_id === h.id);
+              const blocked = decision && ['blocked_by_precedence', 'blocked_by_incomplete_context', 'invalid_evidence'].includes(decision.decision);
+              const status = h.origin === 'llm' ? 'proposed' : blocked ? 'inconclusive' : h.status;
               const isRoot = hasConfirmedRoot && h.id === rootHypothesis?.id;
               return (
                 <details className={`diagnosisHypothesis ${status} ${isRoot ? 'rootHypothesis' : ''}`} key={h.id} open={status !== 'ruled_out'}>
                   <summary><span className="diagnosisHypothesisSymbol" aria-hidden="true">{statusSymbol[status] ?? '?'}</span><strong>{h.statement}</strong><span className={`diagnosisHypothesisStatus ${status}`}>{isRoot ? 'Causa raiz' : statusLabel[status] ?? status}</span></summary>
-                  <div className="diagnosisHypothesisBody"><p>{h.rationale || 'Sem justificativa registrada.'}</p>
-                    <div className="diagnosisNote">{h.origin === 'llm' ? 'Proposta do LLM. Requer validação independente.' : `Avaliada pelo playbook · score ${h.score.toFixed(1)} (não é probabilidade)`}</div>
+                  <div className="diagnosisHypothesisBody">{!decision && <p>{h.rationale || 'Sem justificativa registrada.'}</p>}
+                    <div className="diagnosisNote">{h.origin === 'llm' ? 'Proposta do LLM. Requer validação independente.' : `Avaliada pelo ${data.agentic ? 'avaliador determinístico' : 'playbook'} · score ${h.score.toFixed(1)} (não é probabilidade)`}</div>
+                    {decision && <div className="agenticDecision"><h4>{decisionLabel[decision.decision] ?? decision.decision}</h4><p>Especialista: {decision.specialist}</p>{!!decision.reasons.length && <ul>{decision.reasons.map((reason, i) => <li key={i}>{reason}</li>)}</ul>}</div>}
                     <EvidenceRefs ids={h.supporting_evidence} evidence={evidence} label="Evidências de suporte" />
                     <EvidenceRefs ids={h.contradicting_evidence} evidence={evidence} label="Evidências contrárias" />
                     {!!h.required_checks.length && <div><h4>Verificações necessárias</h4><ul>{h.required_checks.map((check, i) => <li key={`${h.id}-${i}`}>{check}</li>)}</ul></div>}

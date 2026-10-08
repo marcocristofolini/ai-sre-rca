@@ -251,6 +251,10 @@ Agentic investigation foundation:
 - [x] Kubernetes direct-signal precedence gate blocks downstream promotion
 - [x] higher-precedence specialist completeness gate prevents absence-by-failure promotion
 - [x] composed `/planner/investigate` endpoint with deterministic verdict
+- [x] persisted evaluated agentic diagnosis with incident ID/link and incident-scoped audit
+- [x] agentic diagnosis UI with specialist execution, budgets and evaluator decisions
+- [ ] incident list and investigation creation form
+- [ ] live investigation progress and asynchronous execution
 - [x] Kubernetes specialist parity with the full infrastructure playbook engine
 - [x] shared Kubernetes stage reused by classic and agentic investigation paths
 - [x] eviction, OOMKilled, CrashLoopBackOff, FailedScheduling/Karpenter, HPA, KEDA and NodeNotReady parity regressions
