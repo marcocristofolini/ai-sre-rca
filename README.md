@@ -35,6 +35,8 @@ It can answer questions such as:
 
 ## Incident diagnosis workspace
 
+The diagnosis workspace uses a scoped dark theme and a directed SVG topology built from the returned graph edges. The graph displays up to 48 connected entities and 96 relationships, announces truncation, and keeps every relationship in an expandable text list. Topology alone does not establish causality.
+
 The interface presents alert context, diagnosis summary, entities and relationships, expandable hypotheses, runtime telemetry, evidence, timeline, final RCA and remediation recommendations. Ruled-out hypotheses start collapsed. Each hypothesis retains its supporting and contradicting evidence links; evidence exposes collected facts, source query, timestamp, reference and recorded hash.
 
 - `/`, `/trace` and `/stateful/{postgresql|kafka|redis}` use demo adapters and visibly identify that data origin.

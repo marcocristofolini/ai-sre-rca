@@ -89,6 +89,13 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 page.screenshot(path=str(OUT / f'{name}-desktop.png'), full_page=True)
                 checks.append(f'{name}: engine diagnosis and desktop render')
             page.goto(FRONTEND, wait_until='networkidle')
+            expect(page.get_by_role('img', name='Entidades e relações observadas nesta investigação')).to_be_visible()
+            expected_nodes = len({endpoint for edge in baseline['graph_edges'] for endpoint in (edge['source'], edge['target'])})
+            expect(page.locator('.incidentTopologyNode')).to_have_count(min(48, expected_nodes))
+            page.get_by_text('Consultar relações em texto', exact=True).click()
+            expect(page.locator('.diagnosisRelationsText .entityGraph')).to_be_visible()
+            expect(page.locator('.diagnosisRelationsText .graphEdge')).to_have_count(len(baseline['graph_edges']))
+            checks.append('SVG topology uses actual graph endpoints; text fallback retains all relations')
             ruled_out = page.locator('.diagnosisHypothesis.ruled_out').first
             expect(ruled_out).not_to_have_attribute('open', '')
             ruled_out.locator('summary').click()
