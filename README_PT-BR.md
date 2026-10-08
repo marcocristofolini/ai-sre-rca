@@ -35,6 +35,8 @@ Ele pode responder perguntas como:
 
 ## Tela de diagnóstico do incidente
 
+A tela de diagnóstico usa tema escuro e um grafo SVG com setas gerado pelas relações retornadas pelo motor. O grafo mostra até 48 entidades conectadas e 96 relações, informa cortes e mantém todas as relações em uma lista textual expansível. A topologia isolada não confirma causalidade.
+
 A interface apresenta o alerta, o diagnóstico resumido, entidades e relações, hipóteses expansíveis, telemetria, evidências, linha do tempo, RCA final e recomendações de remediação. Hipóteses descartadas começam recolhidas; cada hipótese mantém seus vínculos com evidências de suporte e contrárias. É possível consultar fatos, consulta de origem, horário, referência e hash registrado de cada evidência.
 
 - As rotas `/`, `/trace` e `/stateful/{postgresql|kafka|redis}` usam dados dos adapters de demonstração e exibem essa origem.

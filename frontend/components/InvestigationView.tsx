@@ -1,4 +1,5 @@
 import type { Investigation } from '../lib/api';
+import IncidentGraph from './IncidentGraph';
 
 type Evidence = Investigation['evidence'][number];
 type StatefulSignal = Investigation['stateful_dependencies'][number]['signals'][number];
@@ -154,6 +155,8 @@ export default function InvestigationView({ data, mode = 'demo' }: {
             ))}</div>
             {!data.entities.length && <p className="muted">Nenhuma entidade identificada nesta investigação.</p>}
             <h3>Como se relacionam</h3>
+            <IncidentGraph data={data} />
+            {!!data.graph_edges.length && <details className="diagnosisRelationsText"><summary>Consultar relações em texto</summary>
             <div className="entityGraph">{data.graph_edges.map((edge, index) => (
               <div className="graphEdge" key={`${edge.source}-${edge.relationship}-${edge.target}-${index}`}>
                 <div className="graphNode"><span>{entities.get(edge.source)?.kind ?? 'Entidade'}</span><strong>{entities.get(edge.source)?.name ?? edge.source}</strong></div>
@@ -161,6 +164,7 @@ export default function InvestigationView({ data, mode = 'demo' }: {
                 <div className="graphNode"><span>{entities.get(edge.target)?.kind ?? 'Entidade'}</span><strong>{entities.get(edge.target)?.name ?? edge.target}</strong></div>
               </div>
             ))}</div>
+            </details>}
             {!data.graph_edges.length && <p className="muted">Nenhuma relação retornada pelo motor.</p>}
           </section>
           <section id="hypotheses" className="panel diagnosisSection">
