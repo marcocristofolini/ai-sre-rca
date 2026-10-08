@@ -9,7 +9,7 @@ import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -21,6 +21,11 @@ FIXTURE_FRONTEND = 'http://127.0.0.1:13002'
 with urlopen('http://127.0.0.1:18080/api/v1/incidents/demo', timeout=30) as response:
     baseline = json.load(response)
 
+with urlopen(Request('http://127.0.0.1:18080/api/v1/planner/investigate', data=json.dumps(baseline['incident']).encode(), headers={'Content-Type': 'application/json'}), timeout=60) as response:
+    agentic_result = json.load(response)
+with urlopen(f"http://127.0.0.1:18080/api/v1/incidents/{agentic_result['incident_id']}", timeout=30) as response:
+    agentic_diagnosis = json.load(response)
+
 
 class FixtureAPI(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -28,7 +33,15 @@ class FixtureAPI(BaseHTTPRequestHandler):
         code = 200
         result = copy.deepcopy(baseline)
         result['incident_id'] = name
-        if name == 'ui-missing':
+        if name == 'ui-agentic-blocked':
+            result = copy.deepcopy(agentic_diagnosis)
+            result['incident_id'] = name
+            root_id = result['root_cause']['hypothesis_id']
+            for decision in result['agentic']['decisions']:
+                if decision['hypothesis_id'] == root_id:
+                    decision['decision'] = 'blocked_by_incomplete_context'
+                    decision['reasons'] = ['Required specialist did not complete']
+        elif name == 'ui-missing':
             code = 404
         elif name in ('ui-restricted', 'ui-unauthenticated'):
             code = 403 if name == 'ui-restricted' else 401
@@ -110,6 +123,19 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
             expect(page.get_by_text('Investigação persistida', exact=True)).to_be_visible()
             expect(page.get_by_role('heading', name=baseline['incident']['title'], exact=True)).to_be_visible()
             checks.append('persisted incident renders same diagnosis without demo fallback')
+            page.goto(f"{FRONTEND}{agentic_result['investigation_url']}", wait_until='networkidle')
+            expect(page.get_by_role('heading', name='Execução dos especialistas', exact=True)).to_be_visible()
+            expect(page.locator('.agenticSpecialist')).to_have_count(len(agentic_diagnosis['agentic']['specialists']))
+            expect(page.locator('.agenticDecision')).to_have_count(len(agentic_diagnosis['agentic']['decisions']))
+            page.get_by_text('Consultar relações da explicação do avaliador', exact=True).click()
+            expect(page.locator('.agenticExplanation')).to_have_attribute('open', '')
+            page.screenshot(path=str(OUT / 'agentic-desktop.png'), full_page=True)
+            checks.append('actual agentic execution persists and renders specialists, evaluator decisions and explanation')
+            page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-agentic-blocked', wait_until='networkidle')
+            expect(page.get_by_text('Causa confirmada pelo motor', exact=True)).to_have_count(0)
+            expect(page.locator('.rootHypothesis')).to_have_count(0)
+            expect(page.get_by_role('heading', name='Bloqueada por contexto incompleto', exact=True)).to_be_visible()
+            checks.append('blocked agentic decision never displays confirmed root even with inconsistent upstream status')
             page.set_viewport_size({'width': 390, 'height': 844})
             page.goto(f'{FRONTEND}/stateful/redis', wait_until='networkidle')
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'mobile horizontal overflow'

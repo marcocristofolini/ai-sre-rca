@@ -10,8 +10,9 @@ from app.agentic.models import (
     InvestigationPlan,
 )
 from app.agentic.planner import build_investigation_plan
+from app.agentic.persistence import materialize_agentic_diagnosis
 from app.auth import Principal, authorize_cluster, require_role
-from app.operations import append_audit
+from app.operations import append_audit, persist_investigation
 from app.schemas import IncidentInput
 
 router = APIRouter(prefix="/api/v1/planner", tags=["planner"])
@@ -231,12 +232,17 @@ async def investigate_agentically(
         settings=settings,
     )
     evaluation = evaluate_shared_evidence(execution)
+    diagnosis = materialize_agentic_diagnosis(execution, evaluation)
+    await persist_investigation(
+        request.app, diagnosis, actor=principal.subject, notify=False,
+    )
 
     await append_audit(
         request.app,
         tenant_id=scoped_incident.tenant_id,
         actor=principal.subject,
         action="planner.investigation_evaluated",
+        incident_id=diagnosis.incident_id,
         detail={
             "plan_id": plan.id,
             "cluster": plan.cluster,
@@ -267,6 +273,8 @@ async def investigate_agentically(
     )
 
     return AgenticInvestigationResult(
+        incident_id=diagnosis.incident_id,
+        investigation_url=f"/incidents/{diagnosis.incident_id}",
         execution=execution,
         evaluation=evaluation,
     )

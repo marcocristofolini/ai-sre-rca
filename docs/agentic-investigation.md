@@ -256,3 +256,12 @@ The result includes a deterministic `root_cause` only when those gates pass. It 
 The release candidate already includes first-class deployment/change events, the read-only Persistent Awareness Graph explorer, authoritative inventory reconciliation with tombstones, the frozen Operational Context Snapshot, model-assisted compilation behind deterministic server gates, deterministic specialist scoping, parallel read-only specialist execution behind an opt-in flag, and shared-envelope evaluation.
 
 The v0.8.0-rc.1 real-environment gate validates Kubernetes specialist parity and persistent graph reconciliation against a real disposable cluster. The next validation target, v0.8.0-rc.2, should run the planner/executor against real Prometheus, Loki and Tempo/OpenTelemetry data from an instrumented workload. The authority model remains unchanged: model/planner output selects investigation work, while typed live evidence and deterministic gates decide the verdict.
+
+
+## Saved diagnosis and UI
+
+After evaluation, `/planner/investigate` saves a diagnosis projection, including inconclusive outcomes, and returns `incident_id` and `investigation_url`. `GET /api/v1/incidents/{id}` and `/incidents/{id}` reopen it under the same tenant/cluster permissions as classic incidents. The feature flag controls new executions; saved diagnoses remain available to authorized viewers.
+
+The projection retains evidence/hashes, trace/stateful analyses, evaluated hypotheses, timeline, budgets and versioned `agentic` metadata. Metadata contains specialist status/limits, decisions/reasons and the explanation graph. It is not a complete copy of the plan or frozen operational context. Evaluator blocks display as inconclusive; only the `selected` hypothesis can be highlighted as root. Investigation completion does not prove service recovery.
+
+The path is synchronous, with no queue or live progress. `/plan` and `/execute` remain without diagnosis persistence. Notifications and remediation generation are not enabled by this flow.

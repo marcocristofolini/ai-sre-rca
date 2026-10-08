@@ -173,8 +173,46 @@ class SimilarIncident(BaseModel):
     namespace: str | None = None
 
 
+class SpecialistExecutionSummary(BaseModel):
+    task_id: str
+    specialist: str
+    status: Literal["completed", "skipped", "failed", "budget_exhausted"]
+    query_count: int
+    query_limit: int
+    integrity_ok: bool
+    reason: str = ""
+    error_type: str | None = None
+    started_at: datetime
+    finished_at: datetime
+
+
+class HypothesisDecisionSummary(BaseModel):
+    hypothesis_id: str
+    specialist: str
+    decision: Literal[
+        "selected", "supported", "testing", "ruled_out", "inconclusive",
+        "blocked_by_precedence", "blocked_by_incomplete_context", "invalid_evidence",
+    ]
+    reasons: list[str] = Field(default_factory=list)
+
+
+class AgenticDiagnosis(BaseModel):
+    schema_version: Literal["ai-sre-rca.agentic-diagnosis.v1"] = "ai-sre-rca.agentic-diagnosis.v1"
+    plan_id: str
+    planner_origin: Literal["deterministic", "model-assisted"]
+    execution_status: Literal["completed", "partial", "failed"]
+    evidence_integrity_ok: bool
+    started_at: datetime
+    finished_at: datetime
+    specialists: list[SpecialistExecutionSummary]
+    decisions: list[HypothesisDecisionSummary]
+    # A snapshot of the evaluator's explanation, never reinterpreted as topology.
+    explanation_graph: dict[str, Any]
+
+
 class InvestigationResult(BaseModel):
     incident_id: str
+    agentic: AgenticDiagnosis | None = None
     status: Literal["investigating", "resolved", "inconclusive"]
     incident: IncidentInput
     entities: list[Entity]

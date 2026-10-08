@@ -4,7 +4,7 @@
 
 ## Visão geral do sistema
 
-A plataforma possui quatro planos. A investigação clássica persiste os incidentes e atualiza o grafo. O caminho agentic usa o contexto do grafo, coleta evidências e retorna seu veredito pela API com auditoria. A remediação roda com identidade própria, e a validação de release executa cenários de falha e recuperação em um cluster descartável.
+A plataforma possui quatro planos. A investigação clássica persiste os incidentes e atualiza o grafo. O caminho agentic usa o contexto do grafo, coleta evidências e persiste o diagnóstico avaliado para API/UI com auditoria. A remediação roda com identidade própria, e a validação de release executa cenários de falha e recuperação em um cluster descartável.
 
 ```mermaid
 flowchart TD
@@ -16,7 +16,8 @@ flowchart TD
       CORE --> RCA["RCA clássico"]
       PLAN --> ENV["Especialistas e shared envelope"]
       ENV --> EVAL["Avaliador determinístico"]
-      EVAL --> AR["Veredito agentic pela API e auditoria"]
+      EVAL --> AR["Diagnóstico agentic avaliado"]
+      AR --> STORE
     end
     subgraph AWARE["2. Awareness persistente"]
       RCA --> STORE["Persistência do incidente"]
@@ -38,7 +39,7 @@ flowchart TD
     end
 ```
 
-`AGENTIC_EXECUTION_ENABLED=false` é o padrão. `/api/v1/planner/plan` compila o plano; `/execute` coleta evidências sem causa raiz; `/investigate` também executa a avaliação determinística. Atualmente o resultado agentic não é persistido como incidente nem apresentado na UI. O planejamento assistido por modelo exige `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`.
+`AGENTIC_EXECUTION_ENABLED=false` é o padrão. `/api/v1/planner/plan` compila o plano; `/execute` coleta evidências sem causa raiz; `/investigate` também executa a avaliação determinística. O diagnóstico agentic avaliado é persistido e apresentado na tela do incidente. O planejamento assistido por modelo exige `AGENTIC_MODEL_PLANNER_ENABLED=true` e `LLM_ENABLED=true`.
 
 A fronteira principal de correção não mudou: evidência live tipada e gates determinísticos decidem o que pode ser afirmado. O planner e o LLM opcional podem restringir ou priorizar a investigação, mas não podem fabricar fatos do grafo, evidências, scores ou um verdict de causa raiz.
 
@@ -748,8 +749,15 @@ Veja [../validation/README_PT-BR.md](../validation/README_PT-BR.md) para o contr
 
 ## Diagnóstico por incidente
 
-`InvestigationView` apresenta o resultado clássico no mesmo workspace nas demos e em `/incidents/{incident_id}`. A rota persistida usa a API autorizada existente e encaminha os headers de autenticação no servidor. Falhas de acesso e incidentes ausentes não acionam fallback para demo.
+`InvestigationView` apresenta resultados clássicos e diagnósticos agentic avaliados no mesmo workspace nas demos e em `/incidents/{incident_id}`. A rota persistida usa a API autorizada existente e encaminha os headers de autenticação no servidor. Falhas de acesso e incidentes ausentes não acionam fallback para demo.
 
 A UI mantém o vínculo `root_cause.hypothesis_id` com a hipótese confirmada, mostra evidências favoráveis e contrárias e recolhe hipóteses descartadas usando controles nativos `details/summary`. A exibição de fatos, consultas e hashes preserva a proveniência sem afirmar uma verificação de integridade adicional. Datas são exibidas em UTC de forma consistente. Recomendações não executam ações.
 
 Os testes em Chromium exercitam demos, resultados persistidos, autenticação direta/proxy, ausência de dados, proposta LLM e resultado inconclusivo. Capturas desktop/mobile e o relatório ficam no artefato `diagnosis-ui-<run_id>`. Elas documentam dados demo renderizados pela aplicação.
+
+
+### Persistência agentic
+
+`/planner/investigate` materializa somente hipóteses avaliadas no contrato `InvestigationResult`. O campo opcional `agentic` guarda plano/origem, integridade, horários, resumo dos especialistas, decisões e explanation graph. Evidências, entidades e relações vêm do shared envelope; o contexto congelado do Awareness Graph não é reingerido como observação atual. O armazenamento JSON existente dispensa migração e mantém compatibilidade com incidentes antigos.
+
+Uma hipótese bloqueada por precedência, contexto incompleto ou evidência inválida fica inconclusiva na projeção; sua decisão e motivos originais são preservados. A UI exige a decisão `selected` e integridade válida para destacar uma causa agentic. O resultado inconclusivo recebe uma conclusão explícita sem hipótese raiz. A API preserva execution/evaluation e acrescenta ID e link da investigação salva. A auditoria é vinculada ao ID; esse fluxo não envia notificações automaticamente nem cria remediações.
