@@ -21,7 +21,7 @@ flowchart TD
     end
     subgraph AWARE["2. Persistent awareness"]
       RCA --> STORE["Incident persistence"]
-      STORE --> DIAG["Per-incident diagnosis UI"]
+      STORE --> DIAG["Incident history and diagnosis UI"]
       STORE --> PAG[("Awareness Graph and PostgreSQL/pgvector")]
       INV["Authoritative inventory"] --> PAG
       PAG --> CTX["Frozen operational context"]
@@ -761,3 +761,10 @@ Chromium checks cover demos, persisted results, direct/proxy authentication, mis
 `/planner/investigate` materializes evaluated hypotheses into `InvestigationResult`. Optional `agentic` metadata stores plan ID/origin, integrity, timing, specialist summaries, decisions and explanation graph. Evidence, entities and edges come from the shared envelope; frozen Awareness Graph context is never reingested as a current observation. Existing JSON storage needs no migration and remains compatible with older incidents.
 
 Hypotheses blocked by precedence, incomplete context or invalid evidence are projected as inconclusive while retaining original decisions and reasons. The UI requires a `selected` decision and valid integrity to highlight an agentic cause. An inconclusive result gets an explicit conclusion without a root hypothesis. The API retains execution/evaluation and adds the saved incident ID/link. Audit events link to that ID; this flow does not automatically send notifications or generate remediations.
+
+
+### History and manual initiation
+
+`GET /api/v1/incidents` applies tenant and allowed-cluster scope in the repository before pagination. It accepts title/ID (`q`, up to 120 characters), cluster, status, limit 1–100 and offset 0–10000; returns summaries and `next_offset`. Ordering is descending creation time and ID. Offset pages can shift when new investigations are saved. PostgreSQL selects summary fields, including mode/severity from JSON, without returning the full payload. The memory repository uses the same filters and ordering.
+
+`/incidents` lists 25 results per page. `/incidents/new` queries `/system/me` for permissions and feature flags. Its Server Action rechecks identity, cluster, tenant and fields before calling the authorized API. Credentials are never passed to the form as props. Backend RBAC/scope remains authoritative. Completion redirects to `/incidents/{id}`; errors remain in the form and controlled fields retain their values. Global sessions use a concrete tenant on the classic path as well.

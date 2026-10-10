@@ -33,6 +33,14 @@ It can answer questions such as:
 
 ---
 
+## Incident history and investigation form
+
+Open `/incidents` to list authorized diagnoses, search by title or ID, and filter by cluster/status. Pagination uses 25 items and excludes full evidence payloads. `resolved` means diagnosis completion, not confirmed recovery.
+
+At `/incidents/new`, investigators provide a title, cluster, alert, severity and known target. Tenant comes from the session; global sessions must provide a concrete tenant. Agentic mode appears only when enabled server-side. Submission uses Server Actions with server-side authentication forwarding, field validation and a pending submission lock. Completion opens the saved diagnosis.
+
+The flow is synchronous and does not yet show live specialist progress. If completion cannot be confirmed, check history before retrying. In demo mode, list and form identify collection through demo adapters.
+
 ## Incident diagnosis workspace
 
 The diagnosis workspace uses a scoped dark theme and a directed SVG topology built from the returned graph edges. The graph displays up to 48 connected entities and 96 relationships, announces truncation, and keeps every relationship in an expandable text list. Topology alone does not establish causality.
@@ -44,7 +52,7 @@ The interface presents alert context, diagnosis summary, entities and relationsh
 - A confirmed-cause badge requires a completed result whose root hypothesis is confirmed by a playbook. Inconclusive results and LLM proposals cannot receive that badge. `resolved` means the investigation concluded; it does not establish service recovery.
 - Recommendations remain informational in this view. Counts describe observed context rather than confirmed blast radius or downtime. Displaying a recorded hash does not reverify evidence integrity.
 
-CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic workspace includes execution and evaluator decisions. An incident list and investigation form remain pending.
+CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic workspace includes execution and evaluator decisions. The incident list and form are available; live progress remains pending.
 
 
 ## What the application does
@@ -355,6 +363,7 @@ Runbook: [docs/test-environment.md](docs/test-environment.md).
 
 ~~~text
 GET  /healthz
+GET  /api/v1/incidents?q=&cluster=&status=&limit=25&offset=0
 GET  /api/v1/incidents/{id}
 POST /api/v1/incidents/investigate
 POST /api/v1/webhooks/alertmanager

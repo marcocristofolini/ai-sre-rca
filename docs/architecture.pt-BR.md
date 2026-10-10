@@ -21,7 +21,7 @@ flowchart TD
     end
     subgraph AWARE["2. Awareness persistente"]
       RCA --> STORE["Persistência do incidente"]
-      STORE --> DIAG["UI de diagnóstico por incidente"]
+      STORE --> DIAG["Histórico e diagnóstico por incidente"]
       STORE --> PAG[("Awareness Graph e PostgreSQL/pgvector")]
       INV["Inventário autoritativo"] --> PAG
       PAG --> CTX["Contexto operacional congelado"]
@@ -761,3 +761,10 @@ Os testes em Chromium exercitam demos, resultados persistidos, autenticação di
 `/planner/investigate` materializa somente hipóteses avaliadas no contrato `InvestigationResult`. O campo opcional `agentic` guarda plano/origem, integridade, horários, resumo dos especialistas, decisões e explanation graph. Evidências, entidades e relações vêm do shared envelope; o contexto congelado do Awareness Graph não é reingerido como observação atual. O armazenamento JSON existente dispensa migração e mantém compatibilidade com incidentes antigos.
 
 Uma hipótese bloqueada por precedência, contexto incompleto ou evidência inválida fica inconclusiva na projeção; sua decisão e motivos originais são preservados. A UI exige a decisão `selected` e integridade válida para destacar uma causa agentic. O resultado inconclusivo recebe uma conclusão explícita sem hipótese raiz. A API preserva execution/evaluation e acrescenta ID e link da investigação salva. A auditoria é vinculada ao ID; esse fluxo não envia notificações automaticamente nem cria remediações.
+
+
+### Histórico e início manual
+
+`GET /api/v1/incidents` aplica tenant e conjunto de clusters permitidos no repositório antes da paginação. A API aceita título/ID (`q`, até 120 caracteres), cluster, status, limite de 1 a 100 e offset de 0 a 10000; retorna summaries e `next_offset`. Ordena por horário de criação e ID decrescentes. A paginação por offset pode mudar quando novas investigações são salvas. O PostgreSQL seleciona apenas campos de resumo, incluindo modo e severidade do JSON, sem retornar o payload completo. A implementação em memória mantém os mesmos filtros e ordenação.
+
+`/incidents` lista 25 resultados por página. `/incidents/new` consulta `/system/me` para permissões e feature flags. A Server Action revalida identidade, cluster, tenant e campos antes de chamar a API autorizada. Credenciais não são enviadas como props ao formulário. O backend permanece a autoridade de RBAC e escopo. A investigação concluída redireciona para `/incidents/{id}`; erros ficam no formulário e os campos controlados mantêm os valores. Sessões globais usam tenant concreto também no caminho clássico.

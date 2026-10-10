@@ -96,6 +96,7 @@ export default function InvestigationView({ data, mode = 'demo' }: {
       <header className="topbar">
         <a className="brand" href="/"><span className="brandMark">SRE</span><span>AI SRE RCA</span></a>
         <nav className="topActions" aria-label="Aplicação">
+          <a className="demoLink" href="/incidents">Incidentes</a>
           <a className="demoLink" href="/">Kubernetes</a>
           <a className="demoLink" href="/trace">Traces</a>
           <a className="demoLink" href="/stateful/postgresql">PostgreSQL</a>

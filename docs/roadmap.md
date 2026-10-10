@@ -253,7 +253,8 @@ Agentic investigation foundation:
 - [x] composed `/planner/investigate` endpoint with deterministic verdict
 - [x] persisted evaluated agentic diagnosis with incident ID/link and incident-scoped audit
 - [x] agentic diagnosis UI with specialist execution, budgets and evaluator decisions
-- [ ] incident list and investigation creation form
+- [x] tenant/cluster-authorized incident summaries with filters and bounded pagination
+- [x] incident history UI and authenticated Server Action investigation form
 - [ ] live investigation progress and asynchronous execution
 - [x] Kubernetes specialist parity with the full infrastructure playbook engine
 - [x] shared Kubernetes stage reused by classic and agentic investigation paths
