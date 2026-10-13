@@ -106,37 +106,7 @@ The optional LLM may help **prioritize investigation branches**, but it cannot c
 
 The platform is divided into four planes so investigation, persistent context, mutation and release validation remain separate.
 
-~~~mermaid
-flowchart TD
-    IN["REST API or Alertmanager"] --> CORE["Classic investigation"]
-    IN --> PLAN["Opt-in agentic investigation"]
-    SRC["Typed read-only evidence sources"] --> CORE
-    SRC --> PLAN
-    subgraph READ["1. Read-only investigation"]
-      CORE --> RCA["Classic RCA"]
-      PLAN --> ENV["Specialists and shared envelope"]
-      ENV --> EVAL["Deterministic evaluator"]
-      EVAL --> AR["Persisted and audited agentic diagnosis"]
-      AR --> STORE
-    end
-    subgraph AWARE["2. Persistent awareness"]
-      RCA --> STORE["Incident persistence"]
-      STORE --> PAG[("Awareness Graph and PostgreSQL/pgvector")]
-      INV["Authoritative inventory"] --> PAG
-      PAG --> CTX["Frozen operational context"]
-      CTX --> PLAN
-      PAG --> VIEW["Explorer, blast radius and change timeline"]
-    end
-    subgraph REM["3. Guarded remediation"]
-      STORE --> POLICY["Typed proposal, policy, dry-run and approval"]
-      POLICY --> ACT["Separate identity: Deployment scaling"]
-    end
-    subgraph VAL["4. Release validation"]
-      GH["GitHub-first gate"] --> KIND["Disposable Kind and telemetry"]
-      KIND --> HAR["Failure, recovery and topology checks"]
-      HAR --> REP["JSON and Markdown evidence"]
-    end
-~~~
+[![AI SRE RCA system architecture](docs/images/ai-sre-rca-architecture.svg)](docs/architecture.md)
 
 Detailed architecture: [docs/architecture.md](docs/architecture.md).
 
