@@ -79,18 +79,21 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const response = await github.rest.actions.listWorkflowRunsForRepo({
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner: context.repo.owner,
               repo: context.repo.repo,
+              workflow_id: 'github-first-gate.yml',
               branch: 'main',
               head_sha: context.sha,
-              event: 'push',
               per_page: 100,
             });
 
-            const gates = response.data.workflow_runs
+            const gates = runs
               .filter(run =>
                 run.name === 'GitHub-first gate' &&
+                run.head_branch === 'main' &&
+                run.head_sha === context.sha &&
+                ['push', 'workflow_dispatch'].includes(run.event) &&
                 run.status === 'completed' &&
                 run.conclusion === 'success'
               )

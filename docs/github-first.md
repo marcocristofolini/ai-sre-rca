@@ -78,6 +78,8 @@ The specialized workflows keep `workflow_dispatch` for diagnosis:
 
 Manual runs are useful for debugging, but release promotion trusts the successful **GitHub-first gate** for the exact `main` SHA.
 
+Release promotion and test-image publishing accept successful full gate runs triggered by `push` or `workflow_dispatch` on `main`, for the exact target SHA. Pull-request gates and standalone diagnostic workflows do not qualify. Gate discovery is scoped to `github-first-gate.yml` and paginated.
+
 If the validation artifact has expired, rerun **GitHub-first gate** on `main` to generate fresh evidence before promoting a release.
 
 ## Local development
@@ -94,3 +96,9 @@ The GitHub-first gate is read-only with respect to repository contents. The rele
 - `contents: write`, only to create the validated tag and GitHub release.
 
 No production infrastructure credentials are required for the release workflow.
+
+## Account billing recovery
+
+When GitHub rejects jobs before any steps start because of failed payments or an Actions spending limit, resolve the repository owner's billing restriction first. Workflow caching cannot remove an account-level block. Then rerun the failed main gate or dispatch the full gate on `main`; require all checks and matching passing real-environment evidence before promotion. Use the release workflow's `dry_run` input to validate promotion before creating a tag.
+
+Dependency and Docker layer caches reduce repeated downloads and builds; they never replace checks or validation reports. Diagnosis browser artifacts expire after seven days; release validation evidence retains its separate retention policy.
