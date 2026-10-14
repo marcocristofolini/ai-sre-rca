@@ -8,3 +8,6 @@ node_modules/
 coverage/
 .DS_Store
 validation-artifacts/
+.archify/
+benchmark-artifacts/
+frontend/tsconfig.tsbuildinfo
