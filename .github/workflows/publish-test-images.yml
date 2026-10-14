@@ -23,7 +23,8 @@ jobs:
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push'
+        (github.event.workflow_run.event == 'push' ||
+         github.event.workflow_run.event == 'workflow_dispatch')
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -52,17 +53,20 @@ jobs:
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         with:
           script: |
-            const response = await github.rest.actions.listWorkflowRunsForRepo({
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner: context.repo.owner,
               repo: context.repo.repo,
+              workflow_id: 'github-first-gate.yml',
               branch: 'main',
               head_sha: process.env.TARGET_SHA,
-              event: 'push',
               per_page: 100,
             });
 
-            const gate = response.data.workflow_runs.find(run =>
+            const gate = runs.find(run =>
               run.name === 'GitHub-first gate' &&
+                run.head_branch === 'main' &&
+                run.head_sha === process.env.TARGET_SHA &&
+                ['push', 'workflow_dispatch'].includes(run.event) &&
               run.status === 'completed' &&
               run.conclusion === 'success'
             );
@@ -94,6 +98,8 @@ jobs:
         with:
           context: ./backend
           push: true
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
           tags: |
             ${{ env.BACKEND_IMAGE }}:edge
             ${{ env.BACKEND_IMAGE }}:sha-${{ steps.target.outputs.short }}
