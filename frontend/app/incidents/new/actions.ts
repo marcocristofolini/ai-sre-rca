@@ -6,7 +6,7 @@ import { fetchIdentity, IncidentFetchError, startInvestigation } from '../../../
 export type InvestigationFormState = { error: string };
 
 export async function investigateFromForm(_previous: InvestigationFormState, form: FormData): Promise<InvestigationFormState> {
-  let incidentId: string;
+  let investigation: { id: string; kind: 'job' | 'incident' };
   try {
     const identity = await fetchIdentity();
     if (!identity.can_investigate) return { error: 'Sua sessão não tem permissão para iniciar investigações.' };
@@ -34,7 +34,7 @@ export async function investigateFromForm(_previous: InvestigationFormState, for
       if (typeof startsAt !== 'string' || startsAt.length > 40 || !/(Z|[+-]\d{2}:\d{2})$/.test(startsAt) || !Number.isFinite(Date.parse(startsAt))) return { error: 'Horário inválido. Use uma data ISO 8601 com fuso horário.' };
       input.starts_at = new Date(startsAt).toISOString();
     }
-    incidentId = await startInvestigation(input, mode);
+    investigation = await startInvestigation(input, mode);
   } catch (error) {
     if (error instanceof IncidentFetchError) {
       if ([401, 403].includes(error.status)) return { error: 'Acesso negado. Verifique sua sessão e permissões.' };
@@ -43,5 +43,6 @@ export async function investigateFromForm(_previous: InvestigationFormState, for
     }
     return { error: 'Não foi possível confirmar a conclusão. Consulte o histórico antes de tentar novamente.' };
   }
-  redirect(`/incidents/${encodeURIComponent(incidentId)}`);
+  if (investigation.kind === 'job') redirect(`/incidents/jobs/${encodeURIComponent(investigation.id)}`);
+  redirect(`/incidents/${encodeURIComponent(investigation.id)}`);
 }

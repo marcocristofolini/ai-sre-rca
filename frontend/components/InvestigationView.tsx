@@ -1,6 +1,7 @@
 import type { Investigation } from '../lib/api';
 import IncidentGraph from './IncidentGraph';
 import AgenticExecution from './AgenticExecution';
+import OrchestrationProgress from './OrchestrationProgress';
 
 type Evidence = Investigation['evidence'][number];
 type StatefulSignal = Investigation['stateful_dependencies'][number]['signals'][number];
@@ -15,9 +16,9 @@ const statusSymbol: Record<string, string> = { confirmed: '✓', ruled_out: '×'
 
 function dateLabel(value?: string): string {
   if (!value || !Number.isFinite(Date.parse(value))) return 'Não informado';
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short', timeStyle: 'medium', timeZone: 'UTC',
-  }).format(new Date(value)) + ' UTC';
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${String(date.getUTCFullYear()).slice(-2)}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`;
 }
 
 function formatSignalValue(signal: StatefulSignal): string {
@@ -70,8 +71,8 @@ function EvidenceRefs({ ids, evidence, label }: {
   );
 }
 
-export default function InvestigationView({ data, mode = 'demo' }: {
-  data: Investigation; mode?: 'demo' | 'persisted';
+export default function InvestigationView({ data, mode = 'demo', jobId }: {
+  data: Investigation; mode?: 'demo' | 'persisted'; jobId?: string;
 }) {
   const evidence = new Map(data.evidence.map((item) => [item.id, item]));
   const entities = new Map(data.entities.map((item) => [item.id, item]));
@@ -96,6 +97,7 @@ export default function InvestigationView({ data, mode = 'demo' }: {
       <header className="topbar">
         <a className="brand" href="/"><span className="brandMark">SRE</span><span>AI SRE RCA</span></a>
         <nav className="topActions" aria-label="Aplicação">
+          <a className="demoLink" href="/showcase">Produto</a>
           <a className="demoLink" href="/incidents">Incidentes</a>
           <a className="demoLink" href="/">Kubernetes</a>
           <a className="demoLink" href="/trace">Traces</a>
@@ -112,6 +114,7 @@ export default function InvestigationView({ data, mode = 'demo' }: {
         <h1>{data.incident.title}</h1>
         <p className="muted">{[data.incident.cluster, data.incident.namespace, data.incident.pod ?? data.incident.service].filter(Boolean).join(' / ')}</p>
       </section>
+      {jobId && <OrchestrationProgress jobId={jobId} />}
       <div className="diagnosisLayout">
         <aside className="diagnosisSidebar">
           <nav aria-label="Seções do diagnóstico">

@@ -157,7 +157,7 @@ export type Investigation = {
   };
 };
 
-async function forwardedAuthHeaders(): Promise<Record<string, string>> {
+export async function forwardedAuthHeaders(): Promise<Record<string, string>> {
   const incoming = await headers();
   const authorization = incoming.get('authorization');
   if (authorization) return { Authorization: authorization };
@@ -435,9 +435,9 @@ export async function fetchIncidents(params: URLSearchParams): Promise<IncidentL
   return response.json();
 }
 
-export async function startInvestigation(input: Record<string, string>, mode: 'classic' | 'agentic'): Promise<string> {
+export async function startInvestigation(input: Record<string, string>, mode: 'classic' | 'agentic'): Promise<{ id: string; kind: 'job' | 'incident' }> {
   const base = process.env.API_URL ?? 'http://localhost:8080';
-  const path = mode === 'agentic' ? '/api/v1/planner/investigate' : '/api/v1/incidents/investigate';
+  const path = mode === 'agentic' ? '/api/v1/planner/jobs' : '/api/v1/incidents/investigate';
   const response = await fetch(`${base}${path}`, {
     method: 'POST', cache: 'no-store',
     headers: { ...await forwardedAuthHeaders(), 'Content-Type': 'application/json' },
@@ -445,8 +445,9 @@ export async function startInvestigation(input: Record<string, string>, mode: 'c
   });
   if (!response.ok) throw new IncidentFetchError(response.status);
   const result = await response.json();
-  if (typeof result.incident_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(result.incident_id)) {
-    throw new Error('Invalid incident ID returned');
+  const id = mode === 'agentic' ? result.id : result.incident_id;
+  if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) {
+    throw new Error('Invalid investigation identifier returned');
   }
-  return result.incident_id;
+  return { id, kind: mode === 'agentic' ? 'job' : 'incident' };
 }

@@ -79,6 +79,7 @@ export default async function AwarenessPage({ searchParams }: Props) {
             <span>Awareness Explorer</span>
           </div>
           <div className="topActions">
+            <a className="demoLink" href="/showcase">PRODUTO</a>
             <a className="demoLink" href="/">INVESTIGATOR</a>
             <a className="demoLink" href="/ops">OPS</a>
             <div className="readonly">READ ONLY · PERSISTENT GRAPH</div>
