@@ -183,9 +183,24 @@ class InvestigationPlan(BaseModel):
     tasks: list[SpecialistTask] = Field(default_factory=list)
     max_parallel_tasks: int = Field(ge=1, le=16)
     max_tasks: int = Field(ge=1, le=32)
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class OrchestrationJob(BaseModel):
+    id: str = Field(default_factory=lambda: f"job-{uuid4().hex[:12]}")
+    tenant_id: str
+    status: Literal["queued", "running", "completed", "failed", "cancelled"] = "queued"
+    incident_id: str
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: "AgenticInvestigationResult | None" = None
+    error: str | None = None
+    error_type: str | None = None
+    idempotency_key: str | None = None
+    request_fingerprint: str | None = None
+    cluster: str
+    progress_sequence: int = 0
 
 
 SpecialistExecutionStatus = Literal[
@@ -321,3 +336,6 @@ class AgenticInvestigationResult(BaseModel):
     investigation_url: str | None = None
     execution: AgenticExecutionResult
     evaluation: AgenticEvaluationResult
+
+
+OrchestrationJob.model_rebuild()
