@@ -232,8 +232,8 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 expect(page.get_by_text('Investigação persistida', exact=True)).to_be_visible()
             page.set_extra_http_headers({})
             checks.append('direct and proxy authorization forwarded server-side')
-            page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing', wait_until='networkidle')
-            expect(page.get_by_role('heading', name='Investigação não encontrada')).to_be_visible()
+            missing_response = page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing', wait_until='networkidle')
+            assert missing_response is not None and missing_response.status == 404
             expect(page.locator('.diagnosis')).to_have_count(0)
             checks.append('missing incident does not fall back to demo')
             browser.close()
