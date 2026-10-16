@@ -12,7 +12,7 @@ export default async function IncidentPage({ params, searchParams }: {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(incidentId)) notFound();
   try {
     const data = await fetchIncident(incidentId);
-    return <><InvestigationView data={data} mode="persisted" jobId={jobId} /><div className="diagnosis diagnosisCopilot"><IncidentCopilot incidentId={incidentId} /></div></>;
+    return <><InvestigationView data={data} mode="persisted" jobId={jobId} /><div className="diagnosis diagnosisCopilot"><IncidentCopilot incidentId={incidentId} evidenceIds={data.evidence.map((item) => item.id)} /></div></>;
   } catch (error) {
     if (error instanceof IncidentFetchError) {
       if (error.status === 404) notFound();

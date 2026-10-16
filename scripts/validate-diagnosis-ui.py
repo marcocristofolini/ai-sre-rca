@@ -69,12 +69,68 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(result if code == 200 else {'detail': 'fixture error'}).encode())
 
+    def do_POST(self):
+        name = self.path.split('/api/v1/incidents/', 1)[-1].split('/', 1)[0]
+        question = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))).decode()).get('question', '')
+        code = 200
+        if name in ('ui-restricted', 'ui-unauthenticated'):
+            code = 403 if name == 'ui-restricted' else 401
+        elif name == 'ui-authorized' and self.headers.get('Authorization') != 'Bearer ui-test-token':
+            code = 403
+        if question == 'error':
+            code = 503
+        if question == 'slow':
+            time.sleep(0.8)
+        insufficient = question == 'no evidence'
+        result = {
+            'answer': 'Não há evidência suficiente.' if insufficient else 'Disk exhaustion appears in the stored evidence.' if code == 200 else 'fixture error',
+            'insufficient_evidence': insufficient,
+            'evidence_ids': ['ev-forged'] if insufficient else [baseline['evidence'][0]['id'], 'ev-forged'] if code == 200 else [],
+            'mode': 'deterministic',
+        }
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
+
     def log_message(self, *args):
         pass
 
 
 fixture_api = ThreadingHTTPServer(('127.0.0.1', 18083), FixtureAPI)
 threading.Thread(target=fixture_api.serve_forever, daemon=True).start()
+
+
+def validate_copilot(page):
+    page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-copilot', wait_until='networkidle')
+    question = page.get_by_role('textbox', name='Pergunta')
+    question.fill('slow')
+    submit = page.get_by_role('button', name='Perguntar')
+    expect(submit).to_be_enabled()
+    submit.click()
+    expect(page.get_by_role('button', name='Consultando…')).to_be_disabled()
+    expect(page.get_by_text('Disk exhaustion appears in the stored evidence.')).to_be_visible()
+    allowed_evidence = {item['id'] for item in baseline['evidence']}
+    citations = page.locator('.copilotAnswer a').all_text_contents()
+    assert citations and set(citations) <= allowed_evidence, f'Copilot cited evidence outside this incident: {citations}'
+    assert 'ev-forged' not in page.locator('.copilotAnswer').inner_text()
+    question.fill('error')
+    page.get_by_role('button', name='Perguntar').click()
+    expect(page.get_by_text('Não foi possível consultar o Copilot com esta sessão.', exact=True)).to_be_visible()
+    question.fill('no evidence')
+    page.get_by_role('button', name='Perguntar').click()
+    expect(page.get_by_text('Evidência insuficiente', exact=False)).to_be_visible()
+    assert page.locator('.copilotAnswer a').count() == 0
+    question.fill('keyboard check')
+    page.get_by_role('button', name='Perguntar').focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_text('Disk exhaustion appears in the stored evidence.')).to_be_visible()
+    expect(question).to_have_attribute('maxlength', '500')
+    denied = page.request.post(f'{FIXTURE_FRONTEND}/api/incidents/ui-restricted/copilot', data={'question': 'What happened?'})
+    assert denied.status == 403 and 'ev-good' not in denied.text() and 'Disk pressure' not in denied.text()
+    return allowed_evidence
+
+
 fixture_env = dict(os.environ, API_URL='http://127.0.0.1:18083', HOSTNAME='127.0.0.1', PORT='13002')
 errors = []
 checks = []
@@ -91,6 +147,21 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 time.sleep(0.5)
         else:
             raise RuntimeError('Fixture frontend did not become ready')
+        if os.environ.get('COPILOT_ONLY') == '1':
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                page = browser.new_page(viewport={'width': 390, 'height': 844}, locale='pt-BR')
+                errors = []
+                page.on('pageerror', lambda error: errors.append(f'{page.url}: {error}'))
+                allowed_evidence = validate_copilot(page)
+                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Copilot mobile horizontal overflow'
+                page.screenshot(path=str(OUT / 'copilot-mobile.png'), full_page=True)
+                browser.close()
+            assert not errors, errors
+            checks.extend(['Copilot loading, generic errors, auth failure without incident data', 'authorized-investigation citation allow-list and forged-citation filtering', 'keyboard submission and mobile layout'])
+            (OUT / 'copilot-report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'authorized_evidence_ids': sorted(allowed_evidence), 'browser_errors': errors}, indent=2))
+            print(json.dumps({'passed': True, 'checks': checks}, indent=2))
+            raise SystemExit(0)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             page = browser.new_page(viewport={'width': 1440, 'height': 1000}, locale='pt-BR')
@@ -221,6 +292,13 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 checks.append(f'{fixture}: no false confirmed cause')
             page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing-evidence', wait_until='networkidle')
             expect(page.get_by_text('Evidência absent-reference não disponível neste resultado.', exact=True)).to_be_visible()
+            validate_copilot(page)
+            checks.append('Copilot loading, errors, and incident-scoped citation filtering')
+            checks.append('Copilot question and submit are keyboard accessible and labeled')
+            page.set_viewport_size({'width': 390, 'height': 844})
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Copilot mobile horizontal overflow'
+            page.screenshot(path=str(OUT / 'copilot-mobile.png'), full_page=True)
+            checks.append('Copilot mobile layout without horizontal overflow')
             for fixture in ('ui-restricted', 'ui-unauthenticated'):
                 page.goto(f'{FIXTURE_FRONTEND}/incidents/{fixture}', wait_until='networkidle')
                 expect(page.get_by_role('heading', name='Acesso à investigação restrito')).to_be_visible()

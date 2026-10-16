@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { CopilotAnswer } from '../lib/api';
 
-export default function IncidentCopilot({ incidentId }: { incidentId: string }) {
+export default function IncidentCopilot({ incidentId, evidenceIds }: { incidentId: string; evidenceIds: string[] }) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<CopilotAnswer | null>(null);
   const [error, setError] = useState('');
@@ -15,7 +15,9 @@ export default function IncidentCopilot({ incidentId }: { incidentId: string }) 
     try {
       const response = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}/copilot`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: question.trim() }) });
       if (!response.ok) throw new Error('request failed');
-      setAnswer(await response.json());
+      const result = await response.json() as CopilotAnswer;
+      const allowed = new Set(evidenceIds);
+      setAnswer({ ...result, evidence_ids: result.evidence_ids.filter((id) => allowed.has(id)) });
     }
     catch { setError('Não foi possível consultar o Copilot com esta sessão.'); }
     finally { setBusy(false); }

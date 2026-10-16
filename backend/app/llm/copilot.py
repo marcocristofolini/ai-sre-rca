@@ -88,9 +88,12 @@ async def answer_question(question: str, result: InvestigationResult, settings: 
         answer = re.sub(r"\s+", " ", str(raw.get("answer", ""))).strip()[:1800]
         if not answer or (not ids and not raw.get("insufficient_evidence", True)):
             return fallback
-        # LLM prose never alters the deterministic verdict; root-cause claims can
-        # only restate an already resolved engine verdict and need valid citations.
-        if result.status != "resolved" and any(x in answer.casefold() for x in ("root cause", "caused by", "causa raiz", "causado por")):
+        # Keep all verdict language in the deterministic fallback, for every question.
+        if any(x in answer.casefold() for x in ("root cause", "caused by", "causa raiz", "causado por", "causa raiz confirmada")):
+            return fallback
+        if re.search(r"\b(kubectl|terraform|helm|delete|restart|scale|patch|apply|execute|run this command)\b", answer.casefold()):
+            return fallback
+        if any(x in question.casefold() for x in ("next", "recommend", "próxim", "recomend")):
             return fallback
         return CopilotAnswer(answer=answer, insufficient_evidence=bool(raw.get("insufficient_evidence", False)), evidence_ids=ids, mode="model")
     except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError):
