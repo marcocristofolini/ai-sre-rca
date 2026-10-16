@@ -249,6 +249,17 @@ class InvestigationResult(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class CopilotQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class CopilotAnswer(BaseModel):
+    answer: str
+    insufficient_evidence: bool
+    evidence_ids: list[str] = Field(default_factory=list)
+    mode: Literal["model", "deterministic"]
+
+
 class TraceCausalHop(BaseModel):
     service: str
     operation: str

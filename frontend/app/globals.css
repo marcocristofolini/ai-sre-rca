@@ -620,3 +620,13 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .orchestrationEvidence p { margin:5px 0 0; }
 .orchestrationEvaluation { padding:12px; margin-top:16px; border:1px solid #58724f; border-radius:8px; }
 @media(max-width:720px) { .orchestrationProgress { margin:16px 12px; } .orchestrationStatus { flex-direction:column; } }
+.diagnosisCopilot { padding: 0 28px 28px; }
+.diagnosisCopilot .diagnosisSection { max-width: 980px; margin: 0 auto; }
+.copilotForm { display: grid; gap: 8px; }
+.copilotForm label { color: var(--muted); font-size: 12px; }
+.copilotForm > div { display: flex; gap: 8px; }
+.copilotForm input { flex: 1; min-width: 0; background: #08090d; color: #ececf4; border: 1px solid #414357; border-radius: 6px; padding: 12px; font: inherit; }
+.copilotForm button { border: 0; border-radius: 6px; padding: 0 16px; color: #07110c; background: #62c99d; font-weight: 700; }
+.copilotAnswer { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
+.copilotAnswer a { margin-right: 8px; }
+@media (max-width: 720px) { .diagnosisCopilot { padding: 0 14px 18px; } }

@@ -157,6 +157,13 @@ export type Investigation = {
   };
 };
 
+export type CopilotAnswer = {
+  answer: string;
+  insufficient_evidence: boolean;
+  evidence_ids: string[];
+  mode: 'model' | 'deterministic';
+};
+
 export async function forwardedAuthHeaders(): Promise<Record<string, string>> {
   const incoming = await headers();
   const authorization = incoming.get('authorization');
