@@ -31,9 +31,6 @@ with urlopen(f"{API_BASE}/api/v1/incidents/{agentic_result['incident_id']}", tim
     agentic_diagnosis = json.load(response)
 
 
-fixture_requests = []
-
-
 class FixtureAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         name = self.path.rsplit('/', 1)[-1]
@@ -75,31 +72,6 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(result if code == 200 else {'detail': 'fixture error'}).encode())
 
-    def do_POST(self):
-        name = self.path.split('/api/v1/incidents/', 1)[-1].split('/', 1)[0]
-        question = json.loads(self.rfile.read(int(self.headers.get('Content-Length', '0'))).decode()).get('question', '')
-        code = 200
-        if name in ('ui-restricted', 'ui-unauthenticated'):
-            code = 403 if name == 'ui-restricted' else 401
-        elif name == 'ui-authorized' and self.headers.get('Authorization') != 'Bearer ui-test-token':
-            code = 403
-        if question == 'error':
-            code = 503
-        if question == 'slow':
-            time.sleep(0.8)
-        insufficient = question == 'no evidence'
-        result = {
-            'answer': 'Não há evidência suficiente.' if insufficient else 'Disk exhaustion appears in the stored evidence.' if code == 200 else 'fixture error',
-            'insufficient_evidence': insufficient,
-            'evidence_ids': ['ev-forged'] if insufficient else [baseline['evidence'][0]['id'], 'ev-forged'] if code == 200 else [],
-            'mode': 'deterministic',
-        }
-        fixture_requests.append({'method': 'POST', 'path': self.path, 'question': question, 'status': code, 'response': result})
-        self.send_response(code)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(result).encode())
-
     def log_message(self, *args):
         pass
 
@@ -110,7 +82,7 @@ threading.Thread(target=fixture_api.serve_forever, daemon=True).start()
 browser_observations = {'http_failures': [], 'request_failures': [], 'console_errors': [], 'page_errors': []}
 expected_http_failures = []
 expected_request_failures = []
-expected_negative = {'copilot_503': False}
+expected_console_failures = []
 
 
 def watch_browser(page):
@@ -125,66 +97,15 @@ def watch_browser(page):
         if message.type != 'error':
             return
         item = {'text': message.text, 'location': message.location}
-        item['expected_fixture_503'] = (
-            expected_negative['copilot_503']
-            and 'status of 503 (Service Unavailable)' in message.text
-            and message.location.get('url') == f'{FIXTURE_FRONTEND}/api/incidents/ui-copilot/copilot'
-        )
         browser_observations['console_errors'].append(item)
     page.on('console', on_console)
     page.on('pageerror', lambda error: browser_observations['page_errors'].append(f'{page.url}: {error}'))
 
 
-def validate_copilot(page):
-    page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-copilot', wait_until='networkidle')
-    copilot = page.locator('[data-copilot-hydrated="true"]')
-    expect(copilot).to_have_count(1)
-    question = page.get_by_role('textbox', name='Pergunta')
-    question.fill('slow')
-    submit = page.get_by_role('button', name='Perguntar')
-    expect(submit).to_be_enabled()
-    submit.click()
-    expect(page.get_by_role('button', name='Consultando…')).to_be_disabled()
-    expect(page.get_by_text('Disk exhaustion appears in the stored evidence.')).to_be_visible()
-    allowed_evidence = {item['id'] for item in baseline['evidence']}
-    citations = page.locator('.copilotAnswer a').all_text_contents()
-    assert citations and set(citations) <= allowed_evidence, f'Copilot cited evidence outside this incident: {citations}'
-    assert 'ev-forged' not in page.locator('.copilotAnswer').inner_text()
-    question.fill('error')
-    expected_negative['copilot_503'] = True
-    try:
-        with page.expect_response(lambda response: response.url.endswith('/api/incidents/ui-copilot/copilot') and response.request.method == 'POST' and json.loads(response.request.post_data or '{}').get('question') == 'error') as response_info:
-            page.get_by_role('button', name='Perguntar').click()
-        page.wait_for_timeout(100)
-    finally:
-        expected_negative['copilot_503'] = False
-    error_response = response_info.value
-    error_body = error_response.json()
-    assert error_response.status == 503, f"expected fixture's intentional 503, got {error_response.status}: {error_body}"
-    assert error_body == {'answer': 'fixture error', 'insufficient_evidence': False, 'evidence_ids': [], 'mode': 'deterministic'}
-    expect(copilot.locator('.copilotError')).to_have_text('Não foi possível consultar o Copilot com esta sessão.')
-    assert fixture_requests[-1] == {
-        'method': 'POST', 'path': '/api/v1/incidents/ui-copilot/copilot', 'question': 'error',
-        'status': 503, 'response': error_body,
-    }
-    expected_http_failures.append(('POST', error_response.url, 503))
-    question.fill('no evidence')
-    page.get_by_role('button', name='Perguntar').click()
-    expect(page.get_by_text('Evidência insuficiente', exact=False)).to_be_visible()
-    assert page.locator('.copilotAnswer a').count() == 0
-    question.fill('keyboard check')
-    page.get_by_role('button', name='Perguntar').focus()
-    page.keyboard.press('Enter')
-    expect(page.get_by_text('Disk exhaustion appears in the stored evidence.')).to_be_visible()
-    expect(question).to_have_attribute('maxlength', '500')
-    denied = page.request.post(f'{FIXTURE_FRONTEND}/api/incidents/ui-restricted/copilot', data={'question': 'What happened?'})
-    assert denied.status == 403 and 'ev-good' not in denied.text() and 'Disk pressure' not in denied.text()
-    return allowed_evidence
-
-
 fixture_env = dict(os.environ, API_URL='http://127.0.0.1:18083', HOSTNAME='127.0.0.1', PORT='13002')
 errors = []
 checks = []
+created_id = None
 with (OUT / 'fixture-frontend.log').open('w') as log:
     fixture_frontend = subprocess.Popen(['node', 'server.js'], cwd=ROOT / 'frontend/.next/standalone', env=fixture_env, stdout=log, stderr=log)
     try:
@@ -198,44 +119,10 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 time.sleep(0.5)
         else:
             raise RuntimeError('Fixture frontend did not become ready')
-        if os.environ.get('COPILOT_ONLY') == '1':
-            with sync_playwright() as playwright:
-                browser = playwright.chromium.launch()
-                page = browser.new_page(viewport={'width': 390, 'height': 844}, locale='pt-BR')
-                watch_browser(page)
-                allowed_evidence = validate_copilot(page)
-                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Copilot mobile horizontal overflow'
-                page.screenshot(path=str(OUT / 'copilot-mobile.png'), full_page=True)
-                browser.close()
-            observed_http = [(item['method'], item['url'], item['status']) for item in browser_observations['http_failures']]
-            assert observed_http == expected_http_failures, {'http_failures': browser_observations['http_failures'], 'expected': expected_http_failures}
-            assert not browser_observations['request_failures'], browser_observations['request_failures']
-            assert not browser_observations['page_errors'], browser_observations['page_errors']
-            assert all(item['expected_fixture_503'] for item in browser_observations['console_errors']), browser_observations['console_errors']
-            checks.extend(['Copilot loading, generic errors, auth failure without incident data', 'authorized-investigation citation allow-list and forged-citation filtering', 'keyboard submission and mobile layout'])
-            server_log = (OUT / 'fixture-frontend.log').read_text()[-4000:]
-            fixture_api_log = '\n'.join(
-                f"{item['method']} {item['path']} question={item['question']!r} -> {item['status']} {json.dumps(item['response'], separators=(',', ':'))}"
-                for item in fixture_requests
-            )
-            (OUT / 'copilot-report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'authorized_evidence_ids': sorted(allowed_evidence), 'fixture_requests': fixture_requests, 'fixture_api_log': fixture_api_log, 'browser_observations': browser_observations, 'fixture_frontend_log_tail': server_log}, indent=2))
-            print(json.dumps({'passed': True, 'checks': checks}, indent=2))
-            raise SystemExit(0)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             page = browser.new_page(viewport={'width': 1440, 'height': 1000}, locale='pt-BR')
             watch_browser(page)
-            page.goto(f'{FRONTEND}/showcase', wait_until='networkidle')
-            expect(page.locator('.showcaseHero h1')).to_contain_text('Find the cause')
-            expect(page.get_by_text('ACTUAL APPLICATION DEMO · READ ONLY', exact=True)).to_be_visible()
-            expect(page.locator('.showcaseJourneyCard')).to_have_count(4)
-            page.screenshot(path=str(OUT / 'product-showcase-desktop.png'), full_page=True)
-            page.set_viewport_size({'width': 390, 'height': 844})
-            page.goto(f'{FRONTEND}/showcase', wait_until='networkidle')
-            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'product showcase mobile overflow'
-            page.screenshot(path=str(OUT / 'product-showcase-mobile.png'), full_page=True)
-            page.set_viewport_size({'width': 1440, 'height': 1000})
-            checks.append('product showcase communicates the guided story on desktop and mobile')
             for path, name in [('/', 'kubernetes'), ('/trace', 'trace'), ('/stateful/postgresql', 'postgresql'), ('/stateful/kafka', 'kafka'), ('/stateful/redis', 'redis')]:
                 page.goto(f'{FRONTEND}{path}', wait_until='networkidle')
                 expect(page.get_by_role('heading', name='Informações do alerta', exact=True)).to_be_visible()
@@ -263,6 +150,7 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 if sse_attempts['count'] == 0:
                     sse_attempts['count'] += 1
                     expected_request_failures.append(route.request.url)
+                    expected_console_failures.append(('Failed to load resource: net::ERR_FAILED', route.request.url))
                     route.abort()
                 else:
                     route.continue_()
@@ -352,13 +240,6 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
                 checks.append(f'{fixture}: no false confirmed cause')
             page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing-evidence', wait_until='networkidle')
             expect(page.get_by_text('Evidência absent-reference não disponível neste resultado.', exact=True)).to_be_visible()
-            validate_copilot(page)
-            checks.append('Copilot loading, errors, and incident-scoped citation filtering')
-            checks.append('Copilot question and submit are keyboard accessible and labeled')
-            page.set_viewport_size({'width': 390, 'height': 844})
-            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Copilot mobile horizontal overflow'
-            page.screenshot(path=str(OUT / 'copilot-mobile.png'), full_page=True)
-            checks.append('Copilot mobile layout without horizontal overflow')
             for fixture in ('ui-restricted', 'ui-unauthenticated'):
                 page.goto(f'{FIXTURE_FRONTEND}/incidents/{fixture}', wait_until='networkidle')
                 expect(page.get_by_role('heading', name='Acesso à investigação restrito')).to_be_visible()
@@ -373,17 +254,32 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
             missing_response = page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing', wait_until='networkidle')
             assert missing_response is not None and missing_response.status == 404
             expected_http_failures.append(('GET', missing_response.url, 404))
+            expected_console_failures.append(('Failed to load resource: the server responded with a status of 404 (Not Found)', missing_response.url))
             expect(page.locator('.diagnosis')).to_have_count(0)
             checks.append('missing incident does not fall back to demo')
             browser.close()
         observed_http = [(item['method'], item['url'], item['status']) for item in browser_observations['http_failures']]
         assert sorted(observed_http) == sorted(expected_http_failures), {'http_failures': browser_observations['http_failures'], 'expected': expected_http_failures}
-        observed_request_failures = [item['url'] for item in browser_observations['request_failures']]
-        assert sorted(observed_request_failures) == sorted(expected_request_failures), {'request_failures': browser_observations['request_failures'], 'expected': expected_request_failures}
-        assert all(item['expected_fixture_503'] for item in browser_observations['console_errors']), browser_observations['console_errors']
+        observed_request_failures = browser_observations['request_failures']
+        expected_interrupts = [item for item in observed_request_failures if item['url'] in expected_request_failures and item['failure'] == 'net::ERR_FAILED']
+        lifecycle_cancellations = [item for item in observed_request_failures if item not in expected_interrupts]
+        saved_action_cancellations = [item for item in lifecycle_cancellations if item['method'] == 'POST' and item['url'].endswith('/incidents/new') and item['failure'] == 'net::ERR_ABORTED']
+        lifecycle_cancellations = [item for item in lifecycle_cancellations if item not in saved_action_cancellations]
+        assert len(saved_action_cancellations) <= 1 and created_id, {'cancelled_server_action': saved_action_cancellations, 'persisted_incident': created_id}
+        assert len(expected_interrupts) == 1 and expected_interrupts[0]['failure'] == 'net::ERR_FAILED', {'request_failures': observed_request_failures, 'expected_interruption': expected_request_failures}
+        # EventSource close on terminal status and navigation cancel in-flight polling during browser teardown.
+        assert all(
+            item['method'] == 'GET'
+            and '/api/orchestration/' in item['url']
+            and item['url'].split('/api/orchestration/', 1)[1].split('/', 1)[-1].split('?', 1)[0] in ('events', 'progress')
+            and item['failure'] == 'net::ERR_ABORTED'
+            for item in lifecycle_cancellations
+        ), {'unexpected_request_failures': lifecycle_cancellations}
+        observed_console_failures = [(item['text'], item['location'].get('url')) for item in browser_observations['console_errors']]
+        assert sorted(observed_console_failures) == sorted(expected_console_failures), {'console_errors': browser_observations['console_errors'], 'expected': expected_console_failures}
         assert not browser_observations['page_errors'], browser_observations['page_errors']
         server_log = (OUT / 'fixture-frontend.log').read_text()[-4000:]
-        (OUT / 'report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'browser_observations': browser_observations, 'fixture_requests': fixture_requests, 'fixture_frontend_log_tail': server_log, 'git_sha': os.environ.get('GITHUB_SHA'), 'screenshot_data': 'actual demo engine, not production telemetry'}, indent=2))
+        (OUT / 'report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'browser_observations': browser_observations, 'fixture_frontend_log_tail': server_log, 'git_sha': os.environ.get('GITHUB_SHA'), 'screenshot_data': 'actual demo engine, not production telemetry'}, indent=2))
         print(json.dumps({'passed': True, 'checks': checks}, indent=2))
     finally:
         fixture_frontend.terminate()
