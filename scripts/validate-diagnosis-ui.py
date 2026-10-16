@@ -19,6 +19,9 @@ OUT.mkdir(parents=True, exist_ok=True)
 API_BASE = os.environ.get('VALIDATION_API', 'http://127.0.0.1:18080')
 FRONTEND = os.environ.get('VALIDATION_FRONTEND', 'http://127.0.0.1:13000')
 FIXTURE_FRONTEND = 'http://127.0.0.1:13002'
+STANDALONE = ROOT / 'frontend' / '.next' / 'standalone'
+if not (STANDALONE / '.next' / 'static').is_dir() or not (STANDALONE / 'public').is_dir():
+    raise RuntimeError('Standalone frontend is missing .next/static or public; copy both after next build')
 with urlopen(f'{API_BASE}/api/v1/incidents/demo', timeout=30) as response:
     baseline = json.load(response)
 
@@ -26,6 +29,9 @@ with urlopen(Request(f'{API_BASE}/api/v1/planner/investigate', data=json.dumps(b
     agentic_result = json.load(response)
 with urlopen(f"{API_BASE}/api/v1/incidents/{agentic_result['incident_id']}", timeout=30) as response:
     agentic_diagnosis = json.load(response)
+
+
+fixture_requests = []
 
 
 class FixtureAPI(BaseHTTPRequestHandler):
@@ -88,6 +94,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
             'evidence_ids': ['ev-forged'] if insufficient else [baseline['evidence'][0]['id'], 'ev-forged'] if code == 200 else [],
             'mode': 'deterministic',
         }
+        fixture_requests.append({'method': 'POST', 'path': self.path, 'question': question, 'status': code, 'response': result})
         self.send_response(code)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
@@ -100,9 +107,38 @@ class FixtureAPI(BaseHTTPRequestHandler):
 fixture_api = ThreadingHTTPServer(('127.0.0.1', 18083), FixtureAPI)
 threading.Thread(target=fixture_api.serve_forever, daemon=True).start()
 
+browser_observations = {'http_failures': [], 'request_failures': [], 'console_errors': [], 'page_errors': []}
+expected_http_failures = []
+expected_request_failures = []
+expected_negative = {'copilot_503': False}
+
+
+def watch_browser(page):
+    page.on('response', lambda response: browser_observations['http_failures'].append({
+        'method': response.request.method, 'url': response.url, 'status': response.status,
+        'request_body': response.request.post_data, 'response_body': response.text(),
+    }) if response.status >= 400 else None)
+    page.on('requestfailed', lambda request: browser_observations['request_failures'].append({
+        'method': request.method, 'url': request.url, 'failure': request.failure,
+    }))
+    def on_console(message):
+        if message.type != 'error':
+            return
+        item = {'text': message.text, 'location': message.location}
+        item['expected_fixture_503'] = (
+            expected_negative['copilot_503']
+            and 'status of 503 (Service Unavailable)' in message.text
+            and message.location.get('url') == f'{FIXTURE_FRONTEND}/api/incidents/ui-copilot/copilot'
+        )
+        browser_observations['console_errors'].append(item)
+    page.on('console', on_console)
+    page.on('pageerror', lambda error: browser_observations['page_errors'].append(f'{page.url}: {error}'))
+
 
 def validate_copilot(page):
     page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-copilot', wait_until='networkidle')
+    copilot = page.locator('[data-copilot-hydrated="true"]')
+    expect(copilot).to_have_count(1)
     question = page.get_by_role('textbox', name='Pergunta')
     question.fill('slow')
     submit = page.get_by_role('button', name='Perguntar')
@@ -115,8 +151,23 @@ def validate_copilot(page):
     assert citations and set(citations) <= allowed_evidence, f'Copilot cited evidence outside this incident: {citations}'
     assert 'ev-forged' not in page.locator('.copilotAnswer').inner_text()
     question.fill('error')
-    page.get_by_role('button', name='Perguntar').click()
-    expect(page.get_by_text('Não foi possível consultar o Copilot com esta sessão.', exact=True)).to_be_visible()
+    expected_negative['copilot_503'] = True
+    try:
+        with page.expect_response(lambda response: response.url.endswith('/api/incidents/ui-copilot/copilot') and response.request.method == 'POST' and json.loads(response.request.post_data or '{}').get('question') == 'error') as response_info:
+            page.get_by_role('button', name='Perguntar').click()
+        page.wait_for_timeout(100)
+    finally:
+        expected_negative['copilot_503'] = False
+    error_response = response_info.value
+    error_body = error_response.json()
+    assert error_response.status == 503, f"expected fixture's intentional 503, got {error_response.status}: {error_body}"
+    assert error_body == {'answer': 'fixture error', 'insufficient_evidence': False, 'evidence_ids': [], 'mode': 'deterministic'}
+    expect(copilot.locator('.copilotError')).to_have_text('Não foi possível consultar o Copilot com esta sessão.')
+    assert fixture_requests[-1] == {
+        'method': 'POST', 'path': '/api/v1/incidents/ui-copilot/copilot', 'question': 'error',
+        'status': 503, 'response': error_body,
+    }
+    expected_http_failures.append(('POST', error_response.url, 503))
     question.fill('no evidence')
     page.get_by_role('button', name='Perguntar').click()
     expect(page.get_by_text('Evidência insuficiente', exact=False)).to_be_visible()
@@ -151,21 +202,29 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
             with sync_playwright() as playwright:
                 browser = playwright.chromium.launch()
                 page = browser.new_page(viewport={'width': 390, 'height': 844}, locale='pt-BR')
-                errors = []
-                page.on('pageerror', lambda error: errors.append(f'{page.url}: {error}'))
+                watch_browser(page)
                 allowed_evidence = validate_copilot(page)
                 assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'), 'Copilot mobile horizontal overflow'
                 page.screenshot(path=str(OUT / 'copilot-mobile.png'), full_page=True)
                 browser.close()
-            assert not errors, errors
+            observed_http = [(item['method'], item['url'], item['status']) for item in browser_observations['http_failures']]
+            assert observed_http == expected_http_failures, {'http_failures': browser_observations['http_failures'], 'expected': expected_http_failures}
+            assert not browser_observations['request_failures'], browser_observations['request_failures']
+            assert not browser_observations['page_errors'], browser_observations['page_errors']
+            assert all(item['expected_fixture_503'] for item in browser_observations['console_errors']), browser_observations['console_errors']
             checks.extend(['Copilot loading, generic errors, auth failure without incident data', 'authorized-investigation citation allow-list and forged-citation filtering', 'keyboard submission and mobile layout'])
-            (OUT / 'copilot-report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'authorized_evidence_ids': sorted(allowed_evidence), 'browser_errors': errors}, indent=2))
+            server_log = (OUT / 'fixture-frontend.log').read_text()[-4000:]
+            fixture_api_log = '\n'.join(
+                f"{item['method']} {item['path']} question={item['question']!r} -> {item['status']} {json.dumps(item['response'], separators=(',', ':'))}"
+                for item in fixture_requests
+            )
+            (OUT / 'copilot-report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'authorized_evidence_ids': sorted(allowed_evidence), 'fixture_requests': fixture_requests, 'fixture_api_log': fixture_api_log, 'browser_observations': browser_observations, 'fixture_frontend_log_tail': server_log}, indent=2))
             print(json.dumps({'passed': True, 'checks': checks}, indent=2))
             raise SystemExit(0)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()
             page = browser.new_page(viewport={'width': 1440, 'height': 1000}, locale='pt-BR')
-            page.on('pageerror', lambda error: errors.append(f'{page.url}: {error}'))
+            watch_browser(page)
             page.goto(f'{FRONTEND}/showcase', wait_until='networkidle')
             expect(page.locator('.showcaseHero h1')).to_contain_text('Find the cause')
             expect(page.get_by_text('ACTUAL APPLICATION DEMO · READ ONLY', exact=True)).to_be_visible()
@@ -203,6 +262,7 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
             def interrupt_first_sse(route):
                 if sse_attempts['count'] == 0:
                     sse_attempts['count'] += 1
+                    expected_request_failures.append(route.request.url)
                     route.abort()
                 else:
                     route.continue_()
@@ -312,13 +372,18 @@ with (OUT / 'fixture-frontend.log').open('w') as log:
             checks.append('direct and proxy authorization forwarded server-side')
             missing_response = page.goto(f'{FIXTURE_FRONTEND}/incidents/ui-missing', wait_until='networkidle')
             assert missing_response is not None and missing_response.status == 404
+            expected_http_failures.append(('GET', missing_response.url, 404))
             expect(page.locator('.diagnosis')).to_have_count(0)
             checks.append('missing incident does not fall back to demo')
             browser.close()
-        if errors:
-            (OUT / 'browser-errors.json').write_text(json.dumps(errors, indent=2))
-        assert not errors, errors
-        (OUT / 'report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'browser_errors': errors, 'git_sha': os.environ.get('GITHUB_SHA'), 'screenshot_data': 'actual demo engine, not production telemetry'}, indent=2))
+        observed_http = [(item['method'], item['url'], item['status']) for item in browser_observations['http_failures']]
+        assert sorted(observed_http) == sorted(expected_http_failures), {'http_failures': browser_observations['http_failures'], 'expected': expected_http_failures}
+        observed_request_failures = [item['url'] for item in browser_observations['request_failures']]
+        assert sorted(observed_request_failures) == sorted(expected_request_failures), {'request_failures': browser_observations['request_failures'], 'expected': expected_request_failures}
+        assert all(item['expected_fixture_503'] for item in browser_observations['console_errors']), browser_observations['console_errors']
+        assert not browser_observations['page_errors'], browser_observations['page_errors']
+        server_log = (OUT / 'fixture-frontend.log').read_text()[-4000:]
+        (OUT / 'report.json').write_text(json.dumps({'passed': True, 'checks': checks, 'browser_observations': browser_observations, 'fixture_requests': fixture_requests, 'fixture_frontend_log_tail': server_log, 'git_sha': os.environ.get('GITHUB_SHA'), 'screenshot_data': 'actual demo engine, not production telemetry'}, indent=2))
         print(json.dumps({'passed': True, 'checks': checks}, indent=2))
     finally:
         fixture_frontend.terminate()
