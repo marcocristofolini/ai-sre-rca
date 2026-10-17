@@ -64,7 +64,7 @@ async def compile_proposal(incident_id: str, question: str, request: Request, pr
         title=f"Copilot: {question}"[:200], tenant_id=context.tenant_id,
         cluster=context.cluster, namespace=context.namespace, pod=context.pod,
         node=context.node, service=context.service, alert_name=context.alert_name,
-        severity=context.severity, starts_at=context.starts_at, ends_at=context.ends_at,
+        severity=context.severity, starts_at=context.starts_at, ends_at=context.ends_at, workload=context.workload,
         labels={key: context.labels[key] for key in ("copilot_target_kind", "copilot_target_id", "copilot_target_uid") if key in context.labels},
     )
     if selection is None:
@@ -75,7 +75,7 @@ async def compile_proposal(incident_id: str, question: str, request: Request, pr
     # This digest checks the reviewed scope; it never grants authorization.
     fingerprint = hashlib.sha256(json.dumps({
         "source": source.incident_id, "actor": principal.subject,
-        "question": question, "incident": incident.model_dump(mode="json", exclude={"ends_at"} if incident.ends_at is None else set()),
+        "question": question, "incident": incident.model_dump(mode="json", exclude=({"ends_at"} if incident.ends_at is None else set()) | ({"workload"} if incident.workload is None else set())),
         **({"identity": identity, "budget": budget} if selection is not None else {}),
     }, sort_keys=True).encode()).hexdigest()
     return InvestigationProposal(proposal_id=fingerprint, incident=incident, resolved_identity=identity, query_limits=budget,

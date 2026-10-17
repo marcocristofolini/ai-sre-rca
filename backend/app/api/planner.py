@@ -194,9 +194,11 @@ async def submit_orchestration_job(
         raise HTTPException(status_code=422, detail="a concrete tenant_id is required")
     scoped = incident.model_copy(update={"tenant_id": tenant_id})
     request_fingerprint = hashlib.sha256(
-        json.dumps(scoped.model_dump(mode="json", exclude={"ends_at"} if scoped.ends_at is None else set()), sort_keys=True).encode()
+        json.dumps(scoped.model_dump(mode="json", exclude=({"ends_at"} if scoped.ends_at is None else set()) | ({"workload"} if scoped.workload is None else set())), sort_keys=True).encode()
     ).hexdigest()
     authorize_cluster(principal, scoped.cluster)
+    if scoped.workload is not None:
+        await validate_queued_scope(request.app.state.repo, settings, scoped)
     request_id = f"request-{uuid4().hex[:12]}"
     submitted = datetime.now(timezone.utc)
     job = OrchestrationJob(
@@ -339,6 +341,8 @@ async def plan_investigation(
         update={"tenant_id": tenant_id}
     )
     authorize_cluster(principal, scoped_incident.cluster)
+    if scoped_incident.workload is not None:
+        await validate_queued_scope(request.app.state.repo, settings, scoped_incident)
     plan = await build_investigation_plan(
         request.app.state.repo,
         incident=scoped_incident,
@@ -430,6 +434,8 @@ async def execute_agentic_investigation(
         update={"tenant_id": tenant_id}
     )
     authorize_cluster(principal, scoped_incident.cluster)
+    if scoped_incident.workload is not None:
+        await validate_queued_scope(request.app.state.repo, settings, scoped_incident)
 
     # Recompile server-side immediately before execution. The caller cannot
     # submit arbitrary tasks, budgets, tools or dependencies for execution.
@@ -509,6 +515,8 @@ async def investigate_agentically(
         update={"tenant_id": tenant_id}
     )
     authorize_cluster(principal, scoped_incident.cluster)
+    if scoped_incident.workload is not None:
+        await validate_queued_scope(request.app.state.repo, settings, scoped_incident)
 
     plan = await build_investigation_plan(
         request.app.state.repo,

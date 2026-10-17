@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.integrity import compute_evidence_hash
 
@@ -16,6 +16,22 @@ class HypothesisStatus(str, Enum):
     CONFIRMED = "confirmed"
     RULED_OUT = "ruled_out"
     INCONCLUSIVE = "inconclusive"
+
+
+class WorkloadMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["ReplicaSet", "Pod"]
+    name: str = Field(min_length=1, max_length=253, pattern=r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
+    uid: str = Field(min_length=1, max_length=255)
+    terminating: bool = False
+
+
+class WorkloadScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["Deployment", "StatefulSet"]
+    name: str = Field(min_length=1, max_length=253)
+    uid: str = Field(min_length=1, max_length=255)
+    members: list[WorkloadMember] = Field(max_length=32)
 
 
 class IncidentInput(BaseModel):
@@ -32,6 +48,7 @@ class IncidentInput(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
     ends_at: datetime | None = None
+    workload: WorkloadScope | None = None
 
     @model_validator(mode="after")
     def validate_explicit_window(self):

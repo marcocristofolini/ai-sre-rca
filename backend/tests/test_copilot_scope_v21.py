@@ -197,7 +197,7 @@ def test_legacy_request_fingerprints_remain_compatible_without_an_explicit_end()
     with TestClient(app) as client:
         question = 'Investigate again'
         r = client.post(BASE + '/proposals', json={'question': question}).json()
-        old_incident = dict(r['incident']); old_incident.pop('ends_at')
+        old_incident = dict(r['incident']); old_incident.pop('ends_at'); old_incident.pop('workload')
         expected = hashlib.sha256(json.dumps({'source': 'inc-a', 'actor': principal.value.subject, 'question': question, 'incident': old_incident}, sort_keys=True).encode()).hexdigest()
         assert r['proposal_id'] == expected
         assert 'scope' not in old_incident

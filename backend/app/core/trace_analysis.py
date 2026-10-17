@@ -502,6 +502,8 @@ async def enrich_with_trace_causality(
     for item, payload in zip(selected_with_id, payloads):
         if isinstance(payload, Exception) or not payload:
             continue
+        if result.incident.workload is not None and not any(span["service"] == service for span in _normalize_spans(payload)):
+            continue
         trace_id = str(item.get("traceID"))
         analysis = analyze_trace(
             payload,

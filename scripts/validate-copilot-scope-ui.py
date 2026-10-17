@@ -29,6 +29,30 @@ def seed(cluster, uid='scope-uid'):
         assert response.status == 200
 
 
+def seed_workloads(cluster):
+    refs = lambda kind, name: {'kind': kind, 'name': name, 'namespace': 'scope-apps'}
+    members = [dict(kind='ReplicaSet', name='roll-old', uid='rs-old-uid', terminating=False),
+        dict(kind='ReplicaSet', name='roll-new', uid='rs-new-uid', terminating=False),
+        dict(kind='Pod', name='owned-old', uid='pod-old-uid', terminating=True),
+        dict(kind='Pod', name='owned-new', uid='pod-new-uid', terminating=False)]
+    resources = [dict(**refs('Deployment','scope-deploy'), metadata={'kubernetes_uid':'deployment-uid','desired_replicas':2,
+        'telemetry_service':'deployment-otel','workload_inventory':{'complete':True,'members':members}}),
+        dict(**refs('StatefulSet','scope-stateful'), metadata={'kubernetes_uid':'stateful-uid','desired_replicas':0,
+        'telemetry_service':'stateful-otel','workload_inventory':{'complete':True,'members':[]}})]
+    for member in members:
+        resources.append(dict(**refs(member['kind'],member['name']), metadata={'kubernetes_uid':member['uid'],
+            **({'deletion_timestamp':datetime.now(timezone.utc).isoformat()} if member['terminating'] else {})}))
+    relationships = [dict(source=refs('ReplicaSet',name), target=refs('Deployment','scope-deploy'), relationship='owned_by',
+        metadata={'basis':'ownerReference.uid','owner_uid':'deployment-uid'}) for name in ('roll-old','roll-new')]
+    relationships += [dict(source=refs('Pod',pod), target=refs('ReplicaSet',rs), relationship='owned_by',
+        metadata={'basis':'ownerReference.uid','owner_uid':uid}) for pod,rs,uid in [('owned-old','roll-old','rs-old-uid'),('owned-new','roll-new','rs-new-uid')]]
+    payload = {'snapshot_id':uuid4().hex,'source':'kubernetes','observed_at':datetime.now(timezone.utc).isoformat(),'complete':True,
+        'coverage':{'kinds':['Deployment','StatefulSet','ReplicaSet','Pod'],'namespaces':['scope-apps'],'relationship_types':['owned_by']},
+        'resources':resources,'relationships':relationships}
+    with urlopen(Request(API+'/api/v1/awareness/inventory/reconcile?cluster='+cluster,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'})) as response:
+        assert response.status == 200
+
+
 for cluster in (primary, secondary): seed(cluster)
 observed = {'http_errors': [], 'console_errors': [], 'request_failures': [], 'page_errors': [], 'confirmations': []}
 expected_http = []; negative = {'url': None, 'status': None}; job_ids = []; checks = []
@@ -137,6 +161,40 @@ with (OUT / 'frontend.log').open('w') as log:
                 panel.get_by_role('button', name='Confirmar investigação').click()
             assert service_job.value.status == 202; job_ids.append(service_job.value.json()['id'])
             expect(panel.get_by_text('Investigação concluída. As próximas perguntas usam as evidências desta investigação.', exact=True)).to_be_visible(timeout=60000)
+            seed_workloads(primary)
+            for kind, name in [('Deployment','scope-deploy'),('StatefulSet','scope-stateful')]:
+                panel.get_by_label('Selecionar outro alvo ou período').check()
+                expect(panel.get_by_label('Cluster autorizado')).to_be_visible()
+                panel.get_by_label('Tipo de alvo').select_option(kind)
+                panel.get_by_label('Namespace do alvo').fill('scope-apps')
+                panel.get_by_label('Nome do alvo').fill(name)
+                panel.get_by_label('Início da consulta (hora local)').fill(start.strftime('%Y-%m-%dT%H:%M'))
+                panel.get_by_label('Fim da consulta (hora local)').fill(end.strftime('%Y-%m-%dT%H:%M'))
+                question.fill('Investigate this Kubernetes workload')
+                with page.expect_response(lambda r: r.url.endswith('/copilot/proposals')) as reviewed:
+                    panel.get_by_role('button',name='Propor investigação').click()
+                assert reviewed.value.status == 200, reviewed.value.text()
+                incident = reviewed.value.json()['incident']; workload = incident['workload']
+                assert workload['kind'] == kind and workload['name'] == name and incident['pod'] is None
+                assert {m['name'] for m in workload['members'] if m['kind']=='Pod'} == ({'owned-old','owned-new'} if kind=='Deployment' else set())
+                expect(panel.locator('.copilotProposal')).to_contain_text(kind+'/'+name)
+                expect(panel.locator('.copilotProposal')).to_contain_text('owned-old (terminando)' if kind=='Deployment' else '0 (sem logs de Pods)')
+                before = len(observed['confirmations']); page.wait_for_timeout(200)
+                assert len(observed['confirmations']) == before
+                with page.expect_response(lambda r:r.url.endswith('/copilot/confirm')) as launched:
+                    panel.get_by_role('button',name='Confirmar investigação').focus(); page.keyboard.press('Enter')
+                assert launched.value.status == 202; job_ids.append(launched.value.json()['id'])
+                expect(panel.get_by_text('Investigação concluída. As próximas perguntas usam as evidências desta investigação.',exact=True)).to_be_visible(timeout=60000)
+                question.fill('What evidence supports the diagnosis?')
+                with page.expect_response(lambda r:r.url.endswith('/copilot')) as grounded:
+                    panel.get_by_role('button',name='Perguntar').click()
+                assert grounded.value.status == 200
+                completed = grounded.value.url.split('/api/incidents/',1)[1].split('/',1)[0]
+                saved = page.request.get(API+'/api/v1/incidents/'+completed).json()
+                assert saved['incident']['workload'] == workload
+                assert set(panel.locator('.copilotAnswer a').all_text_contents()) <= {e['id'] for e in saved['evidence']}
+                assert any(e['category']=='verified-workload-membership' for e in saved['evidence'])
+                checks.append(kind+' UID membership, explicit confirmation, SSE, persisted scope and authorized Q&A')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Dynamic scope mobile overflow'
             page.screenshot(path=str(OUT / 'dynamic-scope-mobile.png'), full_page=True)
             page.set_viewport_size({'width': 1440, 'height': 1000})

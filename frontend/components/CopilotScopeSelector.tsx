@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 
-export type ScopeSelection = { cluster: string; kind: 'Service' | 'Pod'; name: string; namespace?: string; starts_at: string; ends_at: string };
-type Options = { clusters: string[]; cluster: string; targets: Array<{ kind: 'Service' | 'Pod'; name: string; namespace?: string }>; truncated: boolean; min_window_minutes: number; max_window_minutes: number };
+export type ScopeSelection = { cluster: string; kind: 'Service' | 'Pod' | 'Deployment' | 'StatefulSet'; name: string; namespace?: string; starts_at: string; ends_at: string };
+type Options = { clusters: string[]; cluster: string; targets: Array<{ kind: 'Service' | 'Pod' | 'Deployment' | 'StatefulSet'; name: string; namespace?: string }>; truncated: boolean; min_window_minutes: number; max_window_minutes: number };
 
 export default function CopilotScopeSelector({ incidentId, disabled, onChange }: { incidentId: string; disabled: boolean; onChange: (scope: ScopeSelection | null, valid: boolean) => void }) {
   const [enabled, setEnabled] = useState(false);
   const [cluster, setCluster] = useState('');
-  const [kind, setKind] = useState<'Service' | 'Pod'>('Service');
+  const [kind, setKind] = useState<'Service' | 'Pod' | 'Deployment' | 'StatefulSet'>('Service');
   const [name, setName] = useState('');
   const [namespace, setNamespace] = useState('');
   const [start, setStart] = useState('');
@@ -39,7 +39,7 @@ export default function CopilotScopeSelector({ incidentId, disabled, onChange }:
       {error && <p role="status">{error}</p>}
       {!options && !error && <p role="status">Consultando inventário autorizado…</p>}
       {options && <><label>Cluster autorizado<select value={cluster || options.cluster} onChange={(event) => { setName(''); setNamespace(''); setCluster(event.target.value); }}>{options.clusters.map((value) => <option key={value}>{value}</option>)}</select></label>
-      <label>Tipo de alvo<select value={kind} onChange={(event) => { setName(''); setKind(event.target.value as 'Service' | 'Pod'); }}><option value="Service">Serviço</option><option value="Pod">Workload (Pod)</option></select></label>
+      <label>Tipo de alvo<select value={kind} onChange={(event) => { setName(''); setKind(event.target.value as 'Service' | 'Pod' | 'Deployment' | 'StatefulSet'); }}><option value="Service">Serviço</option><option value="Pod">Workload (Pod)</option><option value="Deployment">Deployment</option><option value="StatefulSet">StatefulSet</option></select></label>
       <label>Namespace do alvo<input value={namespace} maxLength={63} onChange={(event) => setNamespace(event.target.value)} /></label>
       <label>Nome do alvo<input list="copilot-inventory-targets" value={name} maxLength={253} onChange={(event) => setName(event.target.value)} /></label>
       <datalist id="copilot-inventory-targets">{options.targets.filter((item) => item.kind === kind).map((item) => <option key={`${item.kind}/${item.namespace}/${item.name}`} value={item.name}>{item.namespace}</option>)}</datalist>

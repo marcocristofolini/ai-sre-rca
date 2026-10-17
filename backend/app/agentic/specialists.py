@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -386,6 +387,13 @@ async def _kubernetes(
     started = datetime.now(timezone.utc)
     budget = SpecialistBudget(task.max_queries)
     scoped_incident = _scoped_incident(task, incident)
+    if incident.workload is not None:
+        return _result(task, budget, started_at=started, evidence=[Evidence(
+            source="kubernetes", category="verified-workload-membership",
+            summary=f"Verified {incident.workload.kind} membership from authoritative inventory; not a causal diagnosis.",
+            facts={"context_only": True, "target_uid": incident.labels.get('copilot_target_uid'),
+                "members": [m.model_dump() for m in incident.workload.members]}, strength="weak",
+        )])
     proxy = KubernetesBudgetedTools(tools, budget)
     engine = InvestigationEngine(
         tools=proxy,
@@ -446,6 +454,8 @@ async def _metrics(
             service,
             incident.ends_at or incident.starts_at,
         )
+        if incident.workload is not None:
+            edges = [edge for edge in edges if service in (edge.get("client"), edge.get("server"))]
         if edges:
             evidence.append(Evidence(
                 source="opentelemetry",
@@ -504,7 +514,15 @@ async def _logs(
         )
 
     evidence: list[Evidence] = []
-    if pod:
+    if incident.workload is not None:
+        pods = [m.name for m in incident.workload.members if m.kind == 'Pod']
+        if not pods:
+            return _result(task, budget, started_at=started, reason="Verified workload has no Pods; no logs were queried.")
+        pattern = '|'.join(re.escape(name).replace(r'\-', '-') for name in sorted(pods))
+        uid_pattern = '|'.join(re.escape(m.uid).replace(r'\-', '-') for m in incident.workload.members if m.kind == 'Pod')
+        query = f'{{namespace="{quoted_string(namespace)}",pod=~"{quoted_string(pattern)}",pod_uid=~"{quoted_string(uid_pattern)}"}}'
+        scope_kind, scope_value = 'workload', pods
+    elif pod:
         query = (
             f'{{namespace="{quoted_string(namespace)}",'
             f' pod="{quoted_string(pod)}"}}'
@@ -527,6 +545,13 @@ async def _logs(
             100,
         )
         streams = payload.get("data", {}).get("result", [])
+        if incident.workload is not None and any(
+            item.get('stream', {}).get('namespace') != namespace or
+            (item.get('stream', {}).get('pod'), item.get('stream', {}).get('pod_uid')) not in
+            {(m.name, m.uid) for m in incident.workload.members if m.kind == 'Pod'}
+            for item in streams
+        ):
+            return _result(task, budget, started_at=started, reason="Telemetry returned streams outside verified workload membership; evidence rejected.")
         entry_count = sum(
             len(item.get("values", []))
             for item in streams

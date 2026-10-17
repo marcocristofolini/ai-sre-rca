@@ -117,6 +117,7 @@ def _metadata(item: dict[str, Any]) -> dict[str, Any]:
         ("uid", "kubernetes_uid"),
         ("resourceVersion", "resource_version"),
         ("creationTimestamp", "creation_timestamp"),
+        ("deletionTimestamp", "deletion_timestamp"),
     ):
         value = metadata.get(key)
         if value is not None:
@@ -186,6 +187,52 @@ def _controller_owner(
     if not kind or not name or not uid:
         return None
     return kind, name, uid
+
+
+def _workload_membership(resources, objects, relationships):
+    """Only complete Kubernetes list results can attest controller membership."""
+    by_key = {_identity(x.kind, x.namespace, x.name): x for x in resources}
+    children = {}
+    for edge in relationships:
+        if edge.relationship == 'owned_by':
+            parent = _identity(edge.target.kind, edge.target.namespace, edge.target.name)
+            child = _identity(edge.source.kind, edge.source.namespace, edge.source.name)
+            children.setdefault(parent, []).append(child)
+    for key, controller in by_key.items():
+        if controller.kind not in ('Deployment', 'StatefulSet'):
+            continue
+        required = {'Pod', controller.kind} | ({'ReplicaSet'} if controller.kind == 'Deployment' else set())
+        complete = required <= objects.keys() and bool(controller.metadata.get('kubernetes_uid'))
+        for kind in required:
+            scoped = [x for x in objects.get(kind, []) if (x.get('metadata') or {}).get('namespace') == controller.namespace]
+            keys = [(x.get('metadata') or {}).get('name') for x in scoped]
+            uids = [(x.get('metadata') or {}).get('uid') for x in scoped]
+            if len(set(keys)) != len(keys) or len(set(uids)) != len(uids) or any(not uid for uid in uids):
+                complete = False
+        members = []
+        parents = [key]
+        if controller.kind == 'Deployment':
+            parents += [x for x in children.get(key, []) if x[0] == 'replicaset']
+        relevant = set(parents)
+        for parent in parents:
+            for child in children.get(parent, []):
+                resource = by_key[child]
+                members.append({'kind': resource.kind, 'name': resource.name,
+                    'uid': resource.metadata.get('kubernetes_uid'),
+                    'terminating': bool(resource.metadata.get('deletion_timestamp'))})
+        # Invalid/ambiguous references must not silently disappear from the graph.
+        for kind in required - {controller.kind}:
+            for obj in objects.get(kind, []):
+                meta = obj.get('metadata') or {}
+                if meta.get('namespace') != controller.namespace:
+                    continue
+                refs = [x for x in meta.get('ownerReferences', []) if x.get('controller') is True]
+                for ref in refs:
+                    parent = _identity(str(ref.get('kind', '')), controller.namespace, str(ref.get('name', '')))
+                    if (parent in relevant or ref.get('uid') in {by_key[k].metadata.get('kubernetes_uid') for k in relevant}) and (parent not in relevant or len(refs) != 1 or ref.get('uid') != by_key[parent].metadata.get('kubernetes_uid') or not meta.get('uid')):
+                        complete = False
+        controller.metadata['workload_inventory'] = {'complete': complete,
+            'members': sorted(members, key=lambda x: (x['kind'], x['name']))}
 
 
 def _selector_matches(
@@ -510,6 +557,7 @@ class KubernetesInventoryCollector:
                 {kind: objects[kind] for kind in namespaced_kinds},
                 allow_scheduled_on=False,
             )
+            _workload_membership(resources, objects, relationships)
             kind_set = set(namespaced_kinds)
             snapshots.append(AuthoritativeInventorySnapshot(
                 snapshot_id=_snapshot_id(

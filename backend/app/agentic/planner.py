@@ -352,10 +352,12 @@ def _eligible_tasks(
     context_ids = context.entity_ids[: settings.agentic_max_context_nodes]
     scope = _specialist_scope(incident, context)
 
-    if scope.node or (scope.namespace and scope.pod):
+    if incident.workload is not None or scope.node or (scope.namespace and scope.pod):
         kubernetes_reason = (
             "The incident identifies Kubernetes-scoped runtime resources."
         )
+        if incident.workload is not None:
+            kubernetes_reason = "Use UID-verified inventory membership as context only; no Pod is guessed."
         if "pod" in scope.graph_resolved_fields:
             kubernetes_reason = (
                 "A single fresh Pod was resolved from the bounded persistent "
@@ -394,6 +396,8 @@ def _eligible_tasks(
                 "A single fresh Pod was resolved from the bounded persistent "
                 "topology and will be used only to narrow the live Loki query."
             )
+        elif incident.workload is not None:
+            log_reason = "Query only verified workload Pod names and UIDs; zero replicas produce no log queries."
         elif scope.pod is None and scope.service:
             log_reason = (
                 "No unambiguous Pod identity is available, so logs remain "
