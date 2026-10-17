@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.awareness import router as awareness_router
 from app.api.incidents import router as incidents_router
+from app.api.copilot_investigations import router as copilot_investigations_router
 from app.api.planner import router as planner_router
 from app.api.planner import orchestration_worker
 from app.api.webhooks import router as webhooks_router
@@ -124,6 +125,7 @@ async def healthz():
 
 
 app.include_router(incidents_router)
+app.include_router(copilot_investigations_router)
 app.include_router(awareness_router)
 app.include_router(planner_router)
 app.include_router(webhooks_router)

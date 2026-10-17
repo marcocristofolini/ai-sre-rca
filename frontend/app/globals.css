@@ -630,3 +630,6 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .copilotAnswer { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .copilotAnswer a { margin-right: 8px; }
 @media (max-width: 720px) { .diagnosisCopilot { padding: 0 14px 18px; } }
+
+.copilotProposal { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
+.copilotProposal button { margin: 4px 8px 4px 0; }
