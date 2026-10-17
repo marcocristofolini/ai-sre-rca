@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -444,7 +444,7 @@ async def _metrics(
         budget.consume("service_graph")
         edges = await tools.service_graph(
             service,
-            incident.starts_at,
+            incident.ends_at or incident.starts_at,
         )
         if edges:
             evidence.append(Evidence(
@@ -523,8 +523,7 @@ async def _logs(
         budget.consume("loki_query_range")
         payload = await tools.loki_query_range(
             query,
-            incident.starts_at - timedelta(minutes=15),
-            incident.starts_at + timedelta(minutes=5),
+            *incident.query_window(15),
             100,
         )
         streams = payload.get("data", {}).get("result", [])

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 from collections import Counter
-from datetime import timedelta
 from typing import Any
 
 from app.config import Settings
@@ -409,8 +408,7 @@ async def _trace_red_evidence(
     incident: IncidentInput,
 ) -> Evidence | None:
     escaped = quoted_string(service)
-    start = incident.starts_at - timedelta(minutes=10)
-    end = incident.starts_at + timedelta(minutes=5)
+    start, end = incident.query_window(10)
     queries = {
         "rate": f'{{ resource.service.name = "{escaped}" }} | rate()',
         "errors": f'{{ resource.service.name = "{escaped}" && status = error }} | rate()',
@@ -469,8 +467,7 @@ async def enrich_with_trace_causality(
     if not service:
         return result
 
-    start = result.incident.starts_at - timedelta(minutes=settings.trace_window_minutes)
-    end = result.incident.starts_at + timedelta(minutes=5)
+    start, end = result.incident.query_window(settings.trace_window_minutes)
     try:
         search_results = await tools.tempo_search_traces(
             service,
@@ -576,7 +573,7 @@ async def enrich_with_trace_causality(
     graph_red_edges: list[dict[str, Any]] = []
     if not any(ev.category == "service-graph" for ev in result.evidence):
         try:
-            graph_red_edges = await tools.service_graph(service, result.incident.starts_at)
+            graph_red_edges = await tools.service_graph(service, result.incident.ends_at or result.incident.starts_at)
         except Exception:
             graph_red_edges = []
         if graph_red_edges:

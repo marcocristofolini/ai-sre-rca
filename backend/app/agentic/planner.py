@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from app.agentic.models import (
     InvestigationPlan,
     ModelPlanningAdvice,
@@ -134,13 +132,8 @@ async def _graph_context(
             cluster=incident.cluster,
             service_name=incident.service,
             namespace=incident.namespace,
-            since=(
-                incident.starts_at
-                - timedelta(
-                    minutes=settings.change_correlation_window_minutes
-                )
-            ),
-            until=incident.starts_at + timedelta(minutes=5),
+            since=incident.query_window(settings.change_correlation_window_minutes)[0],
+            until=incident.query_window(settings.change_correlation_window_minutes)[1],
             limit=settings.agentic_context_change_limit,
         )
         recent_changes = [
@@ -302,7 +295,7 @@ def _specialist_scope(
     ambiguous: list[str] = []
 
     pod = incident.pod
-    if pod is None and incident.namespace:
+    if pod is None and incident.namespace and not incident.labels.get("copilot_target_kind"):
         pod_candidates = _fresh_context_entities(
             context,
             "Pod",
@@ -321,7 +314,7 @@ def _specialist_scope(
         or incident.labels.get("app.kubernetes.io/instance")
     )
     application = explicit_application
-    if application is None:
+    if application is None and not incident.labels.get("copilot_target_kind"):
         application_candidates = _fresh_context_entities(
             context,
             "ArgoCDApplication",

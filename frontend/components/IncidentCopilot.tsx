@@ -3,10 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CopilotAnswer } from '../lib/api';
 import OrchestrationProgress from './OrchestrationProgress';
+import CopilotScopeSelector, { type ScopeSelection } from './CopilotScopeSelector';
 
-type Proposal = { proposal_id: string; question: string; incident: { title: string; tenant_id: string; cluster: string; namespace?: string; pod?: string; node?: string; service?: string; starts_at: string }; scope_notice: string };
+type Proposal = { scope?: ScopeSelection; query_limits?: { max_calls: number; max_calls_per_source: number; max_wall_seconds: number }; proposal_id: string; question: string; incident: { title: string; tenant_id: string; cluster: string; namespace?: string; pod?: string; node?: string; service?: string; starts_at: string; ends_at?: string }; scope_notice: string };
 
 export default function IncidentCopilot({ incidentId, evidenceIds }: { incidentId: string; evidenceIds: string[] }) {
+  const [scopeSelection, setScopeSelection] = useState<ScopeSelection | null>(null);
+  const [scopeValid, setScopeValid] = useState(true);
+  const updateScope = useCallback((scope: ScopeSelection | null, valid: boolean) => { setScopeSelection(scope); setScopeValid(valid); setProposal(null); }, []);
   const [activeIncident, setActiveIncident] = useState(incidentId);
   const [activeEvidence, setActiveEvidence] = useState(evidenceIds);
   const [proposal, setProposal] = useState<Proposal | null>(null);
@@ -35,20 +39,21 @@ export default function IncidentCopilot({ incidentId, evidenceIds }: { incidentI
     setJobFailed(true); setError('A investigação falhou. As perguntas continuam usando a última investigação autorizada.');
   }, []);
   async function propose() {
-    if (busy || pending || !question.trim()) return;
+    if (busy || pending || !scopeValid || !question.trim()) return;
     setBusy(true); setError(''); setProposal(null);
     try {
-      const response = await fetch(`/api/incidents/${encodeURIComponent(activeIncident)}/copilot/proposals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: question.trim() }) });
-      if (!response.ok) throw new Error('proposal failed');
-      setProposal({ ...await response.json(), question: question.trim() });
-    } catch { setError('Não foi possível propor uma investigação com esta sessão.'); }
+      const response = await fetch(`/api/incidents/${encodeURIComponent(activeIncident)}/copilot/proposals`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: question.trim(), ...(scopeSelection ? { scope: scopeSelection } : {}) }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail?.message ?? 'Não foi possível propor uma investigação com esta sessão.');
+      setProposal({ ...result, question: question.trim(), ...(scopeSelection ? { scope: scopeSelection } : {}) });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível propor uma investigação com esta sessão.'); }
     finally { setBusy(false); }
   }
   async function confirm() {
     if (!proposal || busy || pending) return;
     setBusy(true); setError('');
     try {
-      const response = await fetch(`/api/incidents/${encodeURIComponent(activeIncident)}/copilot/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: proposal.question, proposal_id: proposal.proposal_id, confirmed: true }) });
+      const response = await fetch(`/api/incidents/${encodeURIComponent(activeIncident)}/copilot/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: proposal.question, proposal_id: proposal.proposal_id, confirmed: true, ...(proposal.scope ? { scope: proposal.scope } : {}) }) });
       if (!response.ok) throw new Error('confirmation failed');
       const job = await response.json() as { id: string; status: string };
       setJobId(job.id); setCompleted(false); setJobFailed(job.status === 'failed' || job.status === 'cancelled'); setCompletionTarget(''); setProposal(null); setAnswer(null);
@@ -73,8 +78,9 @@ export default function IncidentCopilot({ incidentId, evidenceIds }: { incidentI
     <section className="panel diagnosisSection" aria-labelledby="copilot-title" data-copilot-hydrated={hydrated ? 'true' : 'false'}>
       <div className="sectionLabel">COPILOT · SOMENTE LEITURA</div><h2 id="copilot-title">Pergunte sobre esta investigação</h2>
       <form onSubmit={submit} className="copilotForm"><label htmlFor="copilot-question">Pergunta</label><div><input id="copilot-question" value={question} maxLength={500} onChange={(e) => { setQuestion(e.target.value); setProposal(null); }} placeholder="Quais evidências sustentam o diagnóstico?" /><button type="submit" disabled={busy || pending || !question.trim()}>{busy ? 'Consultando…' : 'Perguntar'}</button></div></form>
-      <button type="button" onClick={propose} disabled={busy || pending || question.trim().length < 3}>Propor investigação</button>
-      {proposal && <div className="copilotProposal" aria-live="polite"><h3>Revisar investigação</h3><p>{proposal.incident.title}</p><p>Tenant: {proposal.incident.tenant_id} · Cluster: {proposal.incident.cluster}</p><p>Alvo: {[proposal.incident.namespace, proposal.incident.pod, proposal.incident.node, proposal.incident.service].filter(Boolean).join(' · ') || 'cluster'} · Início: {proposal.incident.starts_at}</p><p>Somente o alvo e a janela da investigação salva serão consultados. Coleta somente leitura; conclusão pelo motor determinístico. Pedidos idênticos reutilizam a mesma execução.</p><button type="button" onClick={confirm} disabled={busy}>Confirmar investigação</button><button type="button" onClick={() => setProposal(null)} disabled={busy}>Cancelar proposta</button></div>}
+      <CopilotScopeSelector key={activeIncident} incidentId={activeIncident} disabled={busy || pending} onChange={updateScope} />
+      <button type="button" onClick={propose} disabled={busy || pending || !scopeValid || question.trim().length < 3}>Propor investigação</button>
+      {proposal && <div className="copilotProposal" aria-live="polite"><h3>Revisar investigação</h3><p>{proposal.incident.title}</p><p>Tenant: {proposal.incident.tenant_id} · Cluster: {proposal.incident.cluster}</p><p>Alvo: {[proposal.incident.namespace, proposal.incident.pod, proposal.incident.node, proposal.incident.service].filter(Boolean).join(' · ') || 'cluster'} · Início: {proposal.incident.starts_at}{proposal.incident.ends_at && <> · Fim: {proposal.incident.ends_at}</>}</p>{proposal.query_limits && <p>Limites: {proposal.query_limits.max_calls} consultas · {proposal.query_limits.max_wall_seconds}s</p>}<p>{proposal.scope ? "Somente o alvo autorizado e o período revisado serão consultados. Estado Kubernetes é atual, não histórico." : "Somente o alvo e a janela da investigação salva serão consultados."} Coleta somente leitura; conclusão pelo motor determinístico. Pedidos idênticos reutilizam a mesma execução.</p><button type="button" onClick={confirm} disabled={busy}>Confirmar investigação</button><button type="button" onClick={() => setProposal(null)} disabled={busy}>Cancelar proposta</button></div>}
       {jobId && <OrchestrationProgress key={jobId} jobId={jobId} onCompleted={loadCompleted} onFailed={failJob} verifiedEvidenceOnly />}
       {completionTarget && !completed && <button type="button" onClick={() => loadCompleted(completionTarget)}>Tentar carregar contexto</button>}
       {completed && <p role="status">Investigação concluída. As próximas perguntas usam as evidências desta investigação.</p>}

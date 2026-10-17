@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
@@ -31,6 +31,21 @@ class IncidentInput(BaseModel):
     starts_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
+    ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_explicit_window(self):
+        if self.ends_at is not None:
+            if self.starts_at.tzinfo is None or self.ends_at.tzinfo is None:
+                raise ValueError("explicit time bounds require a timezone")
+            if not 0 < (self.ends_at - self.starts_at).total_seconds() <= 3600:
+                raise ValueError("explicit window must be positive and at most one hour")
+        return self
+
+    def query_window(self, before_minutes: int, after_minutes: int = 5):
+        if self.ends_at is not None:
+            return self.starts_at, self.ends_at
+        return self.starts_at - timedelta(minutes=before_minutes), self.starts_at + timedelta(minutes=after_minutes)
 
 
 class Entity(BaseModel):

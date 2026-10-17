@@ -393,7 +393,7 @@ async def _postgres(
     database = target.target or "postgres"
     metrics = await tools.postgres_dependency_metrics(
         database,
-        result.incident.starts_at,
+        (result.incident.ends_at or result.incident.starts_at),
         settings.dependency_window_minutes,
         target.instance_hint,
     )
@@ -676,7 +676,7 @@ async def _kafka(
     metrics = await tools.kafka_dependency_metrics(
         target.topic,
         target.consumer_group,
-        result.incident.starts_at,
+        (result.incident.ends_at or result.incident.starts_at),
         settings.dependency_window_minutes,
         target.instance_hint,
     )
@@ -827,7 +827,7 @@ async def _redis(
 ) -> StatefulDependencyAnalysis:
     metrics = await tools.redis_dependency_metrics(
         target.instance_hint,
-        result.incident.starts_at,
+        (result.incident.ends_at or result.incident.starts_at),
         settings.dependency_window_minutes,
     )
 
@@ -1209,7 +1209,7 @@ async def enrich_with_stateful_dependencies(
     )
     result.remediation = _remediation(primary)
     result.timeline.append(TimelineEvent(
-        timestamp=result.incident.starts_at,
+        timestamp=(result.incident.ends_at or result.incident.starts_at),
         source=primary.kind,
         message=f"Stateful dependency RCA confirmed: {primary.cause}.",
     ))

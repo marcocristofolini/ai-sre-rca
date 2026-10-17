@@ -46,6 +46,7 @@ export type Investigation = {
     severity: string;
     alert_name: string;
     starts_at?: string;
+    ends_at?: string;
   };
   entities: Array<{
     id: string;

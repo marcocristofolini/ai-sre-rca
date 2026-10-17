@@ -633,3 +633,7 @@ pre { white-space:pre-wrap; color:var(--danger); }
 
 .copilotProposal { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
 .copilotProposal button { margin: 4px 8px 4px 0; }
+.copilotScope { margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.copilotScope > div { display: grid; gap: 8px; margin-top: 10px; }
+.copilotScope label { display: grid; gap: 4px; }
+.copilotScope input, .copilotScope select { max-width: 100%; min-width: 0; }

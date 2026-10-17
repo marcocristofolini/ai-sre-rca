@@ -23,6 +23,7 @@ from app.agentic.persistence import materialize_agentic_diagnosis
 from app.auth import Principal, authorize_cluster, require_role
 from app.operations import append_audit, persist_investigation
 from app.schemas import IncidentInput
+from app.core.copilot_scope import validate_queued_scope
 
 router = APIRouter(prefix="/api/v1/planner", tags=["planner"])
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ async def _execute_orchestration_job(app, stored: dict, owner: str) -> None:
     try:
         incident = IncidentInput.model_validate(stored["payload"]["incident"])
         settings = app.state.settings
+        await validate_queued_scope(app.state.repo, settings, incident)
         plan = await build_investigation_plan(
             app.state.repo, incident=incident, settings=settings,
             advisor=getattr(app.state, "planning_advisor", None),
@@ -192,7 +194,7 @@ async def submit_orchestration_job(
         raise HTTPException(status_code=422, detail="a concrete tenant_id is required")
     scoped = incident.model_copy(update={"tenant_id": tenant_id})
     request_fingerprint = hashlib.sha256(
-        json.dumps(scoped.model_dump(mode="json"), sort_keys=True).encode()
+        json.dumps(scoped.model_dump(mode="json", exclude={"ends_at"} if scoped.ends_at is None else set()), sort_keys=True).encode()
     ).hexdigest()
     authorize_cluster(principal, scoped.cluster)
     request_id = f"request-{uuid4().hex[:12]}"

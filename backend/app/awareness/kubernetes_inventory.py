@@ -121,6 +121,9 @@ def _metadata(item: dict[str, Any]) -> dict[str, Any]:
         value = metadata.get(key)
         if value is not None:
             output[target] = value
+    telemetry_service = (metadata.get("annotations") or {}).get("ai-sre.io/telemetry-service")
+    if isinstance(telemetry_service, str):
+        output["telemetry_service"] = telemetry_service
     generation = metadata.get("generation")
     if generation is not None:
         output["generation"] = generation
