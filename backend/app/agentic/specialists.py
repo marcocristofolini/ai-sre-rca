@@ -10,6 +10,7 @@ from app.agentic.models import PlannerGraphContext, SpecialistResult, Specialist
 from app.config import Settings
 from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
+from app.core.k8s_signals import terminated_states
 from app.core.query_safety import quoted_string
 from app.core.stateful_dependency import enrich_with_stateful_dependencies
 from app.core.trace_analysis import enrich_with_trace_causality
@@ -388,12 +389,39 @@ async def _kubernetes(
     budget = SpecialistBudget(task.max_queries)
     scoped_incident = _scoped_incident(task, incident)
     if incident.workload is not None:
-        return _result(task, budget, started_at=started, evidence=[Evidence(
+        from app.agentic.workload_kubernetes import WorkloadKubernetesTools
+        evidence = [Evidence(
             source="kubernetes", category="verified-workload-membership",
             summary=f"Verified {incident.workload.kind} membership from authoritative inventory; not a causal diagnosis.",
             facts={"context_only": True, "target_uid": incident.labels.get('copilot_target_uid'),
                 "members": [m.model_dump() for m in incident.workload.members]}, strength="weak",
-        )])
+        )]
+        proxy = WorkloadKubernetesTools(tools, budget, incident)
+        entities, graph_edges, hypotheses = [], [], []
+        try:
+            for member in incident.workload.members:
+                if member.kind != 'Pod':
+                    continue
+                pod = await proxy.get_pod(incident.namespace, member.name)
+                evidence.extend([
+                    Evidence(source='kubernetes', category='agentic-pod-status', summary='Live UID-verified workload Pod state',
+                        facts={'pod_uid':member.uid, 'reason':pod.get('status', {}).get('reason'), 'phase':pod.get('status', {}).get('phase')},
+                        raw_reference=f'k8s://pod/{incident.namespace}/{member.name}?uid={member.uid}'),
+                    Evidence(source='kubernetes', category='container-state', summary='Live UID-verified container termination state',
+                        facts={'pod_uid':member.uid, 'terminated':terminated_states(pod)}),
+                ])
+                node_name = pod.get('spec', {}).get('nodeName')
+                if node_name:
+                    node = await proxy.get_node(node_name)
+                    evidence.append(Evidence(source='kubernetes',category='agentic-node-conditions',summary='Live assigned-node conditions',
+                        facts={'node_uid':node.get('metadata', {}).get('uid'), 'conditions':{c['type']:c['status'] for c in node.get('status', {}).get('conditions', [])}}))
+                engine = InvestigationEngine(tools=proxy, memory=None, settings=settings)
+                result = await engine.investigate_kubernetes(incident.model_copy(update={'pod':member.name, 'workload':None}), similar=[])
+                evidence.extend(result.evidence); entities.extend(result.entities); graph_edges.extend(result.graph_edges)
+                hypotheses.extend(h for h in result.hypotheses if h.origin == 'playbook')
+        except SpecialistBudgetExceeded:
+            budget.exhausted = True
+        return _result(task,budget,started_at=started,evidence=evidence,entities=entities,graph_edges=graph_edges,hypotheses=hypotheses)
     proxy = KubernetesBudgetedTools(tools, budget)
     engine = InvestigationEngine(
         tools=proxy,

@@ -615,8 +615,8 @@ pre { white-space:pre-wrap; color:var(--danger); }
 .orchestrationAgents { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
 .orchestrationAgents article { display:grid; gap:5px; padding:12px; background:#111722; border:1px solid #293447; border-radius:8px; }
 .orchestrationAgents small,.orchestrationProgress small { color:#9da9bc; }
-.orchestrationEvidence { display:grid; gap:8px; padding-left:20px; }
-.orchestrationEvidence li { padding:10px; border-left:2px solid #62c99d; background:#101720; }
+.orchestrationEvidence { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:8px; padding-left:20px; }
+.orchestrationEvidence li { min-width:0; overflow-wrap:anywhere; padding:10px; border-left:2px solid #62c99d; background:#101720; }
 .orchestrationEvidence p { margin:5px 0 0; }
 .orchestrationEvaluation { padding:12px; margin-top:16px; border:1px solid #58724f; border-radius:8px; }
 @media(max-width:720px) { .orchestrationProgress { margin:16px 12px; } .orchestrationStatus { flex-direction:column; } }

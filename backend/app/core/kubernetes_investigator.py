@@ -634,7 +634,7 @@ async def investigate_pod_scenario(
             hmap["container-crash-loop"].supporting_evidence.append(restart_ev.id)
         if any(str(item.get("reason", "")).lower() == "oomkilled" for item in terminations):
             hmap["oom-restart"].supporting_evidence.extend([container_ev.id, restart_ev.id])
-        probe_events = [ev for ev in event_evidence if "probe" in ev.summary.lower() or ev.facts.get("reason") == "Unhealthy"]
+        probe_events = [ev for ev in event_evidence if ("probe" in ev.summary.lower() or ev.facts.get("reason") == "Unhealthy") and 'readiness' not in ev.summary.lower()]
         if probe_events:
             hmap["probe-failure"].supporting_evidence.extend([probe_events[0].id, restart_ev.id])
         nonzero = [

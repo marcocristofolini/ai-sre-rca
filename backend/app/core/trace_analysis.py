@@ -9,6 +9,7 @@ from app.config import Settings
 from app.core.dependency_identity import dependency_instance
 from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
+from app.core.trace_ids import canonical_trace_id
 from app.integrations.base import InvestigationTools
 from app.schemas import (
     Entity,
@@ -59,6 +60,8 @@ def _id_to_hex(value: str | None) -> str:
     if not value:
         return ""
     value = str(value)
+    if len(value) in (16,32) and all(char in '0123456789abcdefABCDEF' for char in value):
+        return value.lower()
     try:
         raw = base64.b64decode(value, validate=True)
         if raw:
@@ -496,15 +499,22 @@ async def enrich_with_trace_causality(
     )
 
     analyses: list[TraceAnalysis] = []
+    verified_trace_ids: set[str] = set()
     trace_evidence: list[Evidence] = []
     selected_with_id = [item for item in selected if item.get("traceID")]
 
     for item, payload in zip(selected_with_id, payloads):
         if isinstance(payload, Exception) or not payload:
             continue
-        if result.incident.workload is not None and not any(span["service"] == service for span in _normalize_spans(payload)):
-            continue
-        trace_id = str(item.get("traceID"))
+        if result.incident.workload is not None:
+            expected_id = canonical_trace_id(str(item.get('traceID') or ''))
+            spans = _normalize_spans(payload)
+            if not expected_id or not spans or any(canonical_trace_id(span['trace_id']) != expected_id for span in spans) or not any(span['service'] == service for span in spans):
+                continue
+            if expected_id in verified_trace_ids:
+                continue
+            verified_trace_ids.add(expected_id)
+        trace_id = expected_id if result.incident.workload is not None else str(item.get("traceID"))
         analysis = analyze_trace(
             payload,
             trace_id=trace_id,

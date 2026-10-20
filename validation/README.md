@@ -76,19 +76,24 @@ flowchart TD
 
 ## Run locally
 
-Prerequisites are Docker, Kind, kubectl and the backend Python dependencies.
+Prerequisites are Docker, Kind and kubectl. Run Python and its dependencies only in the existing backend test image.
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-cd ..
-make validate-harness
-make validate-real
+make test-docker-build
+sh validation/run-docker.sh --copilot --cluster-name ai-sre-real-validation-local
 ```
 
 The harness builds the small validation workload locally, loads it into Kind, starts the telemetry stack and cleans everything up afterward.
+
+Set `KIND_BIN`, `KUBECTL_BIN` or `VALIDATION_TEST_IMAGE` if tools or the cached test image have different paths/names. The Docker runner uses a private kubeconfig and workload port 18090; `VALIDATION_WORKLOAD_PORT` overrides that port. Existing cluster/container names are refused. Cleanup removes only resources created by the run.
+
+### Copilot real-telemetry cases
+
+`--copilot` reuses the same Prometheus/Loki/Tempo manifests and instrumented image. It validates Deployment and StatefulSet scope, actual downstream HTTP timeouts, a rollout exiting 42, recovery, bounded allocation causing OOMKilled, zero replicas, changed membership, conflicting service identities and an actual Loki outage. Kubernetes mutations exist only in the disposable harness; investigation adapters remain read-only.
+
+Pod UID labels come from the Kubernetes Downward API and are checked against live UID/ownerReference chains. HTTP traces preserve parent context across both workloads. Investigations require proposal review and explicit confirmation, reuse persistent jobs and SSE, and verify authorized citations and evidence hashes. Missing telemetry or a failed causal verdict makes the report fail; it never becomes an expected pass.
+
+Additional artifacts include `copilot-live.json`, raw referenced telemetry, inventory provenance, source fingerprints and controlled-failure details. `scripts/validate-real-copilot-ui.py` is the separate browser entry point for the live API; it requires the report and running production API/frontend. Existing browser runners remain independent; `validation.browser_fixtures:app` is an explicit **demo-only** API fixture entry point for their synthetic inventories, never the live validation adapter.
 
 ## Evidence
 

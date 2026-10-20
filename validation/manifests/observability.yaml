@@ -11,7 +11,7 @@ data:
     scrape_configs:
       - job_name: rc3-workload
         static_configs:
-          - targets: ["rc3-workload:8080"]
+          - targets: ["rc3-workload:8080", "copilot-stateful:8080"]
       - job_name: postgres-exporter
         static_configs:
           - targets: ["postgres-exporter:9187"]
@@ -295,6 +295,8 @@ kind: Deployment
 metadata:
   name: rc3-workload
   namespace: rca-validation
+  annotations:
+    ai-sre.io/telemetry-service: frontend
 spec:
   replicas: 1
   selector:
@@ -309,7 +311,14 @@ spec:
         - name: workload
           image: ai-sre-rc3-workload:local
           imagePullPolicy: IfNotPresent
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 2
           env:
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -326,5 +335,52 @@ metadata:
   namespace: rca-validation
 spec:
   selector: {app: rc3-workload}
+  ports:
+    - {name: http, port: 8080, targetPort: 8080}
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: copilot-stateful
+  namespace: rca-validation
+  annotations:
+    ai-sre.io/telemetry-service: copilot-stateful
+spec:
+  serviceName: copilot-stateful
+  replicas: 1
+  selector:
+    matchLabels: {app: copilot-stateful}
+  template:
+    metadata:
+      labels: {app: copilot-stateful}
+    spec:
+      containers:
+        - name: workload
+          image: ai-sre-rc3-workload:local
+          imagePullPolicy: IfNotPresent
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 2
+          env:
+            - {name: OTEL_SERVICE_NAME, value: copilot-stateful}
+            - {name: WORKLOAD_KIND, value: StatefulSet}
+            - {name: WORKLOAD_NAME, value: copilot-stateful}
+            - {name: DEPENDENCY_DELAY_SECONDS, value: "0"}
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: POD_UID
+              valueFrom: {fieldRef: {fieldPath: metadata.uid}}
+          ports:
+            - {name: http, containerPort: 8080}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: copilot-stateful
+  namespace: rca-validation
+spec:
+  clusterIP: None
+  selector: {app: copilot-stateful}
   ports:
     - {name: http, port: 8080, targetPort: 8080}
