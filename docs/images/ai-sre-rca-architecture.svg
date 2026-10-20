@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1010" width="1120" role="img" aria-labelledby="title desc" lang="en">
+<title id="title">AI SRE RCA · System architecture</title>
+<desc id="desc">Next.js sends authenticated requests to scoped FastAPI APIs. Persistent jobs run bounded read-only specialists against Kubernetes and telemetry. Verified evidence feeds deterministic evaluation and PostgreSQL persistence. Graph context informs jobs. Remediation and disposable live validation are separate boundaries.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+<style>svg{max-width:100%;height:auto;background:#f8fafc}text{font-family:Arial,Helvetica,sans-serif;font-size:16px;fill:#1e293b}.title{font-size:26px;font-weight:700}.heading{font-size:18px;font-weight:700}.label{font-size:15px;fill:#475569}.blue{fill:#eff6ff;stroke:#3b6795}.green{fill:#ecfdf5;stroke:#37775f}.amber{fill:#fffbeb;stroke:#92713c}.gray{fill:#f1f5f9;stroke:#64748b}rect{stroke-width:1.5}.arrow{fill:none;stroke:#475569;stroke-width:2}.dashed{stroke-dasharray:6 5}.divider{stroke:#94a3b8;stroke-dasharray:4 5}</style></defs>
+<rect width="1120" height="1010" fill="#f8fafc"/>
+<text x="60" y="42" class="title">AI SRE RCA · System architecture</text>
+<rect x="60" y="80" width="1000" height="80" rx="10" class="blue"/>
+<text x="78" y="108" class="heading">Next.js · Investigation Workspace + Copilot</text>
+<text x="78" y="133" class="">Saved incidents • scope selection • explicit confirmation • live SSE/replay • evidence citations</text>
+<rect x="60" y="210" width="1000" height="80" rx="10" class="blue"/>
+<text x="78" y="238" class="heading">FastAPI · Authentication → RBAC → tenant / cluster authorization</text>
+<text x="78" y="263" class="">Typed incident APIs • trusted inventory resolver • proposal compiler • bounded Q&amp;A</text>
+<rect x="60" y="350" width="300" height="125" rx="10" class="blue"/>
+<text x="78" y="378" class="heading">Persistent Orchestrator</text>
+<text x="78" y="403" class="">Jobs • idempotency • leases</text>
+<text x="78" y="425" class="">Worker in API lifespan</text>
+<text x="78" y="447" class="">Progress persistence + SSE</text>
+<rect x="410" y="350" width="300" height="125" rx="10" class="blue"/>
+<text x="428" y="378" class="heading">Read-only specialists</text>
+<text x="428" y="403" class="">Kubernetes • metrics • logs</text>
+<text x="428" y="425" class="">Traces → database • changes</text>
+<text x="428" y="447" class="">Server-owned budgets</text>
+<rect x="760" y="350" width="300" height="125" rx="10" class="green"/>
+<text x="778" y="378" class="heading">Evidence → RCA</text>
+<text x="778" y="403" class="">Hash / reference checks</text>
+<text x="778" y="425" class="">Deterministic causal gates</text>
+<text x="778" y="447" class="">Confirmed or inconclusive</text>
+<rect x="410" y="535" width="300" height="125" rx="10" class="gray"/>
+<text x="428" y="563" class="heading">Production source adapters</text>
+<text x="428" y="588" class="">Kubernetes • Prometheus</text>
+<text x="428" y="610" class="">Loki • Tempo / OTel</text>
+<text x="428" y="632" class="">Argo CD • GitHub</text>
+<rect x="60" y="720" width="650" height="100" rx="10" class="green"/>
+<text x="78" y="748" class="heading">PostgreSQL / pgvector · scoped persistence</text>
+<text x="78" y="773" class="">Diagnoses • evidence • jobs / progress • audit</text>
+<text x="78" y="795" class="">Awareness Graph / inventory / history • incident memory</text>
+<rect x="760" y="720" width="300" height="125" rx="10" class="amber"/>
+<text x="778" y="748" class="heading">Separate remediation</text>
+<text x="778" y="773" class="">Human approval + policy</text>
+<text x="778" y="795" class="">Distinct role / credentials</text>
+<text x="778" y="817" class="">Allow-listed scaling only</text>
+<path d="M 560 160 V 210" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 210 290 V 350" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 360 410 H 410" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 710 410 H 760" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 560 475 V 535" class="arrow" marker-end="url(#arrow)"/>
+<text x="575" y="510" class="label">bounded reads</text>
+<path d="M 910 475 V 690 H 385 V 720" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 210 475 V 720" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 60 765 H 30 V 410 H 60" class="arrow dashed" marker-end="url(#arrow)"/>
+<text x="65" y="620" class="label">Graph context</text>
+<text x="65" y="644" class="label">feeds plans</text>
+<path d="M 40 875 H 1080" class="divider"/>
+<text x="60" y="903" class="label">DISPOSABLE LOCAL VALIDATION · separate from production runtime</text>
+<rect x="60" y="920" width="1000" height="75" rx="10" class="gray"/>
+<text x="78" y="948" class="heading">Kind + instrumented Deployment / StatefulSet + existing telemetry stack</text>
+<text x="78" y="973" class="">Controlled faults / recovery → production read adapters → local reports; no production-cluster access</text>
+</svg>
