@@ -1724,6 +1724,12 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
         "| --- | --- | --- | --- | --- | --- |",
     ]
     validation = report.get("validation") or {}
+    if 'benchmark_v2' in validation:
+        benchmark = validation['benchmark_v2']
+        summary = {key:benchmark.get(key) for key in ('passed','metrics','failure','untested_cases')}
+        lines += ['', '## Independent RCA Benchmark v2', '',
+            '[Per-case report](benchmark-v2/benchmark-v2.md)', '',
+            '```json', json.dumps(summary, indent=2, default=str), '```', '']
     if 'copilot' in validation:
         copilot = validation['copilot']
         summary = {key:copilot.get(key) for key in ('passed','rca_accuracy','untested_scenarios','source_health','failure','missing_telemetry','changed_membership_confirmation','ambiguous_identity')}
@@ -1885,6 +1891,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=ROOT / "validation-artifacts",
     )
+    parser.add_argument("--benchmark-v2", choices=("smoke", "full"), help="Independent comparative benchmark; full also retains six live regressions")
     parser.add_argument("--copilot", action="store_true", help="Validate Copilot against live workload ownership and telemetry")
     parser.add_argument("--keep", action="store_true")
     return parser.parse_args()
@@ -1892,6 +1899,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.benchmark_v2:
+        args.copilot = True
     global POSTGRES_CONTAINER
     POSTGRES_CONTAINER = args.cluster_name + "-postgres"
     require_commands(["docker", "kind", "kubectl"] + ([] if os.getenv("VALIDATION_COMMIT") else ["git"]))
@@ -1940,7 +1949,10 @@ def main() -> int:
             ca_file=ca_file,
         )
         report["environment"] = environment_metadata(context)
-        if args.copilot:
+        if args.benchmark_v2:
+            from validation.benchmark_live_v2 import validate_benchmark
+            report["validation"] = asyncio.run(validate_benchmark(context, settings, args.report_dir, args.benchmark_v2))
+        elif args.copilot:
             from validation.copilot import validate_copilot
             report["validation"] = asyncio.run(validate_copilot(context, settings, args.report_dir))
         else:

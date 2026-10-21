@@ -1,0 +1,8 @@
+{
+  "suite":"independent-live-v2",
+  "cases": {
+    "l001":{"category":"misleading-healthy-rollout","causes":[],"accept":[],"reason":"A verified rollout and successful HTTP calls contain no confirmed runtime cause."},
+    "l002":{"category":"simultaneous-causes","causes":["container-oom","trace-causal-propagation"],"accept":["container-oom","trace-causal-propagation"],"reason":"Actual OOMKilled and independently indexed downstream timeout traces coexist. A single-root diagnosis is partial."},
+    "l003":{"category":"recovery","causes":[],"accept":[],"reason":"Fresh successful requests after restoring healthy workloads cannot confirm the previous failures."}
+  }
+}
