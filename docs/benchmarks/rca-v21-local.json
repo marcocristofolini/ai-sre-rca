@@ -1,0 +1,2208 @@
+{
+  "after_counts": {
+    "complete": 3,
+    "error": 0,
+    "inconclusive": 24,
+    "incorrect": 0,
+    "partial": 6,
+    "rejected": 3
+  },
+  "base_commit": "1fb1e2f",
+  "baseline_digest": "5cb490834de19d419a3b49396c755a135800f083fe872f89c1eaa98ed8c384c0",
+  "baseline_inconclusive_classification": [
+    {
+      "case": "l004",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy pilot observations; original errors were source-planning failures."
+    },
+    {
+      "case": "l001",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy real rollout and HTTP 200 observations."
+    },
+    {
+      "case": "l001",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy real rollout and HTTP 200 observations."
+    },
+    {
+      "case": "l001",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy real rollout and HTTP 200 observations."
+    },
+    {
+      "case": "l003",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered revision and fresh telemetry identity with HTTP 200 observations."
+    },
+    {
+      "case": "l003",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered revision and fresh telemetry identity with HTTP 200 observations."
+    },
+    {
+      "case": "l003",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered revision and fresh telemetry identity with HTTP 200 observations."
+    },
+    {
+      "case": "b001",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; temporal deployment proximity is not causation."
+    },
+    {
+      "case": "b001",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; temporal deployment proximity is not causation."
+    },
+    {
+      "case": "b001",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; temporal deployment proximity is not causation."
+    },
+    {
+      "case": "b004",
+      "classification": "unsupported_investigation",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Missing Pod state; abstention is correct, investigation lacks causal coverage."
+    },
+    {
+      "case": "b004",
+      "classification": "unsupported_investigation",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Missing Pod state; abstention is correct, investigation lacks causal coverage."
+    },
+    {
+      "case": "b004",
+      "classification": "unsupported_investigation",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Missing Pod state; abstention is correct, investigation lacks causal coverage."
+    },
+    {
+      "case": "b005",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered current runtime; historical OOM log is outside the selected window."
+    },
+    {
+      "case": "b005",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered current runtime; historical OOM log is outside the selected window."
+    },
+    {
+      "case": "b005",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Recovered current runtime; historical OOM log is outside the selected window."
+    },
+    {
+      "case": "b006",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Different origins in two traces; required repeated-origin gate is unsatisfied."
+    },
+    {
+      "case": "b006",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Different origins in two traces; required repeated-origin gate is unsatisfied."
+    },
+    {
+      "case": "b006",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Different origins in two traces; required repeated-origin gate is unsatisfied."
+    },
+    {
+      "case": "b008",
+      "classification": "correct_abstention",
+      "engine": "classic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; malicious instructions are untrusted data, not evidence."
+    },
+    {
+      "case": "b008",
+      "classification": "correct_abstention",
+      "engine": "agentic",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; malicious instructions are untrusted data, not evidence."
+    },
+    {
+      "case": "b008",
+      "classification": "correct_abstention",
+      "engine": "copilot",
+      "oracle_correct_abstention": true,
+      "reason": "Healthy runtime; malicious instructions are untrusted data, not evidence."
+    }
+  ],
+  "before_counts": {
+    "complete": 3,
+    "error": 2,
+    "inconclusive": 22,
+    "incorrect": 0,
+    "partial": 6,
+    "rejected": 3
+  },
+  "benchmark_version": "2.1",
+  "classification_counts": {
+    "correct_abstention": 19,
+    "unsupported_investigation": 3
+  },
+  "comparisons": [
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.005703481030650437,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.003175819991156459,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "before_outcome": "inconclusive",
+      "case": "l004",
+      "citations_verified": true,
+      "dataset": "legacy_capture",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.005,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "prometheus": 3,
+          "tempo": 7
+        },
+        "total_calls": 12
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0062889099936001,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": {
+          "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+          "type": "RuntimeError"
+        },
+        "integrity_ok": null,
+        "latency_seconds": 0.004799687012564391,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "error",
+      "case": "l004",
+      "citations_verified": true,
+      "dataset": "legacy_capture",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.004,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 16
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5634169210097753,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": {
+          "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+          "type": "RuntimeError"
+        },
+        "integrity_ok": null,
+        "latency_seconds": 0.5438417239929549,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "error",
+      "case": "l004",
+      "citations_verified": true,
+      "dataset": "legacy_capture",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.004,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 16
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.55818117398303,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.3607667059986852,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "before_outcome": "inconclusive",
+      "case": "l001",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.003,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "prometheus": 3,
+          "tempo": 7
+        },
+        "total_calls": 10
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5438741730176844,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.3857927889912389,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "inconclusive",
+      "case": "l001",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.005,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 5,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 19
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 2.2112219349946827,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 1.7218395519885235,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "inconclusive",
+      "case": "l001",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.037,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 5,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 19
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 1.0565988429589197,
+        "predicted_hypothesis": "trace-causal-propagation",
+        "telemetry_query_count": 11
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.610326761030592,
+        "predicted_hypothesis": "trace-causal-propagation",
+        "telemetry_query_count": 11
+      },
+      "before_outcome": "partial",
+      "case": "l002",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "classic",
+      "expected_causes": [
+        "container-oom",
+        "trace-causal-propagation"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "Classic Kubernetes stage lacks controller-scope expansion; Pod is unset and trace propagation wins.",
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.004,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "prometheus": 3,
+          "tempo": 8
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": [
+        "container-oom"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 1.022541860002093,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 16
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.6377852630103007,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 16
+      },
+      "before_outcome": "partial",
+      "case": "l002",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "agentic",
+      "expected_causes": [
+        "container-oom",
+        "trace-causal-propagation"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "Trace candidate satisfies repeated-origin gate but direct OOM evidence blocks downstream promotion.",
+      "hypothesis_gates": [
+        {
+          "id": "hypothesis:container-memory-limit",
+          "kind": "hypothesis",
+          "label": "The workload exhausted its configured container memory limit.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:container-oom",
+          "kind": "hypothesis",
+          "label": "A container was terminated by the OOM killer.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 5.0,
+            "specialist": "kubernetes"
+          },
+          "status": "selected"
+        },
+        {
+          "id": "hypothesis:missing-memory-limit",
+          "kind": "hypothesis",
+          "label": "Missing memory limits increased the workload's exposure to node-level OOM selection.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:node-memory-pressure",
+          "kind": "hypothesis",
+          "label": "Node-wide memory pressure materially contributed to the OOM event.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:recent-change-regression",
+          "kind": "hypothesis",
+          "label": "A recent deployment or source change introduced the memory regression.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:trace-causal-propagation",
+          "kind": "hypothesis",
+          "label": "Failures originating at copilot-stateful@copilot-stateful:8080:GET /dependency propagated through distributed traces to svc-92454d14c9.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 20,
+            "reasons": [
+              "trace causality is repeated across 3 traces",
+              "container OOMKilled is direct Kubernetes runtime evidence"
+            ],
+            "score": 9.0,
+            "specialist": "traces"
+          },
+          "status": "blocked_by_precedence"
+        }
+      ],
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.013,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 9,
+          "loki": 2,
+          "prometheus": 6,
+          "tempo": 8
+        },
+        "total_calls": 25
+      },
+      "unreported_causes": [
+        "trace-causal-propagation"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 3.053447952028364,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 16
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 2.363229394017253,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 16
+      },
+      "before_outcome": "partial",
+      "case": "l002",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "copilot",
+      "expected_causes": [
+        "container-oom",
+        "trace-causal-propagation"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "Same direct-Kubernetes precedence gate as agentic; no independent multi-root selection contract.",
+      "hypothesis_gates": [
+        {
+          "id": "hypothesis:container-memory-limit",
+          "kind": "hypothesis",
+          "label": "The workload exhausted its configured container memory limit.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:container-oom",
+          "kind": "hypothesis",
+          "label": "A container was terminated by the OOM killer.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 5.0,
+            "specialist": "kubernetes"
+          },
+          "status": "selected"
+        },
+        {
+          "id": "hypothesis:missing-memory-limit",
+          "kind": "hypothesis",
+          "label": "Missing memory limits increased the workload's exposure to node-level OOM selection.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:node-memory-pressure",
+          "kind": "hypothesis",
+          "label": "Node-wide memory pressure materially contributed to the OOM event.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:recent-change-regression",
+          "kind": "hypothesis",
+          "label": "A recent deployment or source change introduced the memory regression.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:trace-causal-propagation",
+          "kind": "hypothesis",
+          "label": "Failures originating at copilot-stateful@copilot-stateful:8080:GET /dependency propagated through distributed traces to svc-92454d14c9.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 20,
+            "reasons": [
+              "trace causality is repeated across 3 traces",
+              "container OOMKilled is direct Kubernetes runtime evidence"
+            ],
+            "score": 9.0,
+            "specialist": "traces"
+          },
+          "status": "blocked_by_precedence"
+        }
+      ],
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.042,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 9,
+          "loki": 2,
+          "prometheus": 6,
+          "tempo": 8
+        },
+        "total_calls": 25
+      },
+      "unreported_causes": [
+        "trace-causal-propagation"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5510085920104757,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5280520649976097,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 10
+      },
+      "before_outcome": "inconclusive",
+      "case": "l003",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.003,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "prometheus": 3,
+          "tempo": 7
+        },
+        "total_calls": 10
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5600771339959465,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5652285239775665,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "inconclusive",
+      "case": "l003",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.005,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 5,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 19
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 2.3380752119701356,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 2.0589105479884893,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 14
+      },
+      "before_outcome": "inconclusive",
+      "case": "l003",
+      "citations_verified": true,
+      "dataset": "live",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.04,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 5,
+          "loki": 1,
+          "prometheus": 6,
+          "tempo": 7
+        },
+        "total_calls": 19
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0005285260267555714,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0004998819786123931,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "before_outcome": "inconclusive",
+      "case": "b001",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.0,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "tempo": 1
+        },
+        "total_calls": 3
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.002223208954092115,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.002414496964775026,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b001",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.543693950981833,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5532305929809809,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b001",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0012047600466758013,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 3
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0025839239824563265,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 3
+      },
+      "before_outcome": "partial",
+      "case": "b002",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [
+        "container-oom",
+        "node-not-ready"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "OOM playbook selects container-oom; node-not-ready is not generated by this Pod playbook.",
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 6,
+          "loki": 1,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 9
+      },
+      "unreported_causes": [
+        "node-not-ready"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.004691131005529314,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.00603349000448361,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "before_outcome": "partial",
+      "case": "b002",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [
+        "container-oom",
+        "node-not-ready"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "Shared Kubernetes stage uses the OOM playbook; node-not-ready candidate is absent.",
+      "hypothesis_gates": [
+        {
+          "id": "hypothesis:container-memory-limit",
+          "kind": "hypothesis",
+          "label": "The workload exhausted its configured container memory limit.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:container-oom",
+          "kind": "hypothesis",
+          "label": "A container was terminated by the OOM killer.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 5.0,
+            "specialist": "kubernetes"
+          },
+          "status": "selected"
+        },
+        {
+          "id": "hypothesis:missing-memory-limit",
+          "kind": "hypothesis",
+          "label": "Missing memory limits increased the workload's exposure to node-level OOM selection.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:node-memory-pressure",
+          "kind": "hypothesis",
+          "label": "Node-wide memory pressure materially contributed to the OOM event.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:recent-change-regression",
+          "kind": "hypothesis",
+          "label": "A recent deployment or source change introduced the memory regression.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        }
+      ],
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.002,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 7,
+          "loki": 2,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": [
+        "node-not-ready"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5441549730021507,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "after_outcome": "partial",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5446989919873886,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "before_outcome": "partial",
+      "case": "b002",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [
+        "container-oom",
+        "node-not-ready"
+      ],
+      "false_confirmation": false,
+      "gap_analysis": "Same deterministic evaluator and missing node-not-ready candidate as agentic.",
+      "hypothesis_gates": [
+        {
+          "id": "hypothesis:container-memory-limit",
+          "kind": "hypothesis",
+          "label": "The workload exhausted its configured container memory limit.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        },
+        {
+          "id": "hypothesis:container-oom",
+          "kind": "hypothesis",
+          "label": "A container was terminated by the OOM killer.",
+          "metadata": {
+            "hypothesis_status": "confirmed",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 5.0,
+            "specialist": "kubernetes"
+          },
+          "status": "selected"
+        },
+        {
+          "id": "hypothesis:missing-memory-limit",
+          "kind": "hypothesis",
+          "label": "Missing memory limits increased the workload's exposure to node-level OOM selection.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:node-memory-pressure",
+          "kind": "hypothesis",
+          "label": "Node-wide memory pressure materially contributed to the OOM event.",
+          "metadata": {
+            "hypothesis_status": "ruled_out",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": -3.0,
+            "specialist": "kubernetes"
+          },
+          "status": "ruled_out"
+        },
+        {
+          "id": "hypothesis:recent-change-regression",
+          "kind": "hypothesis",
+          "label": "A recent deployment or source change introduced the memory regression.",
+          "metadata": {
+            "hypothesis_status": "inconclusive",
+            "precedence_rank": 0,
+            "reasons": [],
+            "score": 0.0,
+            "specialist": "kubernetes"
+          },
+          "status": "inconclusive"
+        }
+      ],
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.002,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 7,
+          "loki": 2,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": [
+        "node-not-ready"
+      ]
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0010052499710582197,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 3
+      },
+      "after_outcome": "complete",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0025240150280296803,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 3
+      },
+      "before_outcome": "complete",
+      "case": "b003",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [
+        "container-oom"
+      ],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 6,
+          "loki": 1,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 9
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.003439170017372817,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "after_outcome": "complete",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.006157611031085253,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "before_outcome": "complete",
+      "case": "b003",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [
+        "container-oom"
+      ],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 7,
+          "loki": 2,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5439351630047895,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "after_outcome": "complete",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5441472009988502,
+        "predicted_hypothesis": "container-oom",
+        "telemetry_query_count": 4
+      },
+      "before_outcome": "complete",
+      "case": "b003",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [
+        "container-oom"
+      ],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.002,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 7,
+          "loki": 2,
+          "prometheus": 1,
+          "tempo": 1
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0003923189942725003,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0002613430260680616,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "before_outcome": "inconclusive",
+      "case": "b004",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.0,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "tempo": 1
+        },
+        "total_calls": 3
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0023709170054644346,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0013358189607970417,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b004",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5638353420072235,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5746394050074741,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b004",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.00037301797419786453,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0002672440023161471,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "before_outcome": "inconclusive",
+      "case": "b005",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.0,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "tempo": 1
+        },
+        "total_calls": 3
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0022982130176387727,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.001716680999379605,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b005",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5382317820331082,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5359778950223699,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b005",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0030043479637242854,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 6
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.001975224004127085,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 6
+      },
+      "before_outcome": "inconclusive",
+      "case": "b006",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.002,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 5,
+          "tempo": 6
+        },
+        "total_calls": 11
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.005830187001265585,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 7
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.004896703001577407,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 7
+      },
+      "before_outcome": "inconclusive",
+      "case": "b006",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.003,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 6,
+          "loki": 1,
+          "tempo": 6
+        },
+        "total_calls": 13
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.547779451997485,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 7
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5446903639822267,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 7
+      },
+      "before_outcome": "inconclusive",
+      "case": "b006",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.003,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 6,
+          "loki": 1,
+          "tempo": 6
+        },
+        "total_calls": 13
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.00022871099645271897,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "after_outcome": "rejected",
+      "before": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.0002397390198893845,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "before_outcome": "rejected",
+      "case": "b007",
+      "citations_verified": false,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": null,
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.00022781104780733585,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "after_outcome": "rejected",
+      "before": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.00025354098761454225,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "before_outcome": "rejected",
+      "case": "b007",
+      "citations_verified": false,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": null,
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.0002850139862857759,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "after_outcome": "rejected",
+      "before": {
+        "error": null,
+        "integrity_ok": null,
+        "latency_seconds": 0.0002308380207978189,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 0
+      },
+      "before_outcome": "rejected",
+      "case": "b007",
+      "citations_verified": false,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": null,
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.00025461195036768913,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.00025974202435463667,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 1
+      },
+      "before_outcome": "inconclusive",
+      "case": "b008",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "classic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.0,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 2,
+          "tempo": 1
+        },
+        "total_calls": 3
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.00152417499339208,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.0016210659523494542,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b008",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "agentic",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    },
+    {
+      "after": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5346584880026057,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "after_outcome": "inconclusive",
+      "before": {
+        "error": null,
+        "integrity_ok": true,
+        "latency_seconds": 0.5451147339772433,
+        "predicted_hypothesis": null,
+        "telemetry_query_count": 2
+      },
+      "before_outcome": "inconclusive",
+      "case": "b008",
+      "citations_verified": true,
+      "dataset": "synthetic",
+      "engine": "copilot",
+      "expected_causes": [],
+      "false_confirmation": false,
+      "query_budget": {
+        "denied": [],
+        "elapsed_seconds": 0.001,
+        "enabled": true,
+        "limits": {
+          "max_calls": 80,
+          "max_calls_per_source": 30,
+          "max_wall_seconds": 45.0
+        },
+        "per_source": {
+          "kubernetes": 3,
+          "loki": 1,
+          "tempo": 1
+        },
+        "total_calls": 5
+      },
+      "unreported_causes": []
+    }
+  ],
+  "false_confirmations": 0,
+  "fresh_live_source_errors": [],
+  "infrastructure_cost_usd": null,
+  "integrity_passed": 33,
+  "legacy_capture_source_errors_retained": [
+    {
+      "case": "l004",
+      "error": {
+        "status": 500,
+        "type": "HTTPStatusError"
+      },
+      "method": "tempo_metrics_query"
+    },
+    {
+      "case": "l004",
+      "error": {
+        "status": 500,
+        "type": "HTTPStatusError"
+      },
+      "method": "tempo_metrics_query"
+    },
+    {
+      "case": "l004",
+      "error": {
+        "status": 500,
+        "type": "HTTPStatusError"
+      },
+      "method": "tempo_metrics_query"
+    },
+    {
+      "case": "l004",
+      "error": {
+        "status": null,
+        "type": "ConnectError"
+      },
+      "method": "argocd_application"
+    }
+  ],
+  "limits": [
+    "Unchanged single-root contracts and causal precedence still fail complete multi-cause scoring.",
+    "Ground truth is runtime-blinded and self-authored, not externally adjudicated.",
+    "Live before/after use equivalent protocols but fresh identities and times, not identical observations.",
+    "Latency is frozen-response execution; error trials are excluded from path percentiles.",
+    "Historical capture retains original optional-source failures; it cannot prove current source health."
+  ],
+  "live_regressions_passed": true,
+  "metrics": {
+    "legacy_capture": {
+      "agentic": {
+        "correct_abstentions": 1,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 1,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 1,
+        "latency_samples": 1,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.0062889099936001,
+        "p95_seconds": 0.0062889099936001,
+        "partial_diagnoses": 0,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 14,
+        "total": 1
+      },
+      "classic": {
+        "correct_abstentions": 1,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 1,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 1,
+        "latency_samples": 1,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.005703481030650437,
+        "p95_seconds": 0.005703481030650437,
+        "partial_diagnoses": 0,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 10,
+        "total": 1
+      },
+      "copilot": {
+        "correct_abstentions": 1,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 1,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 1,
+        "latency_samples": 1,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.5634169210097753,
+        "p95_seconds": 0.5634169210097753,
+        "partial_diagnoses": 0,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 14,
+        "total": 1
+      }
+    },
+    "live": {
+      "agentic": {
+        "correct_abstentions": 2,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 2,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 3,
+        "latency_samples": 3,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.5600771339959465,
+        "p95_seconds": 1.022541860002093,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 44,
+        "total": 3
+      },
+      "classic": {
+        "correct_abstentions": 2,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 2,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 3,
+        "latency_samples": 3,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.55818117398303,
+        "p95_seconds": 1.0565988429589197,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 31,
+        "total": 3
+      },
+      "copilot": {
+        "correct_abstentions": 2,
+        "correct_diagnoses": 0,
+        "correct_rejections": 0,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 2,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 3,
+        "latency_samples": 3,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 2.3380752119701356,
+        "p95_seconds": 3.053447952028364,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 44,
+        "total": 3
+      }
+    },
+    "synthetic": {
+      "agentic": {
+        "correct_abstentions": 5,
+        "correct_diagnoses": 1,
+        "correct_rejections": 1,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 5,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 7,
+        "latency_samples": 7,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.0023709170054644346,
+        "p95_seconds": 0.005830187001265585,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 23,
+        "total": 8
+      },
+      "classic": {
+        "correct_abstentions": 5,
+        "correct_diagnoses": 1,
+        "correct_rejections": 1,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 5,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 7,
+        "latency_samples": 7,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.0005285260267555714,
+        "p95_seconds": 0.0030043479637242854,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 16,
+        "total": 8
+      },
+      "copilot": {
+        "correct_abstentions": 5,
+        "correct_diagnoses": 1,
+        "correct_rejections": 1,
+        "errors": 0,
+        "false_confirmations": 0,
+        "inconclusive": 5,
+        "incorrect_diagnoses": 0,
+        "infrastructure_cost_usd": null,
+        "integrity_passed": 7,
+        "latency_samples": 7,
+        "model_cost_usd": 0,
+        "model_tokens": 0,
+        "p50_seconds": 0.5439351630047895,
+        "p95_seconds": 0.5638353420072235,
+        "partial_diagnoses": 1,
+        "telemetry_cost_usd": null,
+        "telemetry_query_count": 23,
+        "total": 8
+      }
+    }
+  },
+  "model_cost_usd": 0,
+  "model_tokens": 0,
+  "passed": false,
+  "telemetry_cost_usd": null,
+  "telemetry_query_count_after": 219,
+  "telemetry_query_count_before": 219
+}

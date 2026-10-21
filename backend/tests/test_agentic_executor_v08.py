@@ -45,7 +45,7 @@ async def test_parallel_executor_builds_shared_evidence_without_root_cause():
     )
     plan = await build_investigation_plan(
         repo,
-        incident=incident(),
+        incident=incident().model_copy(update={"labels": {"argocd_app": "frontend"}}),
         settings=settings,
     )
 

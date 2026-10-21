@@ -31,6 +31,7 @@ from app.db.repository import MemoryRepository
 from app.integrations.base import InvestigationTools
 from app.schemas import IncidentInput, InvestigationResult, RootCause
 from validation.benchmark_cases import IDS, BlindTools, incident
+from validation.source_diagnostics import source_failure
 
 ENGINES = ('classic', 'agentic', 'copilot')
 READ_METHODS = frozenset(n for n in InvestigationTools.__dict__ if not n.startswith('_'))
@@ -81,8 +82,7 @@ class SourceSnapshot:
                         value = await getattr(self.tools,name)(*args,**kwargs)
                     except Exception as exc:
                         value = None
-                        observed_error = {'type':type(exc).__name__,
-                            'status':getattr(getattr(exc,'response',None),'status_code',None)}
+                        observed_error = source_failure(exc)
                     after = (query_budget_snapshot() or {}).get('per_source',{})
                     charges = {source:count-before.get(source,0) for source,count in after.items() if count>before.get(source,0)}
                     if not charges:

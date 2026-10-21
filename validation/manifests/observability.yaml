@@ -242,6 +242,20 @@ data:
               endpoint: 0.0.0.0:4318
     ingester:
       max_block_duration: 1m
+    # TraceQL metrics query the recent metrics-generator ring, independently
+    # of trace search. Local blocks are required even in this single-node stack.
+    metrics_generator:
+      storage:
+        path: /tmp/tempo/generator/wal
+      traces_storage:
+        path: /tmp/tempo/generator/traces
+      processor:
+        local_blocks:
+          filter_server_spans: false
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: [local-blocks]
     compactor:
       compaction:
         block_retention: 1h

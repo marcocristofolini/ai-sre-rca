@@ -1,0 +1,84 @@
+# RCA Benchmark v2.1 — case comparison
+
+Strict complete-cause benchmark: FAIL
+
+| Case | Path | Before | After | Missing causes |
+| --- | --- | --- | --- | --- |
+| l004 | classic | inconclusive | inconclusive | — |
+| l004 | agentic | error | inconclusive | — |
+| l004 | copilot | error | inconclusive | — |
+| l001 | classic | inconclusive | inconclusive | — |
+| l001 | agentic | inconclusive | inconclusive | — |
+| l001 | copilot | inconclusive | inconclusive | — |
+| l002 | classic | partial | partial | container-oom |
+| l002 | agentic | partial | partial | trace-causal-propagation |
+| l002 | copilot | partial | partial | trace-causal-propagation |
+| l003 | classic | inconclusive | inconclusive | — |
+| l003 | agentic | inconclusive | inconclusive | — |
+| l003 | copilot | inconclusive | inconclusive | — |
+| b001 | classic | inconclusive | inconclusive | — |
+| b001 | agentic | inconclusive | inconclusive | — |
+| b001 | copilot | inconclusive | inconclusive | — |
+| b002 | classic | partial | partial | node-not-ready |
+| b002 | agentic | partial | partial | node-not-ready |
+| b002 | copilot | partial | partial | node-not-ready |
+| b003 | classic | complete | complete | — |
+| b003 | agentic | complete | complete | — |
+| b003 | copilot | complete | complete | — |
+| b004 | classic | inconclusive | inconclusive | — |
+| b004 | agentic | inconclusive | inconclusive | — |
+| b004 | copilot | inconclusive | inconclusive | — |
+| b005 | classic | inconclusive | inconclusive | — |
+| b005 | agentic | inconclusive | inconclusive | — |
+| b005 | copilot | inconclusive | inconclusive | — |
+| b006 | classic | inconclusive | inconclusive | — |
+| b006 | agentic | inconclusive | inconclusive | — |
+| b006 | copilot | inconclusive | inconclusive | — |
+| b007 | classic | rejected | rejected | — |
+| b007 | agentic | rejected | rejected | — |
+| b007 | copilot | rejected | rejected | — |
+| b008 | classic | inconclusive | inconclusive | — |
+| b008 | agentic | inconclusive | inconclusive | — |
+| b008 | copilot | inconclusive | inconclusive | — |
+
+## Baseline inconclusive classification
+
+- l004/classic: correct_abstention; Healthy pilot observations; original errors were source-planning failures.
+- l001/classic: correct_abstention; Healthy real rollout and HTTP 200 observations.
+- l001/agentic: correct_abstention; Healthy real rollout and HTTP 200 observations.
+- l001/copilot: correct_abstention; Healthy real rollout and HTTP 200 observations.
+- l003/classic: correct_abstention; Recovered revision and fresh telemetry identity with HTTP 200 observations.
+- l003/agentic: correct_abstention; Recovered revision and fresh telemetry identity with HTTP 200 observations.
+- l003/copilot: correct_abstention; Recovered revision and fresh telemetry identity with HTTP 200 observations.
+- b001/classic: correct_abstention; Healthy runtime; temporal deployment proximity is not causation.
+- b001/agentic: correct_abstention; Healthy runtime; temporal deployment proximity is not causation.
+- b001/copilot: correct_abstention; Healthy runtime; temporal deployment proximity is not causation.
+- b004/classic: unsupported_investigation; Missing Pod state; abstention is correct, investigation lacks causal coverage.
+- b004/agentic: unsupported_investigation; Missing Pod state; abstention is correct, investigation lacks causal coverage.
+- b004/copilot: unsupported_investigation; Missing Pod state; abstention is correct, investigation lacks causal coverage.
+- b005/classic: correct_abstention; Recovered current runtime; historical OOM log is outside the selected window.
+- b005/agentic: correct_abstention; Recovered current runtime; historical OOM log is outside the selected window.
+- b005/copilot: correct_abstention; Recovered current runtime; historical OOM log is outside the selected window.
+- b006/classic: correct_abstention; Different origins in two traces; required repeated-origin gate is unsatisfied.
+- b006/agentic: correct_abstention; Different origins in two traces; required repeated-origin gate is unsatisfied.
+- b006/copilot: correct_abstention; Different origins in two traces; required repeated-origin gate is unsatisfied.
+- b008/classic: correct_abstention; Healthy runtime; malicious instructions are untrusted data, not evidence.
+- b008/agentic: correct_abstention; Healthy runtime; malicious instructions are untrusted data, not evidence.
+- b008/copilot: correct_abstention; Healthy runtime; malicious instructions are untrusted data, not evidence.
+
+## Partial diagnoses
+
+- l002/classic: Classic Kubernetes stage lacks controller-scope expansion; Pod is unset and trace propagation wins.
+- l002/agentic: Trace candidate satisfies repeated-origin gate but direct OOM evidence blocks downstream promotion.
+- l002/copilot: Same direct-Kubernetes precedence gate as agentic; no independent multi-root selection contract.
+- b002/classic: OOM playbook selects container-oom; node-not-ready is not generated by this Pod playbook.
+- b002/agentic: Shared Kubernetes stage uses the OOM playbook; node-not-ready candidate is absent.
+- b002/copilot: Same deterministic evaluator and missing node-not-ready candidate as agentic.
+
+## Limits
+
+- Unchanged single-root contracts and causal precedence still fail complete multi-cause scoring.
+- Ground truth is runtime-blinded and self-authored, not externally adjudicated.
+- Live before/after use equivalent protocols but fresh identities and times, not identical observations.
+- Latency is frozen-response execution; error trials are excluded from path percentiles.
+- Historical capture retains original optional-source failures; it cannot prove current source health.

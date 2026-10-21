@@ -326,10 +326,8 @@ def _specialist_scope(
             resolved.append("application")
         elif len(application_candidates) > 1:
             ambiguous.append("application")
-        else:
-            # Preserve legacy service-name lookup only when the complete
-            # bounded topology has no Argo CD application identity.
-            application = incident.service
+        # A service name is not an Argo CD application identity. Without an
+        # explicit mapping or a unique fresh graph entity, leave it unresolved.
 
     return SpecialistScope(
         namespace=incident.namespace,

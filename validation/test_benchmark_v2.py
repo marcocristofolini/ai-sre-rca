@@ -212,7 +212,7 @@ async def test_complete_blind_suite_never_uses_network_llm_or_oracle_inputs(monk
 
 
 @pytest.mark.asyncio
-async def test_real_pilot_failure_remains_reproducible_without_network(monkeypatch):
+async def test_real_pilot_no_longer_guesses_argo_identity_without_network(monkeypatch):
     import httpx
     client=httpx.AsyncClient
     def internal_only(*args,**kwargs):
@@ -220,11 +220,10 @@ async def test_real_pilot_failure_remains_reproducible_without_network(monkeypat
         return client(*args,**kwargs)
     monkeypatch.setattr(httpx,'AsyncClient',internal_only)
     report=await bench.run_legacy_capture()
-    assert not report['passed']
-    assert report['metrics']['classic']['correct_abstentions']==1
-    for path in ('agentic','copilot'):
-        assert report['metrics'][path]['errors']==1
-        assert report['metrics'][path]['correct_abstentions']==0
+    assert report['passed']
+    assert all(m['correct_abstentions']==1 and m['errors']==0 for m in report['metrics'].values())
+    assert all('argocd_application' not in r['query_calls'] for r in report['results'])
+    # The historical failed source is retained, not deleted from the capture.
     assert all(r['predicted_hypothesis'] is None for r in report['results'])
     assert any(e['method']=='argocd_application' for e in report['source_errors'])
 
@@ -255,3 +254,79 @@ async def test_replay_preserves_transport_failure_class():
     frozen=bench.SourceSnapshot(Unavailable(),captured.records)
     with pytest.raises(httpx.ConnectError):
         await frozen.get_pod('apps','web-0')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('engine', ['agentic', 'copilot'])
+async def test_invalid_legacy_application_guess_is_still_an_error(engine, monkeypatch):
+    from app.agentic import planner
+    original_scope = planner._specialist_scope
+    def legacy_scope(data, context):
+        scope = original_scope(data, context)
+        scope.application = data.service
+        return scope
+    # Reproduce the original planner defect, without editing the frozen fixture.
+    monkeypatch.setattr(planner, '_specialist_scope', legacy_scope)
+    from app.schemas import IncidentInput
+    stored = json.loads(Path(bench.__file__).with_name('fixtures').joinpath('benchmark-v2', 'legacy-observations.json').read_text())
+    data = IncidentInput.model_validate(stored['input'])
+    data.labels['argocd_app'] = data.service
+    outcome = await bench.trial('opaque', engine, data,
+        bench.SourceSnapshot(BlindTools('b001'), stored['snapshot']),
+        Settings.model_construct(agentic_execution_enabled=True, stateful_dependency_analysis_enabled=False), MemoryRepository())
+    assert outcome['error']['type'] == 'RuntimeError'
+    assert 'ConnectError' in outcome['error']['detail']
+    assert outcome['integrity_ok'] is None
+    assert not outcome['predicted_hypothesis']
+
+
+def test_source_diagnostics_capture_request_response_and_chain_without_credentials():
+    import httpx
+    from validation.source_diagnostics import source_failure
+    request = httpx.Request('GET', 'http://user:private@tempo/api/metrics/query_range?q=rate%28%29&token=private', headers={'Authorization': 'Bearer private'})
+    try:
+        try:
+            raise RuntimeError('password=private')
+        except RuntimeError as cause:
+            raise httpx.HTTPStatusError('Bearer private', request=request,
+                response=httpx.Response(500, text='{"error":"empty ring", "token":"private"}', request=request)) from cause
+    except httpx.HTTPStatusError as exc:
+        recorded = source_failure(exc)
+    assert recorded['status'] == 500 and recorded['request']['method'] == 'GET'
+    assert 'empty ring' in recorded['response_body']
+    assert [e['type'] for e in recorded['exception_chain']] == ['HTTPStatusError', 'RuntimeError']
+    assert 'private' not in json.dumps(recorded)
+    assert 'headers' not in recorded['request']
+
+
+@pytest.mark.parametrize('updates,expected', [
+    ({'error': {'type': 'HTTPStatusError'}}, 'error'),
+    ({'rejected_status': 409, 'correct_rejection': True}, 'rejected'),
+    ({'rejected_status': 503}, 'incorrect'),
+    ({'predicted_hypothesis': 'oom', 'correct': True}, 'complete'),
+    ({'predicted_hypothesis': 'oom', 'partial_diagnosis': True}, 'partial'),
+    ({'predicted_hypothesis': 'wrong'}, 'incorrect'),
+    ({}, 'inconclusive'),
+])
+def test_gap_report_keeps_outcomes_separate(updates, expected):
+    from validation.benchmark_gap_v21 import outcome
+    value = row() | {'correct_rejection': False, 'partial_diagnosis': False, 'correct': False} | updates
+    assert outcome(value) == expected
+
+
+def test_gap_report_rejects_missing_datasets_and_changed_ground_truth():
+    from validation.benchmark_gap_v21 import compare_reports
+    with pytest.raises(ValueError, match='dataset coverage'):
+        compare_reports({'groups': {'live': {}}}, {})
+    before = row() | {'expected_causes': ['oom']}
+    after = before | {'expected_causes': []}
+    with pytest.raises(ValueError, match='ground truth changed'):
+        compare_reports({'groups': {'live': {'results': [before]}}}, {'live': {'results': [after]}})
+
+
+def test_requestless_transport_failure_is_not_lost_in_diagnostics():
+    import httpx
+    from validation.source_diagnostics import source_failure
+    captured = source_failure(httpx.ConnectError('connection refused'))
+    assert captured['type'] == 'ConnectError' and captured['request'] is None
+    assert captured['exception_chain'][0]['message'] == 'connection refused'

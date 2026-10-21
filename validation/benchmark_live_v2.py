@@ -20,6 +20,7 @@ from app.core.trace_ids import canonical_trace_id
 from validation import run as harness
 from validation.benchmark_v2 import compare_case, make_report, write_report
 from validation.copilot import request_latency, rollout_healthy, validate_copilot
+from validation.source_diagnostics import capture_source_logs
 
 
 async def indexed_requests(tools, service, expected_status):
@@ -90,6 +91,9 @@ async def validate_benchmark(context, settings, report_dir, stage='smoke'):
         cases.append(captured)
         # Preserve observations on every completed case, before any oracle load.
         (directory/'blind-captures.json').write_text(json.dumps(cases,indent=2,default=str)+'\n')
+        source_errors = [entry for entry in captured['snapshot'].values() if entry.get('exception')]
+        if source_errors:
+            raise RuntimeError('live source collection failed: '+json.dumps(source_errors, default=str))
         if captured['warmup_errors'] or any(r['error'] for r in captured['results']):
             raise RuntimeError('independent case collection/execution failed: '+case_id)
     try:
@@ -130,6 +134,7 @@ async def validate_benchmark(context, settings, report_dir, stage='smoke'):
     except Exception as exc:
         failure={'type':type(exc).__name__,'detail':harness.redact(str(exc))}
     finally:
+        capture_source_logs(context, directory)
         # Truth is inaccessible to engine calls and is loaded only after execution.
         oracle=json.loads(Path(__file__).with_name('benchmark_live_truth_v2.json').read_text())
         selected_oracle={'suite':oracle['suite'],'cases':{k:oracle['cases'][k] for k in planned}}
