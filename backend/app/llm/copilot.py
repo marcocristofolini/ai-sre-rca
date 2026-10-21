@@ -53,7 +53,7 @@ def deterministic_answer(question: str, result: InvestigationResult) -> CopilotA
 async def answer_question(question: str, result: InvestigationResult, settings: Settings) -> CopilotAnswer:
     fallback = deterministic_answer(question, result)
     # The deterministic engine owns root-cause verdicts; the model cannot phrase one.
-    if any(term in question.casefold() for term in ("root cause", "causa raiz", "causa-raiz")):
+    if any(term in question.casefold() for term in ("root cause", "causa raiz", "causa-raiz", "next", "recommend", "próxim", "recomend")):
         return fallback
     if not settings.llm_enabled or not any(verify_evidence_hash(item) for item in result.evidence):
         return fallback

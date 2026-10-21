@@ -114,6 +114,7 @@ def test_model_context_marks_injected_log_text_untrusted_and_filters_forged_cita
 
 
 def test_model_cannot_author_verdict_or_next_step_actions(monkeypatch):
+    calls = []
     class Response:
         def raise_for_status(self): pass
         def json(self): return {"choices": [{"message": {"content": '{"answer":"Run kubectl delete pod.","insufficient_evidence":false,"evidence_ids":["ev-good"]}'}}]}
@@ -121,7 +122,9 @@ def test_model_cannot_author_verdict_or_next_step_actions(monkeypatch):
         def __init__(self, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
-        async def post(self, path, json): return Response()
+        async def post(self, path, json):
+            calls.append(path)
+            return Response()
     monkeypatch.setattr(copilot.httpx, "AsyncClient", Client)
     import asyncio
     result = make_result()
@@ -131,3 +134,4 @@ def test_model_cannot_author_verdict_or_next_step_actions(monkeypatch):
     assert (result.root_cause.model_dump(), result.status, len(result.remediation)) == original
     answer = asyncio.run(copilot.answer_question("What are the next steps?", result, Settings(llm_enabled=True)))
     assert answer.mode == "deterministic" and "kubectl" not in answer.answer
+    assert len(calls) == 1
