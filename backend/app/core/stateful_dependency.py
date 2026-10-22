@@ -1127,6 +1127,8 @@ def _remediation(analysis: StatefulDependencyAnalysis) -> list[Remediation]:
 
 
 def _can_promote(result: InvestigationResult, analysis: StatefulDependencyAnalysis) -> bool:
+    if any(ev.category == "verified-workload-root-conflict" for ev in result.evidence):
+        return False
     if analysis.causal_role != "origin" or not analysis.hypothesis_id:
         return False
     instance_hint = str(analysis.metadata.get("instance_hint") or "") or None

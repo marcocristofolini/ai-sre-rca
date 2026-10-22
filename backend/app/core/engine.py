@@ -160,6 +160,9 @@ class InvestigationEngine:
         if similar is None:
             similar = await self._similar_incidents(incident)
 
+        if incident.workload is not None:
+            return await self._investigate_workload(incident_id, incident, similar)
+
         alert = incident.alert_name.lower()
         if incident.node and (
             "nodenotready" in alert
@@ -186,6 +189,109 @@ class InvestigationEngine:
             incident,
             similar,
         )
+
+    async def _investigate_workload(
+        self,
+        incident_id: str,
+        incident: IncidentInput,
+        similar: list[SimilarIncident],
+    ) -> InvestigationResult:
+        """Only investigate live UID-verified members; never infer Pods via labels."""
+        from app.agentic.workload_kubernetes import WorkloadKubernetesTools
+
+        class BoundedReads:
+            def __init__(self, limit: int):
+                self.limit = limit
+                self.used = 0
+
+            def consume(self, operation: str) -> None:
+                if self.used >= self.limit:
+                    raise RuntimeError("verified workload read budget exhausted")
+                self.used += 1
+
+        workload = incident.workload
+        assert workload is not None
+        if not incident.namespace or incident.pod or incident.node:
+            raise ValueError("workload investigation requires namespace without a Pod or Node override")
+
+        proxy = WorkloadKubernetesTools(
+            self.tools, BoundedReads(min(80, max(1, self.settings.query_budget_max_calls))), incident
+        )
+        await proxy.verify_controller()
+        members = [m for m in workload.members if m.kind == "Pod"]
+        membership = Evidence(
+            source="kubernetes",
+            category="verified-workload-membership",
+            summary="UID-bound controller membership was supplied by authoritative inventory; membership alone is not causal evidence.",
+            facts={
+                "controller_kind": workload.kind,
+                "controller_name": workload.name,
+                "controller_uid": workload.uid,
+                "pods": [{"name": m.name, "uid": m.uid, "terminating": m.terminating} for m in members],
+            },
+            strength="weak",
+        )
+        candidates: list[tuple[str, InvestigationResult]] = []
+        examined_results: list[tuple[str, InvestigationResult]] = []
+        for member in members:
+            scoped = incident.model_copy(update={"pod": member.name, "node": None, "workload": None})
+            engine = InvestigationEngine(
+                proxy, memory=None, hypothesis_generator=self.hypothesis_generator, settings=self.settings
+            )
+            examined = await engine.investigate_kubernetes(
+                scoped, incident_id=incident_id, similar=[]
+            )
+            examined_results.append((member.name, examined))
+            root = examined.root_cause.hypothesis_id
+            if examined.status == "resolved" and any(
+                h.id == root and h.status == HypothesisStatus.CONFIRMED and h.supporting_evidence
+                for h in examined.hypotheses
+            ):
+                candidates.append((member.name, examined))
+
+        unique_roots = {r.root_cause.hypothesis_id for _, r in candidates}
+        if len(unique_roots) == 1:
+            # A confirmed Pod hypothesis is still a single root. Do not invent
+            # additional causal roots from corroborating Pods or trace context.
+            result = candidates[0][1]
+            result.incident = incident
+            result.incident_id = incident_id
+            result.similar_incidents = similar
+            result.evidence.append(membership)
+            # Preserve non-selected Pod observations for the workload audit.
+            for _, examined in examined_results:
+                if examined is not result:
+                    result.evidence.extend(examined.evidence)
+            return result
+
+        result = self._generic_result(incident_id, incident, similar)
+        result.evidence.append(membership)
+        if unique_roots:
+            for pod_name, examined in candidates:
+                result.evidence.extend(examined.evidence)
+                result.hypotheses.extend(
+                    h.model_copy(update={
+                        "id": f"{h.id}@{pod_name}",
+                        "statement": f"Pod {pod_name}: {h.statement}",
+                    })
+                    for h in examined.hypotheses
+                    if h.status == HypothesisStatus.CONFIRMED
+                )
+            result.evidence.append(Evidence(
+                source="kubernetes",
+                category="verified-workload-root-conflict",
+                summary="Multiple distinct verified Pod causes cannot be promoted into a single workload root.",
+                facts={"hypothesis_ids": sorted(unique_roots)},
+                strength="medium",
+            ))
+            result.root_cause.summary = (
+                "Different Pods have distinct confirmed diagnoses; no unique controller-wide root was selected."
+            )
+        else:
+            result.root_cause.summary = (
+                "Verified workload members have no independently confirmed Pod root."
+            )
+        return result
 
     async def _similar_incidents(self, incident: IncidentInput) -> list[SimilarIncident]:
         if not self.memory:
