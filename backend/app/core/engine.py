@@ -262,7 +262,7 @@ class InvestigationEngine:
         if deployment:
             argo_app_name = deployment.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/instance", argo_app_name)
 
-        start = incident.starts_at
+        start = incident.ends_at or incident.starts_at
         event_task = asyncio.sleep(0, result=preloaded_events)
         node_task = (
             optional("kubernetes-node", self.tools.get_node(node_name), {})
@@ -276,8 +276,7 @@ class InvestigationEngine:
             "loki",
             self.tools.loki_query_range(
                 logs_query,
-                start - timedelta(minutes=20),
-                start + timedelta(minutes=5),
+                *incident.query_window(20),
                 100,
             ),
             {"data": {"result": []}},
@@ -331,8 +330,7 @@ class InvestigationEngine:
                     "prometheus-range",
                     self.tools.prometheus_query_range(
                         fs_query,
-                        start - timedelta(minutes=30),
-                        start + timedelta(minutes=2),
+                        *incident.query_window(30, 2),
                         "60s",
                     ),
                     {},

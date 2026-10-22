@@ -1,0 +1,16 @@
+flowchart TB
+    UI[Next.js Workspace + Copilot] --> API[FastAPI: OIDC / RBAC / tenant + cluster scope]
+    API --> JOB[Persistent jobs: queue / leases / worker in API lifespan]
+    JOB --> SPEC[Bounded read-only specialists]
+    SPEC --> SRC[Kubernetes / Prometheus / Loki / Tempo / Argo CD / GitHub]
+    SPEC --> EVAL[Evidence integrity + deterministic RCA]
+    JOB --> DB[(PostgreSQL / pgvector: jobs / progress / audit / graph / memory)]
+    EVAL --> DB
+    DB -. graph context .-> JOB
+    subgraph REM[Separate remediation service]
+      HUMAN[Human approval] --> POLICY[Policy / dry-run / drift checks]
+      POLICY --> SCALE[Separate credentials: scale_deployment]
+    end
+    subgraph VAL[Disposable local validation; no production access]
+      KIND[Kind + instrumented workloads + existing telemetry] --> REPORT[Controlled faults / recovery / local reports]
+    end

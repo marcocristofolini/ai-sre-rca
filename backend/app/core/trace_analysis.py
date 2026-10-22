@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import base64
 from collections import Counter
-from datetime import timedelta
 from typing import Any
 
 from app.config import Settings
 from app.core.dependency_identity import dependency_instance
 from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
+from app.core.trace_ids import canonical_trace_id
 from app.integrations.base import InvestigationTools
 from app.schemas import (
     Entity,
@@ -60,6 +60,8 @@ def _id_to_hex(value: str | None) -> str:
     if not value:
         return ""
     value = str(value)
+    if len(value) in (16,32) and all(char in '0123456789abcdefABCDEF' for char in value):
+        return value.lower()
     try:
         raw = base64.b64decode(value, validate=True)
         if raw:
@@ -409,8 +411,7 @@ async def _trace_red_evidence(
     incident: IncidentInput,
 ) -> Evidence | None:
     escaped = quoted_string(service)
-    start = incident.starts_at - timedelta(minutes=10)
-    end = incident.starts_at + timedelta(minutes=5)
+    start, end = incident.query_window(10)
     queries = {
         "rate": f'{{ resource.service.name = "{escaped}" }} | rate()',
         "errors": f'{{ resource.service.name = "{escaped}" && status = error }} | rate()',
@@ -469,8 +470,7 @@ async def enrich_with_trace_causality(
     if not service:
         return result
 
-    start = result.incident.starts_at - timedelta(minutes=settings.trace_window_minutes)
-    end = result.incident.starts_at + timedelta(minutes=5)
+    start, end = result.incident.query_window(settings.trace_window_minutes)
     try:
         search_results = await tools.tempo_search_traces(
             service,
@@ -499,13 +499,22 @@ async def enrich_with_trace_causality(
     )
 
     analyses: list[TraceAnalysis] = []
+    verified_trace_ids: set[str] = set()
     trace_evidence: list[Evidence] = []
     selected_with_id = [item for item in selected if item.get("traceID")]
 
     for item, payload in zip(selected_with_id, payloads):
         if isinstance(payload, Exception) or not payload:
             continue
-        trace_id = str(item.get("traceID"))
+        if result.incident.workload is not None:
+            expected_id = canonical_trace_id(str(item.get('traceID') or ''))
+            spans = _normalize_spans(payload)
+            if not expected_id or not spans or any(canonical_trace_id(span['trace_id']) != expected_id for span in spans) or not any(span['service'] == service for span in spans):
+                continue
+            if expected_id in verified_trace_ids:
+                continue
+            verified_trace_ids.add(expected_id)
+        trace_id = expected_id if result.incident.workload is not None else str(item.get("traceID"))
         analysis = analyze_trace(
             payload,
             trace_id=trace_id,
@@ -576,7 +585,7 @@ async def enrich_with_trace_causality(
     graph_red_edges: list[dict[str, Any]] = []
     if not any(ev.category == "service-graph" for ev in result.evidence):
         try:
-            graph_red_edges = await tools.service_graph(service, result.incident.starts_at)
+            graph_red_edges = await tools.service_graph(service, result.incident.ends_at or result.incident.starts_at)
         except Exception:
             graph_red_edges = []
         if graph_red_edges:

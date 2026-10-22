@@ -1,0 +1,13 @@
+flowchart TB
+    USER[Untrusted requests + model output] --> API[Trusted OIDC / RBAC / tenant + cluster authorization]
+    SRC[Untrusted logs / traces] --> API
+    API --> READ[Cluster-specific read-only credentials + identity / budget gates]
+    API --> EVAL[Evidence verification + deterministic RCA authority]
+    API --> DB[(Scoped PostgreSQL / pgvector + audit)]
+    subgraph REM[Separate mutation boundary; disabled by default]
+      APPROVE[Human approval; distinct approver] --> POLICY[Exact remediator role + policy / dry-run / TTL / drift]
+      POLICY --> WRITE[Separate write credentials; scale_deployment / explicit rollback]
+    end
+    subgraph VAL[Disposable validation only]
+      KIND[Kind faults + existing telemetry stack] --> REPORT[Scoped credentials + local reports / cleanup]
+    end

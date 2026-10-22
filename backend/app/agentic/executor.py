@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from app.agentic.models import (
@@ -108,6 +109,7 @@ async def execute_investigation_plan(
     *,
     tools,
     settings: Settings,
+    progress_callback: Callable[[SpecialistResult], Awaitable[None]] | None = None,
 ) -> AgenticExecutionResult:
     started_at = datetime.now(timezone.utc)
     budget_token = begin_query_budget(settings)
@@ -117,16 +119,24 @@ async def execute_investigation_plan(
     semaphore = asyncio.Semaphore(plan.max_parallel_tasks)
     query_snapshot: dict[str, object] = {}
 
-    async def run_task(task: SpecialistTask) -> SpecialistResult:
+    async def run_task(task: SpecialistTask, prior_results: dict[str, SpecialistResult]) -> SpecialistResult:
         async with semaphore:
             return await execute_specialist(
                 task,
                 incident=plan.incident,
                 tools=tools,
                 settings=settings,
-                prior_results=dict(results_by_id),
+                prior_results=prior_results,
                 operational_context=plan.graph_context,
             )
+
+    async def report_progress(result: SpecialistResult) -> None:
+        if progress_callback:
+            try:
+                await progress_callback(result)
+            except Exception:
+                # Progress delivery must never change evidence collection or RCA.
+                pass
 
     try:
         if hasattr(tools, "set_cluster"):
@@ -151,6 +161,7 @@ async def execute_investigation_plan(
                         ),
                     )
                     pending.pop(task.id, None)
+                    await report_progress(results_by_id[task.id])
                 break
 
             runnable: list[SpecialistTask] = []
@@ -169,18 +180,25 @@ async def execute_investigation_plan(
                         ),
                     )
                     pending.pop(task.id, None)
+                    await report_progress(results_by_id[task.id])
                     continue
                 runnable.append(task)
 
             if not runnable:
                 continue
 
-            completed = await asyncio.gather(
-                *[run_task(task) for task in runnable]
-            )
-            for task, result in zip(runnable, completed):
+            async def run_task_with_identity(task: SpecialistTask):
+                return task, await run_task(task, dict(results_by_id))
+
+            running_tasks = [
+                asyncio.create_task(run_task_with_identity(task))
+                for task in runnable
+            ]
+            for completed_task in asyncio.as_completed(running_tasks):
+                task, result = await completed_task
                 results_by_id[task.id] = result
                 pending.pop(task.id, None)
+                await report_progress(result)
     finally:
         snapshot = end_query_budget(budget_token)
         query_snapshot = snapshot or {}

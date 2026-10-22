@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import VECTOR
-from sqlalchemy import DateTime, Index, Integer, JSON, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.memory.embedding import EMBEDDING_DIM
@@ -63,6 +63,46 @@ class RemediationPlanRecord(Base):
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class OrchestrationJobRecord(Base):
+    __tablename__ = "orchestration_jobs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="orchestration_jobs_tenant_idem_uq"),
+        Index("orchestration_jobs_claim_idx", "status", "lease_expires_at", "submitted_at"),
+        Index("orchestration_jobs_tenant_created_idx", "tenant_id", "submitted_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    cluster: Mapped[str] = mapped_column(String(255))
+    incident_id: Mapped[str] = mapped_column(String(64))
+    actor: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class OrchestrationProgressEventRecord(Base):
+    __tablename__ = "orchestration_progress_events"
+    __table_args__ = (Index("orchestration_progress_events_created_idx", "job_id", "sequence"),)
+
+    job_id: Mapped[str] = mapped_column(String(64), ForeignKey("orchestration_jobs.id", ondelete="CASCADE"), primary_key=True)
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AwarenessEntityRecord(Base):

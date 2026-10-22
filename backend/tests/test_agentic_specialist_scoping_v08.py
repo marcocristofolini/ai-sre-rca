@@ -380,3 +380,34 @@ async def test_log_specialist_can_use_explicit_service_scope_without_pod():
     assert 'pod=' not in tools.query
     assert result.evidence[0].facts["scope_kind"] == "service"
     assert result.evidence[0].facts["service"] == "checkout"
+
+
+@pytest.mark.asyncio
+async def test_missing_argo_identity_never_guesses_from_service_name():
+    plan = await build_investigation_plan(
+        MemoryRepository(), incident=_incident(datetime.now(timezone.utc)),
+        settings=Settings(),
+    )
+    changes = next(t for t in plan.tasks if t.specialist == 'changes')
+    assert changes.scope.application is None
+    assert changes.scope.service == 'checkout'
+
+
+@pytest.mark.asyncio
+async def test_explicit_argo_identity_remains_scoped_and_source_failure_is_visible():
+    import httpx
+    data = _incident(datetime.now(timezone.utc))
+    data.labels['argocd_app'] = 'checkout-prod'
+    plan = await build_investigation_plan(MemoryRepository(), incident=data, settings=Settings())
+    changes = next(t for t in plan.tasks if t.specialist == 'changes')
+    assert changes.scope.application == 'checkout-prod'
+
+    class Unavailable:
+        async def argocd_application(self, app_name):
+            assert app_name == 'checkout-prod'
+            raise httpx.ConnectError('source unavailable')
+
+    result = await execute_specialist(changes, incident=data, tools=Unavailable(), settings=Settings(),
+        prior_results={}, operational_context=PlannerGraphContext())
+    assert result.status == 'failed'
+    assert result.error_type == 'ConnectError'

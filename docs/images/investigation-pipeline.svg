@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1000" width="1120" role="img" aria-labelledby="title desc" lang="en">
+<title id="title">AI SRE RCA · Investigation and evidence lifecycle</title>
+<desc id="desc">Authorize an incident, resolve verified inventory and review a typed proposal. Explicit confirmation precedes persistent job creation. Bounded read-only specialists collect evidence; integrity and deterministic gates decide the diagnosis. Saved results support authorized Q&amp;A. Conflicts or unavailable required telemetry reject submission; missing causal evidence remains inconclusive.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+<style>svg{max-width:100%;height:auto;background:#f8fafc}text{font-family:Arial,Helvetica,sans-serif;font-size:16px;fill:#1e293b}.title{font-size:26px;font-weight:700}.heading{font-size:18px;font-weight:700}.label{font-size:15px;fill:#475569}.blue{fill:#eff6ff;stroke:#3b6795}.green{fill:#ecfdf5;stroke:#37775f}.amber{fill:#fffbeb;stroke:#92713c}.gray{fill:#f1f5f9;stroke:#64748b}rect{stroke-width:1.5}.arrow{fill:none;stroke:#475569;stroke-width:2}.dashed{stroke-dasharray:6 5}.divider{stroke:#94a3b8;stroke-dasharray:4 5}</style></defs>
+<rect width="1120" height="1000" fill="#f8fafc"/>
+<text x="60" y="42" class="title">AI SRE RCA · Investigation and evidence lifecycle</text>
+<rect x="60" y="95" width="300" height="100" rx="10" class="blue"/>
+<text x="78" y="123" class="heading">1 · Authorize</text>
+<text x="78" y="148" class="">Saved incident + actor</text>
+<text x="78" y="170" class="">Tenant / cluster / role</text>
+<rect x="410" y="95" width="300" height="100" rx="10" class="blue"/>
+<text x="428" y="123" class="heading">2 · Resolve scope</text>
+<text x="428" y="148" class="">Inventory UIDs + ownership</text>
+<text x="428" y="170" class="">Telemetry identity + window</text>
+<rect x="760" y="95" width="300" height="100" rx="10" class="blue"/>
+<text x="778" y="123" class="heading">3 · Review proposal</text>
+<text x="778" y="148" class="">Typed scope + query limits</text>
+<text x="778" y="170" class="">No job created yet</text>
+<rect x="760" y="280" width="300" height="100" rx="10" class="amber"/>
+<text x="778" y="308" class="heading">4 · Explicit confirmation</text>
+<text x="778" y="333" class="">Reauthorize + recompile</text>
+<text x="778" y="355" class="">Reject changed proposal</text>
+<rect x="410" y="280" width="300" height="100" rx="10" class="blue"/>
+<text x="428" y="308" class="heading">5 · Persist job</text>
+<text x="428" y="333" class="">Idempotency + queue / lease</text>
+<text x="428" y="355" class="">Worker revalidates scope</text>
+<rect x="60" y="280" width="300" height="100" rx="10" class="blue"/>
+<text x="78" y="308" class="heading">6 · Read-only collection</text>
+<text x="78" y="333" class="">Specialists + global limits</text>
+<text x="78" y="355" class="">Live SSE / replay to UI</text>
+<rect x="60" y="465" width="300" height="100" rx="10" class="green"/>
+<text x="78" y="493" class="heading">7 · Verify evidence</text>
+<text x="78" y="518" class="">Hashes + cited references</text>
+<text x="78" y="540" class="">UID / trace identity checks</text>
+<rect x="410" y="465" width="300" height="100" rx="10" class="green"/>
+<text x="428" y="493" class="heading">8 · Evaluate RCA</text>
+<text x="428" y="518" class="">Playbooks + causal gates</text>
+<text x="428" y="540" class="">Context is not causal proof</text>
+<rect x="760" y="465" width="300" height="100" rx="10" class="green"/>
+<text x="778" y="493" class="heading">9 · Save diagnosis</text>
+<text x="778" y="518" class="">Cause or inconclusive</text>
+<text x="778" y="540" class="">Evidence + graph + audit</text>
+<path d="M 360 145 H 410" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 710 145 H 760" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 910 195 V 280" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 760 330 H 710" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 410 330 H 360" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 210 380 V 465" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 360 515 H 410" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 710 515 H 760" class="arrow" marker-end="url(#arrow)"/>
+<rect x="60" y="650" width="1000" height="100" rx="10" class="blue"/>
+<text x="78" y="678" class="heading">Authorized follow-up in the Copilot conversation</text>
+<text x="78" y="703" class="">Completed investigation only • verified citation IDs • explicit insufficient_evidence state</text>
+<text x="78" y="725" class="">Optional bounded LLM response or deterministic fallback; never changes the saved verdict</text>
+<path d="M 910 565 V 650" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 40 795 H 1080" class="divider"/>
+<text x="60" y="823" class="label">FAILURE BEHAVIOR</text>
+<rect x="60" y="845" width="1000" height="130" rx="10" class="amber"/>
+<text x="78" y="873" class="heading">Reject unsafe scope; preserve uncertainty</text>
+<text x="78" y="898" class="">Stale / ambiguous / changed inventory → 409; invalid time bounds → 422</text>
+<text x="78" y="920" class="">Required telemetry / budget unavailable → 503 before job; incomplete causal support → no confirmed cause</text>
+<text x="78" y="942" class="">Recovery / zero replicas never manufacture missing Pod telemetry or a root cause</text>
+</svg>

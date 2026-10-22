@@ -144,6 +144,7 @@ class FakeInventoryTools:
 @pytest.mark.asyncio
 async def test_clusterwide_inventory_builds_deterministic_topology():
     tools = FakeInventoryTools()
+    tools.data["Service"][0]["metadata"]["annotations"] = {"ai-sre.io/telemetry-service": "checkout-api"}
     collector = KubernetesInventoryCollector(tools)
     now = datetime(2026, 9, 29, 15, 0, tzinfo=timezone.utc)
 
@@ -166,6 +167,9 @@ async def test_clusterwide_inventory_builds_deterministic_topology():
     assert len(collection.snapshots) == 1
     snapshot = collection.snapshots[0]
     assert snapshot.complete is True
+    service = next(item for item in snapshot.resources if item.kind == "Service")
+    assert service.metadata["telemetry_service"] == "checkout-api"
+    assert service.metadata["kubernetes_uid"]
     assert snapshot.coverage.namespaces is None
     assert set(snapshot.coverage.relationship_types) == {
         "owned_by",

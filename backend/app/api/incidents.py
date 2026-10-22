@@ -13,7 +13,8 @@ from app.core.engine import InvestigationEngine
 from app.core.integrity import verify_evidence_hash
 from app.integrations.demo import StatefulDemoTools, TraceDemoTools
 from app.operations import append_audit, persist_investigation
-from app.schemas import IncidentExport, IncidentInput, IncidentList, InvestigationResult
+from app.schemas import CopilotAnswer, CopilotQuestion, IncidentExport, IncidentInput, IncidentList, InvestigationResult
+from app.llm.copilot import answer_question
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["incidents"])
 
@@ -211,6 +212,21 @@ async def get_incident(
         incident_id=result.incident_id,
     )
     return result
+
+
+@router.post("/{incident_id}/copilot", response_model=CopilotAnswer)
+async def copilot(
+    incident_id: str,
+    question: CopilotQuestion,
+    request: Request,
+    principal: Principal = Depends(require_role("viewer")),
+):
+    result = await _authorized_result(incident_id, request, principal)
+    await append_audit(
+        request.app, tenant_id=result.incident.tenant_id, actor=principal.subject,
+        action="incident.copilot_questioned", incident_id=result.incident_id,
+    )
+    return await answer_question(question.question, result, request.app.state.settings)
 
 
 @router.get("/{incident_id}/audit")

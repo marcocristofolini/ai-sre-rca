@@ -381,3 +381,14 @@ def test_recovery_dependencies_require_no_active_stateful_anomaly():
 
     assert harness.recovery_dependencies_are_safe(healthy) is True
     assert harness.recovery_dependencies_are_safe(stale) is False
+
+
+def test_tempo_validation_config_provides_recent_traceql_metrics():
+    import yaml
+    manifests = list(yaml.safe_load_all((harness.ROOT / 'validation/manifests/observability.yaml').read_text()))
+    config = next(m for m in manifests if m.get('kind') == 'ConfigMap' and m['metadata']['name'] == 'tempo-config')
+    tempo = yaml.safe_load(config['data']['tempo.yaml'])
+    assert tempo['overrides']['defaults']['metrics_generator']['processors'] == ['local-blocks']
+    assert tempo['metrics_generator']['storage']['path'].startswith('/tmp/tempo/')
+    assert tempo['metrics_generator']['traces_storage']['path'].startswith('/tmp/tempo/')
+    assert tempo['metrics_generator']['processor']['local_blocks']['filter_server_spans'] is False

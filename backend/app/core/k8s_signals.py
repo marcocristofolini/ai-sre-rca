@@ -67,7 +67,8 @@ def classify_pod_scenario(
     if "oom" in alert or any(str(item.get("reason", "")).lower() == "oomkilled" for item in terminated_states(pod)):
         return "oomkilled"
 
-    if "crashloop" in alert or any(str(item.get("reason", "")).lower() == "crashloopbackoff" for item in waiting_states(pod)):
+    repeated_exit = restart_count(pod) > 0 and any(int(item.get('exitCode', 0) or 0) != 0 for item in terminated_states(pod))
+    if "crashloop" in alert or repeated_exit or any(str(item.get("reason", "")).lower() == "crashloopbackoff" for item in waiting_states(pod)):
         return "crashloop"
 
     if (

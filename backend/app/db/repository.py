@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import asyncio
+import json
+from uuid import uuid4
 from typing import Protocol
 
 from sqlalchemy import and_, delete, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.awareness.health import (
@@ -39,6 +43,9 @@ from app.db.models import (
     AwarenessRelationshipRecord,
     Base,
     InvestigationRecord,
+    OrchestrationJobRecord,
+    OrchestrationProgressEventRecord,
+    OrchestrationJobRecord,
     RemediationPlanRecord,
 )
 from app.memory.embedding import cosine_similarity, hash_embedding
@@ -148,6 +155,14 @@ class InvestigationRepository(Protocol):
         tenant_id: str | None = None,
     ) -> dict[str, int]: ...
     async def close(self) -> None: ...
+    async def create_orchestration_job(self, job: dict, max_queued: int = 1000) -> tuple[dict, bool]: ...
+    async def get_orchestration_job(self, job_id: str, tenant_id: str | None = None) -> dict | None: ...
+    async def claim_orchestration_job(self, job_id: str, owner: str, lease_seconds: int, max_running: int) -> dict | None: ...
+    async def update_orchestration_job(self, job_id: str, values: dict, owner: str | None = None) -> bool: ...
+    async def recover_orchestration_jobs(self) -> list[str]: ...
+    async def purge_orchestration_jobs(self, retention_seconds: int, max_records: int) -> int: ...
+    async def append_orchestration_progress(self, job_id: str, tenant_id: str, event_type: str, payload: dict, max_events: int) -> dict: ...
+    async def list_orchestration_progress(self, job_id: str, tenant_id: str, after: int = 0, limit: int = 100) -> list[dict]: ...
 
 
 def _inventory_reconciliation_audit(
@@ -229,9 +244,98 @@ class MemoryRepository:
         self._awareness_entities: dict[str, AwarenessEntity] = {}
         self._awareness_relationships: dict[str, AwarenessRelationship] = {}
         self._awareness_observations: dict[str, AwarenessObservation] = {}
+        self._orchestration_jobs: dict[str, dict] = {}
+        self._orchestration_events: dict[str, list[dict]] = {}
+        self._orchestration_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         return None
+
+    async def create_orchestration_job(self, job: dict, max_queued: int = 1000) -> tuple[dict, bool]:
+        async with self._orchestration_lock:
+            if job.get("idempotency_key"):
+                for existing in self._orchestration_jobs.values():
+                    if existing["tenant_id"] == job["tenant_id"] and existing["idempotency_key"] == job["idempotency_key"]:
+                        if existing["request_fingerprint"] != job["request_fingerprint"]:
+                            raise ValueError("idempotency key conflict")
+                        return json.loads(json.dumps(existing)), False
+            if sum(j["status"] in {"queued", "running"} for j in self._orchestration_jobs.values()) >= max_queued:
+                raise OverflowError("orchestration queue is full")
+            self._orchestration_jobs[job["id"]] = json.loads(json.dumps(job))
+            return json.loads(json.dumps(job)), True
+
+    async def get_orchestration_job(self, job_id: str, tenant_id: str | None = None) -> dict | None:
+        async with self._orchestration_lock:
+            job = self._orchestration_jobs.get(job_id)
+            if job is None or (tenant_id is not None and job["tenant_id"] != tenant_id):
+                return None
+            return json.loads(json.dumps(job))
+
+    async def claim_orchestration_job(self, job_id: str, owner: str, lease_seconds: int, max_running: int) -> dict | None:
+        async with self._orchestration_lock:
+            now = datetime.now(timezone.utc)
+            active = sum(j["status"] == "running" and j.get("lease_expires_at") and datetime.fromisoformat(j["lease_expires_at"]) > now for j in self._orchestration_jobs.values())
+            if active >= max_running:
+                return None
+            job = self._orchestration_jobs.get(job_id)
+            if not job or not (job["status"] == "queued" or (job["status"] == "running" and job.get("lease_expires_at") and datetime.fromisoformat(job["lease_expires_at"]) <= now)):
+                return None
+            job.update(status="running", lease_owner=owner,
+                lease_expires_at=(now + timedelta(seconds=lease_seconds)).isoformat(),
+                started_at=job.get("started_at") or now.isoformat())
+            return json.loads(json.dumps(job))
+
+    async def update_orchestration_job(self, job_id: str, values: dict, owner: str | None = None) -> bool:
+        async with self._orchestration_lock:
+            job = self._orchestration_jobs.get(job_id)
+            if not job or (owner is not None and job.get("lease_owner") != owner):
+                return False
+            job.update(values)
+            return True
+
+    async def recover_orchestration_jobs(self) -> list[str]:
+        async with self._orchestration_lock:
+            now = datetime.now(timezone.utc)
+            return [job["id"] for job in self._orchestration_jobs.values()
+                    if job["status"] == "queued" or (job["status"] == "running" and job.get("lease_expires_at") and datetime.fromisoformat(job["lease_expires_at"]) <= now)]
+
+    async def purge_orchestration_jobs(self, retention_seconds: int, max_records: int) -> int:
+        async with self._orchestration_lock:
+            terminal = [(key, value) for key, value in self._orchestration_jobs.items()
+                        if value["status"] in {"completed", "failed", "cancelled"}
+                        and value.get("finished_at")]
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=retention_seconds)
+            remove = {key for key, value in terminal
+                      if datetime.fromisoformat(value["finished_at"]) < cutoff}
+            remaining = [(key, value) for key, value in terminal if key not in remove]
+            remaining.sort(key=lambda item: item[1]["submitted_at"], reverse=True)
+            remove.update(key for key, _ in remaining[max_records:])
+            for key in remove:
+                self._orchestration_jobs.pop(key, None)
+                self._orchestration_events.pop(key, None)
+            return len(remove)
+
+    async def append_orchestration_progress(self, job_id: str, tenant_id: str, event_type: str, payload: dict, max_events: int) -> dict:
+        async with self._orchestration_lock:
+            job = self._orchestration_jobs.get(job_id)
+            if not job or job["tenant_id"] != tenant_id:
+                raise LookupError("orchestration job not found")
+            job["progress_sequence"] = job.get("progress_sequence", 0) + 1
+            event = {"job_id": job_id, "tenant_id": tenant_id,
+                "sequence": job["progress_sequence"], "event_type": event_type,
+                "payload": payload, "created_at": datetime.now(timezone.utc).isoformat()}
+            events = self._orchestration_events.setdefault(job_id, [])
+            events.append(json.loads(json.dumps(event)))
+            del events[:-max_events]
+            return event
+
+    async def list_orchestration_progress(self, job_id: str, tenant_id: str, after: int = 0, limit: int = 100) -> list[dict]:
+        async with self._orchestration_lock:
+            job = self._orchestration_jobs.get(job_id)
+            if not job or job["tenant_id"] != tenant_id:
+                return []
+            return [json.loads(json.dumps(event)) for event in
+                    self._orchestration_events.get(job_id, []) if event["sequence"] > after][:max(1, min(limit, 500))]
 
     async def save(self, result: InvestigationResult) -> None:
         self._items[result.incident_id] = result
@@ -1054,6 +1158,9 @@ class SQLRepository:
         async with self.engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text(
+                "ALTER TABLE orchestration_jobs ADD COLUMN IF NOT EXISTS progress_sequence INTEGER NOT NULL DEFAULT 0"
+            ))
             # Lightweight forward migrations for existing volumes.
             await conn.execute(text(
                 "ALTER TABLE investigations ADD COLUMN IF NOT EXISTS fingerprint_text TEXT"
@@ -1094,6 +1201,166 @@ class SQLRepository:
                         f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} "
                         f"ON {table} ({column})"
                     ))
+
+    async def create_orchestration_job(self, job: dict, max_queued: int = 1000) -> tuple[dict, bool]:
+        values = dict(job)
+        result = values.pop("result", None)
+        for name in ("submitted_at", "started_at", "finished_at", "lease_expires_at"):
+            if isinstance(values.get(name), str):
+                values[name] = datetime.fromisoformat(values[name])
+        async with self.engine.begin() as conn:
+            await conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('ai-sre-rca-orchestrator-claims'))"))
+            if job.get("idempotency_key"):
+                existing_row = await conn.execute(select(OrchestrationJobRecord).where(
+                    OrchestrationJobRecord.tenant_id == job["tenant_id"],
+                    OrchestrationJobRecord.idempotency_key == job["idempotency_key"],
+                ))
+                existing = existing_row.mappings().first()
+                if existing:
+                    existing_dict = dict(existing)
+                    if existing_dict["request_fingerprint"] != job["request_fingerprint"]:
+                        raise ValueError("idempotency key conflict")
+                    return existing_dict, False
+            active = await conn.scalar(select(func.count()).select_from(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.status.in_(["queued", "running"])))
+            if (active or 0) >= max_queued:
+                raise OverflowError("orchestration queue is full")
+            statement = insert(OrchestrationJobRecord).values(**values, result=result).on_conflict_do_nothing(
+                constraint="orchestration_jobs_tenant_idem_uq").returning(OrchestrationJobRecord.id)
+            created_id = (await conn.execute(statement)).scalar_one_or_none()
+        if created_id:
+            return dict(job), True
+        existing = await self.get_orchestration_job_by_key(job["tenant_id"], job.get("idempotency_key"))
+        if not existing:
+            raise RuntimeError("orchestration job insert conflict without matching idempotency record")
+        if existing["request_fingerprint"] != job["request_fingerprint"]:
+            raise ValueError("idempotency key conflict")
+        return existing, False
+
+    @staticmethod
+    def _orchestration_job_dict(record: OrchestrationJobRecord) -> dict:
+        return {name: getattr(record, name) for name in (
+            "id", "tenant_id", "idempotency_key", "request_fingerprint", "status",
+            "cluster", "incident_id", "actor", "payload", "result", "error",
+            "error_type", "submitted_at", "started_at", "finished_at",
+            "lease_owner", "lease_expires_at",
+            "progress_sequence",
+        )}
+
+    async def get_orchestration_job_by_key(self, tenant_id: str, idempotency_key: str | None) -> dict | None:
+        if idempotency_key is None:
+            return None
+        async with self.sessions() as session:
+            record = (await session.execute(select(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.tenant_id == tenant_id,
+                OrchestrationJobRecord.idempotency_key == idempotency_key,
+            ))).scalar_one_or_none()
+            return self._orchestration_job_dict(record) if record else None
+
+    async def get_orchestration_job(self, job_id: str, tenant_id: str | None = None) -> dict | None:
+        query = select(OrchestrationJobRecord).where(OrchestrationJobRecord.id == job_id)
+        if tenant_id is not None:
+            query = query.where(OrchestrationJobRecord.tenant_id == tenant_id)
+        async with self.sessions() as session:
+            record = (await session.execute(query)).scalar_one_or_none()
+            return self._orchestration_job_dict(record) if record else None
+
+    async def claim_orchestration_job(self, job_id: str, owner: str, lease_seconds: int, max_running: int) -> dict | None:
+        now = datetime.now(timezone.utc)
+        async with self.engine.begin() as conn:
+            await conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('ai-sre-rca-orchestrator-claims'))"))
+            active = await conn.scalar(select(func.count()).select_from(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.status == "running",
+                OrchestrationJobRecord.lease_expires_at > now,
+            ))
+            if (active or 0) >= max_running:
+                return None
+            claimed = await conn.execute(update(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.id == job_id,
+                or_(OrchestrationJobRecord.status == "queued", and_(
+                    OrchestrationJobRecord.status == "running",
+                    OrchestrationJobRecord.lease_expires_at <= now,
+                )),
+            ).values(status="running", lease_owner=owner,
+                lease_expires_at=now + timedelta(seconds=lease_seconds),
+                started_at=func.coalesce(OrchestrationJobRecord.started_at, now)
+            ).returning(OrchestrationJobRecord.id))
+            if claimed.scalar_one_or_none() is None:
+                return None
+        return await self.get_orchestration_job(job_id)
+
+    async def update_orchestration_job(self, job_id: str, values: dict, owner: str | None = None) -> bool:
+        allowed = {key: value for key, value in values.items() if key in {
+            "status", "result", "error", "error_type", "finished_at", "lease_owner", "lease_expires_at",
+        }}
+        for name in ("finished_at", "lease_expires_at"):
+            value = allowed.get(name)
+            if isinstance(value, str):
+                allowed[name] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        query = update(OrchestrationJobRecord).where(OrchestrationJobRecord.id == job_id)
+        if owner is not None:
+            query = query.where(OrchestrationJobRecord.lease_owner == owner)
+        async with self.engine.begin() as conn:
+            result = await conn.execute(query.values(**allowed).returning(OrchestrationJobRecord.id))
+            return result.scalar_one_or_none() is not None
+
+    async def recover_orchestration_jobs(self) -> list[str]:
+        now = datetime.now(timezone.utc)
+        async with self.sessions() as session:
+            rows = await session.execute(select(OrchestrationJobRecord.id).where(or_(
+                OrchestrationJobRecord.status == "queued",
+                and_(OrchestrationJobRecord.status == "running", OrchestrationJobRecord.lease_expires_at <= now),
+            )).order_by(OrchestrationJobRecord.submitted_at))
+            return list(rows.scalars())
+
+    async def purge_orchestration_jobs(self, retention_seconds: int, max_records: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=retention_seconds)
+        old = delete(OrchestrationJobRecord).where(
+            OrchestrationJobRecord.status.in_(["completed", "failed", "cancelled"]),
+            OrchestrationJobRecord.finished_at < cutoff,
+        )
+        async with self.engine.begin() as conn:
+            deleted_old = await conn.execute(old)
+            keep = select(OrchestrationJobRecord.id).where(
+                OrchestrationJobRecord.status.in_(["completed", "failed", "cancelled"])
+            ).order_by(OrchestrationJobRecord.submitted_at.desc()).offset(max_records)
+            overflow = await conn.execute(delete(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.id.in_(keep)
+            ))
+            return int(deleted_old.rowcount or 0) + int(overflow.rowcount or 0)
+
+    async def append_orchestration_progress(self, job_id: str, tenant_id: str, event_type: str, payload: dict, max_events: int) -> dict:
+        async with self.engine.begin() as conn:
+            sequence = await conn.execute(update(OrchestrationJobRecord).where(
+                OrchestrationJobRecord.id == job_id,
+                OrchestrationJobRecord.tenant_id == tenant_id,
+            ).values(progress_sequence=OrchestrationJobRecord.progress_sequence + 1)
+                .returning(OrchestrationJobRecord.progress_sequence))
+            value = sequence.scalar_one_or_none()
+            if value is None:
+                raise LookupError("orchestration job not found")
+            created = datetime.now(timezone.utc)
+            await conn.execute(insert(OrchestrationProgressEventRecord).values(
+                job_id=job_id, tenant_id=tenant_id, sequence=value,
+                event_type=event_type, payload=payload, created_at=created,
+            ))
+            await conn.execute(delete(OrchestrationProgressEventRecord).where(
+                OrchestrationProgressEventRecord.job_id == job_id,
+                OrchestrationProgressEventRecord.sequence <= value - max_events,
+            ))
+        return {"job_id": job_id, "tenant_id": tenant_id, "sequence": value,
+                "event_type": event_type, "payload": payload, "created_at": created}
+
+    async def list_orchestration_progress(self, job_id: str, tenant_id: str, after: int = 0, limit: int = 100) -> list[dict]:
+        async with self.sessions() as session:
+            rows = await session.execute(select(OrchestrationProgressEventRecord).where(
+                OrchestrationProgressEventRecord.job_id == job_id,
+                OrchestrationProgressEventRecord.tenant_id == tenant_id,
+                OrchestrationProgressEventRecord.sequence > after,
+            ).order_by(OrchestrationProgressEventRecord.sequence).limit(max(1, min(limit, 500))))
+            return [{"job_id": row.job_id, "tenant_id": row.tenant_id,
+                "sequence": row.sequence, "event_type": row.event_type,
+                "payload": row.payload, "created_at": row.created_at} for row in rows.scalars()]
 
     async def save(self, result: InvestigationResult) -> None:
         async with self.sessions() as session:
