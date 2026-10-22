@@ -14,17 +14,28 @@ Responder a um incidente exige cruzar estado do Kubernetes, métricas, logs, tra
 | --- | --- |
 | Escopo de investigação | Seleção de Pod, Service, Deployment e StatefulSet a partir de inventário autorizado, com janela temporal limitada. Deployment → ReplicaSet → Pod e StatefulSet → Pod são resolvidos por UIDs e ownerReferences de controladores. |
 | Orquestrador persistente | Execução limitada de especialistas somente leitura, jobs persistidos, submissão idempotente, leases, limites de concorrência e recuperação. Progresso SSE com replay e alternativa por polling. APIs síncronas continuam disponíveis. |
-| Copilot | Perguntas sobre causas registradas, evidências, hipóteses descartadas, cronologia e próximos passos. As respostas incluem IDs de evidências verificadas do incidente e estado explícito de evidência insuficiente. Não exige modelo. |
+| Copilot | Perguntas sobre causas independentes verificadas, evidências, hipóteses descartadas, cronologia e próximos passos. Respostas determinísticas citam evidências autorizadas e preservam a incerteza sem depender de modelo. |
 | Investigação interativa | Solicitação em linguagem natural com seleção explícita de inventário e período gera proposta tipada. O usuário revisa escopo e orçamento antes de confirmar a criação do job. Texto livre nunca concede escopo nem escolhe ferramentas. |
-| RCA determinístico | Verificação de integridade e referências, pontuação por playbooks, precedência de fontes, recorrência da origem em traces e validação por telemetria de dependências. Modelos não alteram vereditos nem executam remediação. |
+| RCA determinístico | Verificação de integridade e referências, pontuação por playbooks, precedência Kubernetes/telemetria e múltiplas causas verificadas de forma independente (`root_causes`), sustentadas por condições atuais de Node ou traces causais recorrentes. Modelos não alteram vereditos nem executam remediação. |
 | Contexto persistente | Awareness Graph com inventário autoritativo, histórico, tombstones, mudanças e topologia limitada; memória de incidentes em PostgreSQL/pgvector. Similaridade histórica é contexto, não prova causal. |
-| Workspace | Progresso dos especialistas, evidências, hipóteses, cronologia, diagnóstico final e perguntas sobre a investigação concluída. |
+| Workspace | Progresso dos especialistas, evidências, hipóteses, cronologia, causas primária e secundárias verificadas com links para evidências e perguntas sobre as investigações concluídas. |
 
 Os modos de worker ainda são identificados como experimentais (leases em PostgreSQL ou memória volátil no processo). A execução agentic está implementada, mas exige ativação (`AGENTIC_EXECUTION_ENABLED=true`). O planejamento opcional assistido por modelo é experimental e possui controle separado; o servidor recompila apenas tarefas permitidas.
 
+## Diagnóstico de múltiplas causas independentes
+
+O campo original `root_cause` permanece como causa primária, preservando a compatibilidade. A coleção opcional e ordenada `root_causes` apresenta outras **causas verificadas de forma independente**, cada uma vinculada a uma hipótese de playbook confirmada e evidências com integridade validada. Classic, Agentic opcional e Copilot preservam a precedência determinística do Kubernetes; modelos e pareceres isolados dos especialistas não podem promover causas à conclusão persistida.
+
+| Incidente controlado | Causas verificadas | Resultado |
+| --- | --- | --- |
+| Benchmark sintético `b002` | `container-oom` + `node-not-ready` (condições verificadas de Pod e Node) | Completo em Classic, Agentic e Copilot |
+| Benchmark Kind descartável `l002` | `container-oom` + `trace-causal-propagation` (ancestralidade independente e recorrente de traces) | Completo nos três caminhos; integridade aprovada |
+
+Evidência desconhecida, desatualizada, ausente ou conflitante impede afirmações injustificadas. Causas extras sem suporte contam como **confirmações falsas**, nunca como diagnósticos corretos. `resolved` significa que o diagnóstico foi concluído, **não** que o serviço se recuperou. Veja o [relatório multicausal](docs/rca-benchmark-v23-multicausal-results.md) e a [metodologia do benchmark](docs/rca-benchmark.md).
+
 ## Imagens da aplicação em funcionamento — demonstração local
 
-As capturas foram feitas no Chromium em **22 de outubro de 2026**, utilizando a aplicação Next.js compilada e conectada a um servidor FastAPI em execução. As quatro páginas retornaram HTTP 200 sem erros de JavaScript no navegador. Os cenários usam **adaptadores e dados sintéticos de demonstração**, não telemetria de produção. Clique nas imagens para ampliar.
+Cinco imagens foram capturadas no Chromium em **22 de outubro de 2026** com o frontend Next.js compilado para produção. Quatro rotas utilizaram um **backend FastAPI demonstrativo com adaptadores sintéticos**, todas com HTTP 200 e sem erros de página. A quinta exibe um **resultado congelado e com integridade validada de uma investigação controlada no Kind descartável**, reproduzido em modo somente leitura. Nenhuma representa incidente em produção. Clique para ampliar.
 
 **Duas causas independentes em incidente controlado no Kind:** o diagnóstico `l002` registrado é exibido na interface Next.js em execução, com um encerramento por OOM e outra causa comprovada por traces. O cluster era descartável; a tela foi verificada reproduzindo o resultado em modo somente leitura.
 
@@ -117,6 +128,22 @@ O [relatório Real-World RCA Validation v1](docs/real-world-rca-validation-v1.md
 | Build de produção Next.js | **Passou**, incluindo TypeScript e assets standalone |
 
 Os casos usaram workloads descartáveis no Kind e Kubernetes, Prometheus, Loki e Tempo reais: timeout downstream investigado por Deployment e StatefulSet, saída de processo após rollout, OOMKilled, recuperação e zero réplicas. O resultado do rollout comprova o mecanismo de saída do processo, não causalidade da revisão Git. São resultados locais controlados, **não confiabilidade de produção, acurácia geral de RCA ou certificação de release**. Relatórios e logs brutos permanecem locais, fora do Git; o resumo versionado está no link acima. Esta atualização documental não reexecuta essas suítes da aplicação.
+
+### 22 de outubro de 2026: validação local multicausal
+
+O [relatório de RCA multicausal](docs/rca-benchmark-v23-multicausal-results.md) registra estas **novas verificações executadas localmente**, separadas da validação histórica acima:
+
+| Verificação | Resultado local observado |
+| --- | --- |
+| Regressão completa de backend/PostgreSQL | **306/306 testes aprovados**; um aviso Starlette preexistente |
+| Testes unitários de benchmark e harness | **51 aprovados** |
+| Benchmark sintético cego: 8 casos × 3 caminhos | **PASS**: 2 completos, 5 abstenções corretas e 1 rejeição correta *por caminho*; sem diagnósticos incorretos, erros ou confirmações falsas |
+| Benchmark controlado no Kind: 3 casos × 3 caminhos | **PASS**: 1 completo e 2 abstenções corretas *por caminho*; **9/9** verificações de integridade aprovadas e nenhum erro de fonte |
+| Regressões controladas do Copilot | **6 cenários aprovados** durante o estágio Kind do benchmark |
+| Build Docker de produção do Next.js | **Aprovado** |
+| Capturas Chromium | **4 rotas de demonstração + 1 resultado Kind `l002`**, todas com HTTP 200 e sem erros de página; a última exibiu duas causas e link para evidência |
+
+A nova execução Kind cobriu o **estágio completo do benchmark-v2** e suas regressões do Copilot, **não todas as suítes históricas independentes de full-stack, PostgreSQL/Redis, Awareness Graph ou Playwright**. Seções não executadas não representam testes aprovados. O uso de LLM/planejamento por modelo estava desativado; os casos controlados não certificam acurácia em produção nem release. O cluster e os containers descartáveis foram removidos.
 
 ### Reproduzir a validação com Docker
 

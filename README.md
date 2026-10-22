@@ -14,17 +14,28 @@ Incident response spans Kubernetes state, metrics, logs, traces, recent changes 
 | --- | --- |
 | Investigation scope | Pod, Service, Deployment and StatefulSet selection from authorized inventory, with bounded time windows. Deployment → ReplicaSet → Pod and StatefulSet → Pod ownership uses Kubernetes UIDs and controller ownerReferences. |
 | Persistent Orchestrator | Bounded read-only specialist execution, persisted jobs, idempotent submission, leases, concurrency limits and recovery. SSE progress supports replay; polling is available. Synchronous APIs remain supported. |
-| Copilot | Questions about saved causes, evidence, rejected hypotheses, timeline and recorded next steps. Answers carry verified incident evidence IDs and an explicit insufficient-evidence state. No model is required. |
+| Copilot | Questions about verified independent causes, evidence, rejected hypotheses, timeline and next steps. Deterministic answers cite authorized evidence IDs and preserve uncertainty without requiring a model. |
 | Interactive investigation | Natural-language request plus an explicit inventory/time selection compiles into a typed proposal. Scope and budgets are reviewed before explicit confirmation creates a job. Free text never grants scope or selects tools. |
-| Deterministic RCA | Integrity and reference checks, playbook scoring, source precedence, repeated trace-origin and dependency telemetry gates. Models cannot change verdicts or execute remediation. |
+| Deterministic RCA | Integrity and reference checks, playbook scoring, Kubernetes/source precedence and independently verified multiple-root verdicts (`root_causes`) grounded in distinct live Node or repeated trace evidence. Models cannot change verdicts or execute remediation. |
 | Persistent context | Awareness Graph with authoritative inventory, history, tombstones, changes and bounded topology; incident memory in PostgreSQL/pgvector. Historical similarity is context, not causal evidence. |
-| Workspace | Live specialist progress, evidence, hypotheses, timeline, final diagnosis and follow-up questions on the completed investigation. |
+| Workspace | Live specialist progress, evidence, hypotheses, timeline, primary and secondary verified causes with evidence links, plus follow-up questions about completed investigations. |
 
 Persistent worker modes are currently reported as experimental (PostgreSQL leased workers or volatile in-process memory). Agentic execution is implemented but opt-in (`AGENTIC_EXECUTION_ENABLED=true`). Optional model-assisted planning is experimental and separately gated; the server recompiles allow-listed tasks.
 
+## Independent multiple-root diagnosis
+
+The original `root_cause` is still the primary, backward-compatible verdict. The optional, ordered `root_causes` collection reports additional **independently verified causes**, each linked to its own confirmed playbook hypothesis and integrity-checked evidence. Classic, opt-in Agentic and Copilot preserve deterministic Kubernetes precedence; neither an LLM nor a specialist's advisory output may promote a cause into the persisted verdict.
+
+| Controlled incident | Verified causes | Outcome |
+| --- | --- | --- |
+| Synthetic benchmark `b002` | `container-oom` + `node-not-ready` (verified Pod and Node conditions) | Complete in Classic, Agentic and Copilot |
+| Disposable Kind benchmark `l002` | `container-oom` + `trace-causal-propagation` (independent recurring trace ancestry) | Complete in all three paths; evidence integrity passed |
+
+Unknown, stale, missing or conflicting evidence still fails closed. Unsupported extra causes count as **false confirmations**, not successful diagnoses. `resolved` means the investigation produced a diagnosis—not that the service recovered. See [the multi-causal report](docs/rca-benchmark-v23-multicausal-results.md) and [benchmark methodology](docs/rca-benchmark.md).
+
 ## Application screenshots — running local demo
 
-These screenshots were captured in Chromium on **22 October 2026** from the built Next.js application connected to a running FastAPI server. All four pages returned HTTP 200 without browser page errors. The scenarios use **synthetic demo adapters**, not production infrastructure or telemetry. Click an image to view it at full resolution.
+Five screenshots were captured in Chromium on **22 October 2026** using the production-built Next.js frontend. Four routes ran with a **FastAPI demo backend and synthetic adapters**, each returning HTTP 200 without browser page errors. The fifth shows a **frozen, integrity-verified result from a disposable Kind telemetry investigation**, displayed read-only in the same frontend. None shows a production incident. Click to enlarge.
 
 **Multiple independent causes from a controlled Kind incident:** the recorded `l002` diagnosis is displayed in the running Next.js interface, with a verified OOM failure and a separate trace-derived root. The cluster was disposable; this is a read-only replay for UI verification.
 
@@ -117,6 +128,22 @@ The [Real-World RCA Validation v1 report](docs/real-world-rca-validation-v1.md),
 | Next.js production build | **Passed**, including TypeScript and standalone assets |
 
 Real cases used disposable Kind workloads and live Kubernetes, Prometheus, Loki and Tempo: downstream timeout from Deployment and StatefulSet scopes, process exit after rollout, OOMKilled, recovery and zero replicas. The rollout result proves the process-exit mechanism, not Git revision causality. These are controlled local results, **not production reliability, general RCA accuracy or release certification**. Raw reports/logs remain local and excluded from Git; the committed summary is linked above. The documentation update does not rerun these application suites.
+
+### October 22, 2026: multi-causal local validation
+
+The [multi-causal RCA report](docs/rca-benchmark-v23-multicausal-results.md) records these **newly executed** local checks, separate from the older baseline above:
+
+| Check | Observed local result |
+| --- | --- |
+| Full backend/PostgreSQL regression | **306/306 tests passed**; one pre-existing Starlette deprecation warning |
+| Benchmark and harness unit tests | **51 passed** |
+| Blind synthetic benchmark: 8 cases × 3 paths | **PASS**: 2 complete, 5 correct abstentions and 1 correct rejection *per path*; no incorrect diagnoses, errors or false confirmations |
+| Controlled Kind benchmark: 3 cases × 3 paths | **PASS**: 1 complete and 2 correct abstentions *per path*; **9/9** evidence-integrity checks passed and no source errors |
+| Controlled live Copilot regression | **6 scenarios passed** within the Kind benchmark stage |
+| Next.js production Docker build | **Passed** |
+| Chromium screenshots | **4 demo routes + 1 Kind `l002` result**, all HTTP 200 without page errors; the latter displayed two causes and a linked evidence record |
+
+The new Kind run executed the **benchmark-v2 full stage** and its Copilot regression, **not every independent older full-stack, PostgreSQL/Redis, awareness-graph or Playwright harness**. Unexecuted sections of that report are not passes. LLM/model planning was disabled, and these controlled cases are not production accuracy or release certification. The disposable cluster and containers were removed.
 
 ### Reproduce validation with Docker
 
