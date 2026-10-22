@@ -13,6 +13,7 @@ import httpx
 
 from app.config import Settings
 from app.core.query_budget import consume_query
+from app.core.trace_ids import canonical_trace_id
 from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
 
 
@@ -231,6 +232,9 @@ class ReadOnlyHTTPTools:
 
     async def get_deployment(self, namespace: str, name: str) -> dict[str, Any]:
         return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/deployments/{path_segment(name)}")
+
+    async def get_statefulset(self, namespace: str, name: str) -> dict[str, Any]:
+        return await self._k8s_get(f"/apis/apps/v1/namespaces/{path_segment(namespace)}/statefulsets/{path_segment(name)}")
 
     async def list_pods_on_node(self, node: str) -> list[dict[str, Any]]:
         data = await self._k8s_get("/api/v1/pods", {"fieldSelector": f"spec.nodeName={node}"})
@@ -637,15 +641,23 @@ class ReadOnlyHTTPTools:
                     return traces
                 response.raise_for_status()
                 for item in response.json().get("traces", []):
-                    trace_id = str(item.get("traceID") or "")
+                    trace_id = canonical_trace_id(item.get("traceID"))
                     if not trace_id or trace_id in seen:
                         continue
                     seen.add(trace_id)
                     copy = dict(item)
+                    copy['traceID'] = trace_id
                     copy["_source_query"] = query
                     traces.append(copy)
                     if len(traces) >= limit:
                         break
+        # Tempo search results are not ordered. Preserve error-first selection,
+        # then use the newest verified timestamps within the bounded response.
+        traces.sort(key=lambda item: (
+            'status = error' not in item.get('_source_query', ''),
+            -int(item['startTimeUnixNano']) if str(item.get('startTimeUnixNano', '')).isdigit() else 0,
+            item.get('traceID', ''),
+        ))
         return traces
 
     async def tempo_get_trace(

@@ -1,0 +1,6 @@
+{
+  "suite":"legacy-live-capture-v2",
+  "cases": {
+    "l004":{"category":"unavailable-optional-change-source","causes":[],"accept":[],"reason":"Healthy workload has no confirmed cause. An attempted lookup of absent Argo CD is an execution error, not a correct abstention."}
+  }
+}

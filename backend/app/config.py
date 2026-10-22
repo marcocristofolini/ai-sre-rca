@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     )
     agentic_max_tasks: int = Field(default=6, ge=1, le=12)
     agentic_max_parallel_tasks: int = Field(default=4, ge=1, le=8)
+    orchestration_max_concurrent_jobs: int = Field(default=2, ge=1, le=16)
+    orchestration_max_queued_jobs: int = Field(default=100, ge=1, le=10000)
+    orchestration_max_retained_jobs: int = Field(default=500, ge=10, le=10000)
+    orchestration_job_retention_seconds: int = Field(default=86400, ge=60, le=2592000)
+    orchestration_job_lease_seconds: int = Field(default=120, ge=10, le=3600)
+    orchestration_progress_events_per_job: int = Field(default=200, ge=20, le=2000)
     agentic_max_context_nodes: int = Field(default=50, ge=1, le=500)
     agentic_context_depth: int = Field(default=3, ge=1, le=4)
     agentic_context_max_history_targets: int = Field(

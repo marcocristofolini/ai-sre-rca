@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import timedelta
-
 from app.agentic.models import (
     InvestigationPlan,
     ModelPlanningAdvice,
@@ -134,13 +132,8 @@ async def _graph_context(
             cluster=incident.cluster,
             service_name=incident.service,
             namespace=incident.namespace,
-            since=(
-                incident.starts_at
-                - timedelta(
-                    minutes=settings.change_correlation_window_minutes
-                )
-            ),
-            until=incident.starts_at + timedelta(minutes=5),
+            since=incident.query_window(settings.change_correlation_window_minutes)[0],
+            until=incident.query_window(settings.change_correlation_window_minutes)[1],
             limit=settings.agentic_context_change_limit,
         )
         recent_changes = [
@@ -302,7 +295,7 @@ def _specialist_scope(
     ambiguous: list[str] = []
 
     pod = incident.pod
-    if pod is None and incident.namespace:
+    if pod is None and incident.namespace and not incident.labels.get("copilot_target_kind"):
         pod_candidates = _fresh_context_entities(
             context,
             "Pod",
@@ -321,7 +314,7 @@ def _specialist_scope(
         or incident.labels.get("app.kubernetes.io/instance")
     )
     application = explicit_application
-    if application is None:
+    if application is None and not incident.labels.get("copilot_target_kind"):
         application_candidates = _fresh_context_entities(
             context,
             "ArgoCDApplication",
@@ -333,10 +326,8 @@ def _specialist_scope(
             resolved.append("application")
         elif len(application_candidates) > 1:
             ambiguous.append("application")
-        else:
-            # Preserve legacy service-name lookup only when the complete
-            # bounded topology has no Argo CD application identity.
-            application = incident.service
+        # A service name is not an Argo CD application identity. Without an
+        # explicit mapping or a unique fresh graph entity, leave it unresolved.
 
     return SpecialistScope(
         namespace=incident.namespace,
@@ -359,10 +350,12 @@ def _eligible_tasks(
     context_ids = context.entity_ids[: settings.agentic_max_context_nodes]
     scope = _specialist_scope(incident, context)
 
-    if scope.node or (scope.namespace and scope.pod):
+    if incident.workload is not None or scope.node or (scope.namespace and scope.pod):
         kubernetes_reason = (
             "The incident identifies Kubernetes-scoped runtime resources."
         )
+        if incident.workload is not None:
+            kubernetes_reason = "Use UID-verified inventory membership as context only; no Pod is guessed."
         if "pod" in scope.graph_resolved_fields:
             kubernetes_reason = (
                 "A single fresh Pod was resolved from the bounded persistent "
@@ -401,6 +394,8 @@ def _eligible_tasks(
                 "A single fresh Pod was resolved from the bounded persistent "
                 "topology and will be used only to narrow the live Loki query."
             )
+        elif incident.workload is not None:
+            log_reason = "Query only verified workload Pod names and UIDs; zero replicas produce no log queries."
         elif scope.pod is None and scope.service:
             log_reason = (
                 "No unambiguous Pod identity is available, so logs remain "

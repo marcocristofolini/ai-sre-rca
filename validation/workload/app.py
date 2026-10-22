@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 import urllib.request
@@ -15,8 +16,12 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
 import redis_scenario
+from opentelemetry.propagate import extract, inject
 
-SERVICE = "frontend"
+SERVICE = os.getenv("OTEL_SERVICE_NAME", "frontend")
+POD_UID = os.getenv("POD_UID", "")
+DEPENDENCY_URL = os.getenv("DEPENDENCY_URL", "http://copilot-stateful:8080/dependency")
+DEPENDENCY_DELAY = float(os.getenv("DEPENDENCY_DELAY_SECONDS", "0"))
 POD_NAME = os.getenv("POD_NAME", "rc3-workload")
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100/loki/api/v1/push")
 TEMPO_URL = os.getenv("TEMPO_URL", "http://tempo:4318/v1/traces")
@@ -27,9 +32,11 @@ provider = TracerProvider(
         {
             "service.name": SERVICE,
             "service.version": "rc3",
+            "k8s.pod.uid": POD_UID,
+            "k8s.pod.name": POD_NAME,
             "deployment.environment.name": "validation",
             "k8s.namespace.name": "rca-validation",
-            "k8s.deployment.name": "rc3-workload",
+            ("k8s.statefulset.name" if os.getenv('WORKLOAD_KIND') == 'StatefulSet' else "k8s.deployment.name"): os.getenv('WORKLOAD_NAME', 'rc3-workload'),
         }
     )
 )
@@ -64,6 +71,9 @@ _successes = 0
 _recoveries = 0
 _redis_failures = 0
 _redis_successes = 0
+_latency_requests = 0
+_latency_failures = 0
+_latency_seconds = 0.0
 
 
 def _post_json(url: str, payload: dict) -> None:
@@ -85,13 +95,14 @@ def emit_log(trace_id: str, *, level: str, message: str, service: str = SERVICE)
                 "stream": {
                     "namespace": "rca-validation",
                     "pod": POD_NAME,
+                    "pod_uid": POD_UID,
                     "app": service,
                     "level": level,
                 },
                 "values": [
                     [
                         str(time.time_ns()),
-                        f"{message} trace_id={trace_id}",
+                        json.dumps({"message": message, "trace_id": trace_id, "pod_uid": POD_UID}),
                     ]
                 ],
             }
@@ -177,6 +188,27 @@ def emit_redis_trace(*, failing: bool) -> str:
     return trace_id
 
 
+def emit_latency_request():
+    """Record an actual HTTP dependency call; errors reflect its observed outcome."""
+    started = time.monotonic()
+    with tracer.start_as_current_span('GET /latency', kind=SpanKind.SERVER) as root:
+        trace_id = f'{root.get_span_context().trace_id:032x}'
+        failed = False
+        with tracer.start_as_current_span('GET /dependency', kind=SpanKind.CLIENT,
+            attributes={'peer.service':'copilot-stateful','server.address':'copilot-stateful','server.port':8080}) as child:
+            headers = {}; inject(headers)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(DEPENDENCY_URL, headers=headers), timeout=.25) as response:
+                    if response.status != 200: raise RuntimeError('dependency HTTP failure')
+            except (OSError, TimeoutError) as error:
+                failed = True
+                child.record_exception(error)
+                child.set_status(Status(StatusCode.ERROR, type(error).__name__))
+                root.set_status(Status(StatusCode.ERROR, 'observed downstream timeout'))
+        emit_log(trace_id,level='error' if failed else 'info',message='observed downstream timeout' if failed else 'dependency recovered')
+    return trace_id, failed, time.monotonic()-started
+
+
 def metrics() -> str:
     with _lock:
         requests = _requests
@@ -215,6 +247,10 @@ def metrics() -> str:
         f'traces_service_graph_request_total{{client="{REDIS_SERVICE}",server="redis/0",connection_type="database"}} {redis_failures + redis_successes}',
         f'traces_service_graph_request_failed_total{{client="{REDIS_SERVICE}",server="redis/0",connection_type="database"}} {redis_failures}',
     ])
+    lines += [f'ai_sre_validation_latency_requests_total{{service="{SERVICE}",status="504"}} {_latency_failures}',
+        f'ai_sre_validation_latency_requests_total{{service="{SERVICE}",status="200"}} {_latency_requests-_latency_failures}',
+        f'traces_service_graph_request_total{{client="{SERVICE}",server="copilot-stateful",connection_type="http"}} {_latency_requests}',
+        f'traces_service_graph_request_failed_total{{client="{SERVICE}",server="copilot-stateful",connection_type="http"}} {_latency_failures}']
     return "\n".join(lines) + "\n"
 
 
@@ -231,9 +267,31 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         global _requests, _failures, _successes, _recoveries
-        global _redis_failures, _redis_successes
+        global _redis_failures, _redis_successes, _latency_requests, _latency_failures, _latency_seconds
         if self.path == "/health":
             self._send(200, b"ok\n")
+            return
+        if self.path == '/dependency':
+            with tracer.start_as_current_span('GET /dependency', context=extract({key.lower():value for key,value in self.headers.items()}), kind=SpanKind.SERVER) as span:
+                time.sleep(DEPENDENCY_DELAY)
+                trace_id = f'{span.get_span_context().trace_id:032x}'
+                emit_log(trace_id,level='info',message=f'dependency duration_seconds={DEPENDENCY_DELAY}')
+                try: self._send(200,b'ok')
+                except (BrokenPipeError, ConnectionResetError): pass
+            return
+        if self.path == '/oom' and os.getenv('VALIDATION_ALLOW_FAULTS') == 'true':
+            with tracer.start_as_current_span('controlled memory allocation') as span:
+                emit_log(f'{span.get_span_context().trace_id:032x}',level='info',message='controlled allocation requested bytes=268435456')
+            self._send(202,b'allocation requested')
+            allocation = bytearray(256 * 1024 * 1024)
+            time.sleep(1)
+            del allocation
+            return
+        if self.path == '/latency':
+            trace_id, failed, elapsed = emit_latency_request()
+            with _lock:
+                _latency_requests += 1; _latency_failures += int(failed); _latency_seconds += elapsed
+            self._send(504 if failed else 200,json.dumps({'trace_id':trace_id,'failed':failed,'duration_seconds':elapsed}).encode())
             return
         if self.path == "/metrics":
             self._send(200, metrics().encode(), "text/plain; version=0.0.4")
@@ -307,4 +365,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if os.getenv('VALIDATION_STARTUP_EXIT') == '42':
+        with tracer.start_as_current_span('controlled startup exit') as span:
+            span.set_status(Status(StatusCode.ERROR, 'process will exit with code 42'))
+            emit_log(f'{span.get_span_context().trace_id:032x}',level='error',message='deliberate validation crash exit code 42')
+        sys.exit(42)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

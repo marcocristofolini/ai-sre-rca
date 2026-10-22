@@ -56,7 +56,7 @@ export default function IncidentGraph({ data }: { data: Investigation }) {
             const x2 = target.x + 125, y2 = target.y + (down ? 0 : 36);
             const bend = down ? (y1 + y2) / 2 : y1 - 65 - (index % 3) * 16;
             return <g className="incidentTopologyEdge" key={`${index}-${edge.source}-${edge.target}`}>
-              <title>{entityById.get(edge.source)?.name ?? edge.source} → {edge.relationship} → {entityById.get(edge.target)?.name ?? edge.target}</title>
+              <title>{`${entityById.get(edge.source)?.name ?? edge.source} → ${edge.relationship} → ${entityById.get(edge.target)?.name ?? edge.target}`}</title>
               <path d={`M${x1},${y1} C${x1},${bend} ${x2},${bend} ${x2},${y2}`} markerEnd={`url(#${markerId})`} />
               <text x={(x1 + x2) / 2} y={down ? (y1 + y2) / 2 - 5 : bend + 10} textAnchor="middle">{edge.relationship}</text>
             </g>;
@@ -66,7 +66,7 @@ export default function IncidentGraph({ data }: { data: Investigation }) {
             const pos = positions.get(id)!;
             const name = entity?.name ?? id;
             return <g className="incidentTopologyNode" key={id} transform={`translate(${pos.x},${pos.y})`}>
-              <title>{entity?.kind ?? 'Entidade'}: {name}</title>
+              <title>{`${entity?.kind ?? 'Entidade'}: ${name}`}</title>
               <rect width="250" height="72" rx="8" />
               <text className="incidentTopologyKind" x="14" y="24">{entity?.kind ?? 'Entidade'}</text>
               <text className="incidentTopologyName" x="14" y="49">{name.length > 31 ? `${name.slice(0, 28)}…` : name}</text>

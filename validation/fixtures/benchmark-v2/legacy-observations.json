@@ -1,0 +1,2179 @@
+{
+  "provenance": {
+    "base_commit": "914b2d2",
+    "source": "ReadOnlyHTTPTools against disposable Kind; pilot capture"
+  },
+  "input": {
+    "title": "Investigate observed service alert",
+    "tenant_id": "benchmark",
+    "cluster": "kind-validation",
+    "namespace": "rca-validation",
+    "pod": "rc3-workload-6bcd899d47-wrkm4",
+    "node": null,
+    "service": "svc-23555ef527",
+    "alert_name": "ServiceAlert",
+    "severity": "warning",
+    "starts_at": "2026-10-20T22:38:34Z",
+    "labels": {},
+    "annotations": {},
+    "ends_at": "2026-10-20T22:53:34Z",
+    "workload": null
+  },
+  "snapshot": {
+    "966e43dda447e657efeb47ee65590b264befbcabcd234db9d888b3566cb4700f": {
+      "method": "get_pod",
+      "args": [
+        "rca-validation",
+        "rc3-workload-6bcd899d47-wrkm4"
+      ],
+      "kwargs": {},
+      "value": {
+        "kind": "Pod",
+        "apiVersion": "v1",
+        "metadata": {
+          "name": "rc3-workload-6bcd899d47-wrkm4",
+          "generateName": "rc3-workload-6bcd899d47-",
+          "namespace": "rca-validation",
+          "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+          "resourceVersion": "1233",
+          "generation": 1,
+          "creationTimestamp": "2026-10-20T22:52:49Z",
+          "labels": {
+            "app": "rc3-workload",
+            "app.kubernetes.io/name": "frontend",
+            "pod-template-hash": "6bcd899d47"
+          },
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "rc3-workload-6bcd899d47",
+              "uid": "af7b75c5-490e-44c7-8aeb-aa1aac3ec18e",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ],
+          "managedFields": [
+            {
+              "manager": "kube-controller-manager",
+              "operation": "Update",
+              "apiVersion": "v1",
+              "time": "2026-10-20T22:52:49Z",
+              "fieldsType": "FieldsV1",
+              "fieldsV1": {
+                "f:metadata": {
+                  "f:generateName": {},
+                  "f:labels": {
+                    ".": {},
+                    "f:app": {},
+                    "f:app.kubernetes.io/name": {},
+                    "f:pod-template-hash": {}
+                  },
+                  "f:ownerReferences": {
+                    ".": {},
+                    "k:{\"uid\":\"af7b75c5-490e-44c7-8aeb-aa1aac3ec18e\"}": {}
+                  }
+                },
+                "f:spec": {
+                  "f:containers": {
+                    "k:{\"name\":\"workload\"}": {
+                      ".": {},
+                      "f:env": {
+                        ".": {},
+                        "k:{\"name\":\"LOKI_URL\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:value": {}
+                        },
+                        "k:{\"name\":\"OTEL_SERVICE_NAME\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:value": {}
+                        },
+                        "k:{\"name\":\"POD_NAME\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:valueFrom": {
+                            ".": {},
+                            "f:fieldRef": {}
+                          }
+                        },
+                        "k:{\"name\":\"POD_UID\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:valueFrom": {
+                            ".": {},
+                            "f:fieldRef": {}
+                          }
+                        },
+                        "k:{\"name\":\"TEMPO_URL\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:value": {}
+                        },
+                        "k:{\"name\":\"VALIDATION_ALLOW_FAULTS\"}": {
+                          ".": {},
+                          "f:name": {},
+                          "f:value": {}
+                        }
+                      },
+                      "f:image": {},
+                      "f:imagePullPolicy": {},
+                      "f:name": {},
+                      "f:ports": {
+                        ".": {},
+                        "k:{\"containerPort\":8080,\"protocol\":\"TCP\"}": {
+                          ".": {},
+                          "f:containerPort": {},
+                          "f:name": {},
+                          "f:protocol": {}
+                        }
+                      },
+                      "f:readinessProbe": {
+                        ".": {},
+                        "f:failureThreshold": {},
+                        "f:httpGet": {
+                          ".": {},
+                          "f:path": {},
+                          "f:port": {},
+                          "f:scheme": {}
+                        },
+                        "f:periodSeconds": {},
+                        "f:successThreshold": {},
+                        "f:timeoutSeconds": {}
+                      },
+                      "f:resources": {},
+                      "f:terminationMessagePath": {},
+                      "f:terminationMessagePolicy": {}
+                    }
+                  },
+                  "f:dnsPolicy": {},
+                  "f:enableServiceLinks": {},
+                  "f:restartPolicy": {},
+                  "f:schedulerName": {},
+                  "f:securityContext": {},
+                  "f:terminationGracePeriodSeconds": {}
+                }
+              }
+            },
+            {
+              "manager": "kubelet",
+              "operation": "Update",
+              "apiVersion": "v1",
+              "time": "2026-10-20T22:52:50Z",
+              "fieldsType": "FieldsV1",
+              "fieldsV1": {
+                "f:status": {
+                  "f:conditions": {
+                    "k:{\"type\":\"ContainersReady\"}": {
+                      ".": {},
+                      "f:lastProbeTime": {},
+                      "f:lastTransitionTime": {},
+                      "f:observedGeneration": {},
+                      "f:status": {},
+                      "f:type": {}
+                    },
+                    "k:{\"type\":\"Initialized\"}": {
+                      ".": {},
+                      "f:lastProbeTime": {},
+                      "f:lastTransitionTime": {},
+                      "f:observedGeneration": {},
+                      "f:status": {},
+                      "f:type": {}
+                    },
+                    "k:{\"type\":\"PodReadyToStartContainers\"}": {
+                      ".": {},
+                      "f:lastProbeTime": {},
+                      "f:lastTransitionTime": {},
+                      "f:observedGeneration": {},
+                      "f:status": {},
+                      "f:type": {}
+                    },
+                    "k:{\"type\":\"PodScheduled\"}": {
+                      "f:observedGeneration": {}
+                    },
+                    "k:{\"type\":\"Ready\"}": {
+                      ".": {},
+                      "f:lastProbeTime": {},
+                      "f:lastTransitionTime": {},
+                      "f:observedGeneration": {},
+                      "f:status": {},
+                      "f:type": {}
+                    }
+                  },
+                  "f:containerStatuses": {},
+                  "f:hostIP": {},
+                  "f:hostIPs": {},
+                  "f:observedGeneration": {},
+                  "f:phase": {},
+                  "f:podIP": {},
+                  "f:podIPs": {
+                    ".": {},
+                    "k:{\"ip\":\"10.244.1.15\"}": {
+                      ".": {},
+                      "f:ip": {}
+                    }
+                  },
+                  "f:resources": {},
+                  "f:startTime": {}
+                }
+              },
+              "subresource": "status"
+            }
+          ]
+        },
+        "spec": {
+          "volumes": [
+            {
+              "name": "kube-api-access-zpzhs",
+              "projected": {
+                "sources": [
+                  {
+                    "serviceAccountToken": {
+                      "expirationSeconds": 3607,
+                      "path": "token"
+                    }
+                  },
+                  {
+                    "configMap": {
+                      "name": "kube-root-ca.crt",
+                      "items": [
+                        {
+                          "key": "ca.crt",
+                          "path": "ca.crt"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "downwardAPI": {
+                      "items": [
+                        {
+                          "path": "namespace",
+                          "fieldRef": {
+                            "apiVersion": "v1",
+                            "fieldPath": "metadata.namespace"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "defaultMode": 420
+              }
+            }
+          ],
+          "containers": [
+            {
+              "name": "workload",
+              "image": "ai-sre-rc3-workload:local",
+              "ports": [
+                {
+                  "name": "http",
+                  "containerPort": 8080,
+                  "protocol": "TCP"
+                }
+              ],
+              "env": [
+                {
+                  "name": "POD_UID",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.uid"
+                    }
+                  }
+                },
+                {
+                  "name": "POD_NAME",
+                  "valueFrom": {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.name"
+                    }
+                  }
+                },
+                {
+                  "name": "LOKI_URL",
+                  "value": "http://loki:3100/loki/api/v1/push"
+                },
+                {
+                  "name": "TEMPO_URL",
+                  "value": "http://tempo:4318/v1/traces"
+                },
+                {
+                  "name": "OTEL_SERVICE_NAME",
+                  "value": "svc-23555ef527"
+                },
+                {
+                  "name": "VALIDATION_ALLOW_FAULTS",
+                  "value": "true"
+                }
+              ],
+              "resources": {},
+              "volumeMounts": [
+                {
+                  "name": "kube-api-access-zpzhs",
+                  "readOnly": true,
+                  "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount"
+                }
+              ],
+              "readinessProbe": {
+                "httpGet": {
+                  "path": "/health",
+                  "port": 8080,
+                  "scheme": "HTTP"
+                },
+                "timeoutSeconds": 1,
+                "periodSeconds": 2,
+                "successThreshold": 1,
+                "failureThreshold": 3
+              },
+              "terminationMessagePath": "/dev/termination-log",
+              "terminationMessagePolicy": "File",
+              "imagePullPolicy": "IfNotPresent"
+            }
+          ],
+          "restartPolicy": "Always",
+          "terminationGracePeriodSeconds": 30,
+          "dnsPolicy": "ClusterFirst",
+          "serviceAccountName": "default",
+          "serviceAccount": "default",
+          "nodeName": "ai-sre-benchmark-v2-local-worker",
+          "securityContext": {},
+          "schedulerName": "default-scheduler",
+          "tolerations": [
+            {
+              "key": "node.kubernetes.io/not-ready",
+              "operator": "Exists",
+              "effect": "NoExecute",
+              "tolerationSeconds": 300
+            },
+            {
+              "key": "node.kubernetes.io/unreachable",
+              "operator": "Exists",
+              "effect": "NoExecute",
+              "tolerationSeconds": 300
+            }
+          ],
+          "priority": 0,
+          "enableServiceLinks": true,
+          "preemptionPolicy": "PreemptLowerPriority"
+        },
+        "status": {
+          "observedGeneration": 1,
+          "phase": "Running",
+          "conditions": [
+            {
+              "type": "PodReadyToStartContainers",
+              "observedGeneration": 1,
+              "status": "True",
+              "lastProbeTime": null,
+              "lastTransitionTime": "2026-10-20T22:52:49Z"
+            },
+            {
+              "type": "Initialized",
+              "observedGeneration": 1,
+              "status": "True",
+              "lastProbeTime": null,
+              "lastTransitionTime": "2026-10-20T22:52:49Z"
+            },
+            {
+              "type": "Ready",
+              "observedGeneration": 1,
+              "status": "True",
+              "lastProbeTime": null,
+              "lastTransitionTime": "2026-10-20T22:52:50Z"
+            },
+            {
+              "type": "ContainersReady",
+              "observedGeneration": 1,
+              "status": "True",
+              "lastProbeTime": null,
+              "lastTransitionTime": "2026-10-20T22:52:50Z"
+            },
+            {
+              "type": "PodScheduled",
+              "observedGeneration": 1,
+              "status": "True",
+              "lastProbeTime": null,
+              "lastTransitionTime": "2026-10-20T22:52:49Z"
+            }
+          ],
+          "hostIP": "172.18.0.3",
+          "hostIPs": [
+            {
+              "ip": "172.18.0.3"
+            }
+          ],
+          "podIP": "10.244.1.15",
+          "podIPs": [
+            {
+              "ip": "10.244.1.15"
+            }
+          ],
+          "startTime": "2026-10-20T22:52:49Z",
+          "containerStatuses": [
+            {
+              "name": "workload",
+              "state": {
+                "running": {
+                  "startedAt": "2026-10-20T22:52:50Z"
+                }
+              },
+              "lastState": {},
+              "ready": true,
+              "restartCount": 0,
+              "image": "docker.io/library/ai-sre-rc3-workload:local",
+              "imageID": "docker.io/library/import-2026-10-20@sha256:0d9d448076265eab8718e9a1cf486eb07137939874f120e16384cf03f74b9140",
+              "containerID": "containerd://0bbef58e7148454822eeb151dfd0df903aeeb4eb4e9ceb409278d366a4a4e226",
+              "started": true,
+              "resources": {},
+              "volumeMounts": [
+                {
+                  "name": "kube-api-access-zpzhs",
+                  "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                  "readOnly": true,
+                  "recursiveReadOnly": "Disabled"
+                }
+              ],
+              "user": {
+                "linux": {
+                  "uid": 65532,
+                  "gid": 0,
+                  "supplementalGroups": [
+                    0
+                  ]
+                }
+              }
+            }
+          ],
+          "qosClass": "BestEffort",
+          "resources": {}
+        }
+      },
+      "charges": {
+        "kubernetes": 1
+      },
+      "exception": null
+    },
+    "218dedbd2da4ebb76fc7ddca5a2c5c255f26a21e724efc4e7b7c52d65d632ee7": {
+      "method": "get_events",
+      "args": [
+        "rca-validation",
+        "rc3-workload-6bcd899d47-wrkm4"
+      ],
+      "kwargs": {},
+      "value": [
+        {
+          "metadata": {
+            "name": "rc3-workload-6bcd899d47-wrkm4.18e05eb1cb4a2f03",
+            "namespace": "rca-validation",
+            "uid": "32286747-a649-4276-bbb0-6783155bc5ba",
+            "resourceVersion": "1199",
+            "creationTimestamp": "2026-10-20T22:52:49Z",
+            "managedFields": [
+              {
+                "manager": "kube-scheduler",
+                "operation": "Update",
+                "apiVersion": "v1",
+                "time": "2026-10-20T22:52:49Z",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                  "f:count": {},
+                  "f:firstTimestamp": {},
+                  "f:involvedObject": {},
+                  "f:lastTimestamp": {},
+                  "f:message": {},
+                  "f:reason": {},
+                  "f:reportingComponent": {},
+                  "f:source": {
+                    "f:component": {}
+                  },
+                  "f:type": {}
+                }
+              }
+            ]
+          },
+          "involvedObject": {
+            "kind": "Pod",
+            "namespace": "rca-validation",
+            "name": "rc3-workload-6bcd899d47-wrkm4",
+            "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+            "apiVersion": "v1",
+            "resourceVersion": "1193"
+          },
+          "reason": "Scheduled",
+          "message": "Successfully assigned rca-validation/rc3-workload-6bcd899d47-wrkm4 to ai-sre-benchmark-v2-local-worker",
+          "source": {
+            "component": "default-scheduler"
+          },
+          "firstTimestamp": "2026-10-20T22:52:49Z",
+          "lastTimestamp": "2026-10-20T22:52:49Z",
+          "count": 1,
+          "type": "Normal",
+          "eventTime": null,
+          "reportingComponent": "default-scheduler",
+          "reportingInstance": ""
+        },
+        {
+          "metadata": {
+            "name": "rc3-workload-6bcd899d47-wrkm4.18e05eb1e794df03",
+            "namespace": "rca-validation",
+            "uid": "cc37af6c-4ab1-41b4-bc9a-1d55a703ea15",
+            "resourceVersion": "1216",
+            "creationTimestamp": "2026-10-20T22:52:49Z",
+            "managedFields": [
+              {
+                "manager": "kubelet",
+                "operation": "Update",
+                "apiVersion": "v1",
+                "time": "2026-10-20T22:52:49Z",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                  "f:count": {},
+                  "f:firstTimestamp": {},
+                  "f:involvedObject": {},
+                  "f:lastTimestamp": {},
+                  "f:message": {},
+                  "f:reason": {},
+                  "f:reportingComponent": {},
+                  "f:reportingInstance": {},
+                  "f:source": {
+                    "f:component": {},
+                    "f:host": {}
+                  },
+                  "f:type": {}
+                }
+              }
+            ]
+          },
+          "involvedObject": {
+            "kind": "Pod",
+            "namespace": "rca-validation",
+            "name": "rc3-workload-6bcd899d47-wrkm4",
+            "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+            "apiVersion": "v1",
+            "resourceVersion": "1195",
+            "fieldPath": "spec.containers{workload}"
+          },
+          "reason": "Pulled",
+          "message": "Container image \"ai-sre-rc3-workload:local\" already present on machine and can be accessed by the pod",
+          "source": {
+            "component": "kubelet",
+            "host": "ai-sre-benchmark-v2-local-worker"
+          },
+          "firstTimestamp": "2026-10-20T22:52:49Z",
+          "lastTimestamp": "2026-10-20T22:52:49Z",
+          "count": 1,
+          "type": "Normal",
+          "eventTime": null,
+          "reportingComponent": "kubelet",
+          "reportingInstance": "ai-sre-benchmark-v2-local-worker"
+        },
+        {
+          "metadata": {
+            "name": "rc3-workload-6bcd899d47-wrkm4.18e05eb1ea23132c",
+            "namespace": "rca-validation",
+            "uid": "ea4d50ee-79e8-4f83-b586-34b3ccbe0a48",
+            "resourceVersion": "1218",
+            "creationTimestamp": "2026-10-20T22:52:49Z",
+            "managedFields": [
+              {
+                "manager": "kubelet",
+                "operation": "Update",
+                "apiVersion": "v1",
+                "time": "2026-10-20T22:52:49Z",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                  "f:count": {},
+                  "f:firstTimestamp": {},
+                  "f:involvedObject": {},
+                  "f:lastTimestamp": {},
+                  "f:message": {},
+                  "f:reason": {},
+                  "f:reportingComponent": {},
+                  "f:reportingInstance": {},
+                  "f:source": {
+                    "f:component": {},
+                    "f:host": {}
+                  },
+                  "f:type": {}
+                }
+              }
+            ]
+          },
+          "involvedObject": {
+            "kind": "Pod",
+            "namespace": "rca-validation",
+            "name": "rc3-workload-6bcd899d47-wrkm4",
+            "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+            "apiVersion": "v1",
+            "resourceVersion": "1195",
+            "fieldPath": "spec.containers{workload}"
+          },
+          "reason": "Created",
+          "message": "Container created",
+          "source": {
+            "component": "kubelet",
+            "host": "ai-sre-benchmark-v2-local-worker"
+          },
+          "firstTimestamp": "2026-10-20T22:52:49Z",
+          "lastTimestamp": "2026-10-20T22:52:49Z",
+          "count": 1,
+          "type": "Normal",
+          "eventTime": null,
+          "reportingComponent": "kubelet",
+          "reportingInstance": "ai-sre-benchmark-v2-local-worker"
+        },
+        {
+          "metadata": {
+            "name": "rc3-workload-6bcd899d47-wrkm4.18e05eb1efba5baa",
+            "namespace": "rca-validation",
+            "uid": "9f1b9457-7f3b-495b-af7a-2a8be957e80a",
+            "resourceVersion": "1219",
+            "creationTimestamp": "2026-10-20T22:52:50Z",
+            "managedFields": [
+              {
+                "manager": "kubelet",
+                "operation": "Update",
+                "apiVersion": "v1",
+                "time": "2026-10-20T22:52:50Z",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                  "f:count": {},
+                  "f:firstTimestamp": {},
+                  "f:involvedObject": {},
+                  "f:lastTimestamp": {},
+                  "f:message": {},
+                  "f:reason": {},
+                  "f:reportingComponent": {},
+                  "f:reportingInstance": {},
+                  "f:source": {
+                    "f:component": {},
+                    "f:host": {}
+                  },
+                  "f:type": {}
+                }
+              }
+            ]
+          },
+          "involvedObject": {
+            "kind": "Pod",
+            "namespace": "rca-validation",
+            "name": "rc3-workload-6bcd899d47-wrkm4",
+            "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+            "apiVersion": "v1",
+            "resourceVersion": "1195",
+            "fieldPath": "spec.containers{workload}"
+          },
+          "reason": "Started",
+          "message": "Container started",
+          "source": {
+            "component": "kubelet",
+            "host": "ai-sre-benchmark-v2-local-worker"
+          },
+          "firstTimestamp": "2026-10-20T22:52:50Z",
+          "lastTimestamp": "2026-10-20T22:52:50Z",
+          "count": 1,
+          "type": "Normal",
+          "eventTime": null,
+          "reportingComponent": "kubelet",
+          "reportingInstance": "ai-sre-benchmark-v2-local-worker"
+        },
+        {
+          "metadata": {
+            "name": "rc3-workload-6bcd899d47-wrkm4.18e05eb1f00dee8e",
+            "namespace": "rca-validation",
+            "uid": "79817e9a-6a2a-499d-a9df-7966f7eea86d",
+            "resourceVersion": "1220",
+            "creationTimestamp": "2026-10-20T22:52:50Z",
+            "managedFields": [
+              {
+                "manager": "kubelet",
+                "operation": "Update",
+                "apiVersion": "v1",
+                "time": "2026-10-20T22:52:50Z",
+                "fieldsType": "FieldsV1",
+                "fieldsV1": {
+                  "f:count": {},
+                  "f:firstTimestamp": {},
+                  "f:involvedObject": {},
+                  "f:lastTimestamp": {},
+                  "f:message": {},
+                  "f:reason": {},
+                  "f:reportingComponent": {},
+                  "f:reportingInstance": {},
+                  "f:source": {
+                    "f:component": {},
+                    "f:host": {}
+                  },
+                  "f:type": {}
+                }
+              }
+            ]
+          },
+          "involvedObject": {
+            "kind": "Pod",
+            "namespace": "rca-validation",
+            "name": "rc3-workload-6bcd899d47-wrkm4",
+            "uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+            "apiVersion": "v1",
+            "resourceVersion": "1195",
+            "fieldPath": "spec.containers{workload}"
+          },
+          "reason": "Unhealthy",
+          "message": "Readiness probe failed: Get \"http://10.244.1.15:8080/health\": dial tcp 10.244.1.15:8080: connect: connection refused",
+          "source": {
+            "component": "kubelet",
+            "host": "ai-sre-benchmark-v2-local-worker"
+          },
+          "firstTimestamp": "2026-10-20T22:52:50Z",
+          "lastTimestamp": "2026-10-20T22:52:50Z",
+          "count": 1,
+          "type": "Warning",
+          "eventTime": null,
+          "reportingComponent": "kubelet",
+          "reportingInstance": "ai-sre-benchmark-v2-local-worker"
+        }
+      ],
+      "charges": {
+        "kubernetes": 1
+      },
+      "exception": null
+    },
+    "1503a485c6039c5f5866865a8250a4bba2a224f57718975c01b33403769c6270": {
+      "method": "tempo_search_traces",
+      "args": [
+        "svc-23555ef527",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00",
+        8
+      ],
+      "kwargs": {},
+      "value": [
+        {
+          "traceID": "4725ed6de36ef5332dd34428caf9322b",
+          "rootServiceName": "svc-23555ef527",
+          "rootTraceName": "GET /latency",
+          "startTimeUnixNano": "1792536806062266622",
+          "durationMs": 9,
+          "spanSet": {
+            "spans": [
+              {
+                "spanID": "a603b2d9df94c44a",
+                "startTimeUnixNano": "1792536806062319927",
+                "durationNanos": "3767586",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              },
+              {
+                "spanID": "388f21ce3e4d4258",
+                "startTimeUnixNano": "1792536806062266622",
+                "durationNanos": "9131535",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              }
+            ],
+            "matched": 2
+          },
+          "spanSets": [
+            {
+              "spans": [
+                {
+                  "spanID": "a603b2d9df94c44a",
+                  "startTimeUnixNano": "1792536806062319927",
+                  "durationNanos": "3767586",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "spanID": "388f21ce3e4d4258",
+                  "startTimeUnixNano": "1792536806062266622",
+                  "durationNanos": "9131535",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "matched": 2
+            }
+          ],
+          "serviceStats": {
+            "copilot-stateful": {
+              "spanCount": 1
+            },
+            "svc-23555ef527": {
+              "spanCount": 2
+            }
+          },
+          "_source_query": "{ resource.service.name = \"svc-23555ef527\" }"
+        },
+        {
+          "traceID": "a00a0f587b50944b4d055ff156b3ffe7",
+          "rootServiceName": "svc-23555ef527",
+          "rootTraceName": "GET /latency",
+          "startTimeUnixNano": "1792536806046328290",
+          "durationMs": 9,
+          "spanSet": {
+            "spans": [
+              {
+                "spanID": "3890d04bac9fd433",
+                "startTimeUnixNano": "1792536806046386796",
+                "durationNanos": "3945804",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              },
+              {
+                "spanID": "00dca597418a6fe1",
+                "startTimeUnixNano": "1792536806046328290",
+                "durationNanos": "9168839",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              }
+            ],
+            "matched": 2
+          },
+          "spanSets": [
+            {
+              "spans": [
+                {
+                  "spanID": "3890d04bac9fd433",
+                  "startTimeUnixNano": "1792536806046386796",
+                  "durationNanos": "3945804",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "spanID": "00dca597418a6fe1",
+                  "startTimeUnixNano": "1792536806046328290",
+                  "durationNanos": "9168839",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "matched": 2
+            }
+          ],
+          "serviceStats": {
+            "copilot-stateful": {
+              "spanCount": 1
+            },
+            "svc-23555ef527": {
+              "spanCount": 2
+            }
+          },
+          "_source_query": "{ resource.service.name = \"svc-23555ef527\" }"
+        },
+        {
+          "traceID": "ea1dfa47e12c6dbd08b0eec4c153d59b",
+          "rootServiceName": "svc-23555ef527",
+          "rootTraceName": "GET /latency",
+          "startTimeUnixNano": "1792536805992339164",
+          "durationMs": 46,
+          "spanSet": {
+            "spans": [
+              {
+                "spanID": "5398d0dc82764cc2",
+                "startTimeUnixNano": "1792536805992499281",
+                "durationNanos": "36201405",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              },
+              {
+                "spanID": "48a9dc1c09aa8859",
+                "startTimeUnixNano": "1792536805992339164",
+                "durationNanos": "46888300",
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  }
+                ]
+              }
+            ],
+            "matched": 2
+          },
+          "spanSets": [
+            {
+              "spans": [
+                {
+                  "spanID": "5398d0dc82764cc2",
+                  "startTimeUnixNano": "1792536805992499281",
+                  "durationNanos": "36201405",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "spanID": "48a9dc1c09aa8859",
+                  "startTimeUnixNano": "1792536805992339164",
+                  "durationNanos": "46888300",
+                  "attributes": [
+                    {
+                      "key": "service.name",
+                      "value": {
+                        "stringValue": "svc-23555ef527"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "matched": 2
+            }
+          ],
+          "serviceStats": {
+            "copilot-stateful": {
+              "spanCount": 1
+            },
+            "svc-23555ef527": {
+              "spanCount": 2
+            }
+          },
+          "_source_query": "{ resource.service.name = \"svc-23555ef527\" }"
+        }
+      ],
+      "charges": {
+        "tempo": 1
+      },
+      "exception": null
+    },
+    "0862157bf34b289b0ee0249280c9396314c5e31d5f3fcad49be3a63d23a9c24e": {
+      "method": "tempo_get_trace",
+      "args": [
+        "4725ed6de36ef5332dd34428caf9322b",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00"
+      ],
+      "kwargs": {},
+      "value": {
+        "trace": {
+          "resourceSpans": [
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "RyXtbeNu9TMt00QoyvkyKw==",
+                      "spanId": "pgOy2d+UxEo=",
+                      "parentSpanId": "OI8hzj5NQlg=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_CLIENT",
+                      "startTimeUnixNano": "1792536806062319927",
+                      "endTimeUnixNano": "1792536806066087513",
+                      "attributes": [
+                        {
+                          "key": "peer.service",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.address",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.port",
+                          "value": {
+                            "intValue": "8080"
+                          }
+                        }
+                      ],
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "RyXtbeNu9TMt00QoyvkyKw==",
+                      "spanId": "OI8hzj5NQlg=",
+                      "name": "GET /latency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536806062266622",
+                      "endTimeUnixNano": "1792536806071398157",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "2fb91a83-694c-4eac-a5c6-39882f6e4d02"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.statefulset.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "copilot-stateful-0"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "RyXtbeNu9TMt00QoyvkyKw==",
+                      "spanId": "glt+6ZBjii0=",
+                      "parentSpanId": "pgOy2d+UxEo=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536806063649764",
+                      "endTimeUnixNano": "1792536806065867290",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "charges": {
+        "tempo": 1
+      },
+      "exception": null
+    },
+    "47f84ca6fc9d09cd1eb965ff93de450b1651c0936944dabcc060031e09eec64f": {
+      "method": "tempo_get_trace",
+      "args": [
+        "a00a0f587b50944b4d055ff156b3ffe7",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00"
+      ],
+      "kwargs": {},
+      "value": {
+        "trace": {
+          "resourceSpans": [
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "oAoPWHtQlEtNBV/xVrP/5w==",
+                      "spanId": "OJDQS6yf1DM=",
+                      "parentSpanId": "ANyll0GKb+E=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_CLIENT",
+                      "startTimeUnixNano": "1792536806046386796",
+                      "endTimeUnixNano": "1792536806050332600",
+                      "attributes": [
+                        {
+                          "key": "peer.service",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.address",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.port",
+                          "value": {
+                            "intValue": "8080"
+                          }
+                        }
+                      ],
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "oAoPWHtQlEtNBV/xVrP/5w==",
+                      "spanId": "ANyll0GKb+E=",
+                      "name": "GET /latency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536806046328290",
+                      "endTimeUnixNano": "1792536806055497129",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "2fb91a83-694c-4eac-a5c6-39882f6e4d02"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.statefulset.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "copilot-stateful-0"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "oAoPWHtQlEtNBV/xVrP/5w==",
+                      "spanId": "cTk/vUoR96g=",
+                      "parentSpanId": "OJDQS6yf1DM=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536806047845346",
+                      "endTimeUnixNano": "1792536806050095076",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "charges": {
+        "tempo": 1
+      },
+      "exception": null
+    },
+    "07a560168c647e73714e55d2ed2ab494bac695c12d3edd6a63093c02e6a3382c": {
+      "method": "tempo_get_trace",
+      "args": [
+        "ea1dfa47e12c6dbd08b0eec4c153d59b",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00"
+      ],
+      "kwargs": {},
+      "value": {
+        "trace": {
+          "resourceSpans": [
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "6h36R+Esbb0IsO7EwVPVmw==",
+                      "spanId": "U5jQ3IJ2TMI=",
+                      "parentSpanId": "SKncHAmqiFk=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_CLIENT",
+                      "startTimeUnixNano": "1792536805992499281",
+                      "endTimeUnixNano": "1792536806028700686",
+                      "attributes": [
+                        {
+                          "key": "peer.service",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.address",
+                          "value": {
+                            "stringValue": "copilot-stateful"
+                          }
+                        },
+                        {
+                          "key": "server.port",
+                          "value": {
+                            "intValue": "8080"
+                          }
+                        }
+                      ],
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "4b5c261a-e034-4da7-aae6-bcb32138bec8"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.deployment.name",
+                    "value": {
+                      "stringValue": "rc3-workload"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "svc-23555ef527"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "rc3-workload-6bcd899d47-wrkm4"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "6h36R+Esbb0IsO7EwVPVmw==",
+                      "spanId": "SKncHAmqiFk=",
+                      "name": "GET /latency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536805992339164",
+                      "endTimeUnixNano": "1792536806039227464",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "telemetry.sdk.language",
+                    "value": {
+                      "stringValue": "python"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.name",
+                    "value": {
+                      "stringValue": "opentelemetry"
+                    }
+                  },
+                  {
+                    "key": "telemetry.sdk.version",
+                    "value": {
+                      "stringValue": "1.37.0"
+                    }
+                  },
+                  {
+                    "key": "service.version",
+                    "value": {
+                      "stringValue": "rc3"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.uid",
+                    "value": {
+                      "stringValue": "2fb91a83-694c-4eac-a5c6-39882f6e4d02"
+                    }
+                  },
+                  {
+                    "key": "deployment.environment.name",
+                    "value": {
+                      "stringValue": "validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.statefulset.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "service.name",
+                    "value": {
+                      "stringValue": "copilot-stateful"
+                    }
+                  },
+                  {
+                    "key": "k8s.namespace.name",
+                    "value": {
+                      "stringValue": "rca-validation"
+                    }
+                  },
+                  {
+                    "key": "k8s.pod.name",
+                    "value": {
+                      "stringValue": "copilot-stateful-0"
+                    }
+                  }
+                ]
+              },
+              "scopeSpans": [
+                {
+                  "scope": {
+                    "name": "ai-sre-rc3-validation"
+                  },
+                  "spans": [
+                    {
+                      "traceId": "6h36R+Esbb0IsO7EwVPVmw==",
+                      "spanId": "iL4+RyqLmL8=",
+                      "parentSpanId": "U5jQ3IJ2TMI=",
+                      "name": "GET /dependency",
+                      "kind": "SPAN_KIND_SERVER",
+                      "startTimeUnixNano": "1792536806012568235",
+                      "endTimeUnixNano": "1792536806028392255",
+                      "status": {}
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "charges": {
+        "tempo": 1
+      },
+      "exception": null
+    },
+    "97db35cbe80ec4cebc217336bcd4810bd7a97f2a5daaba6137b206ba86e6604b": {
+      "method": "tempo_metrics_query",
+      "args": [
+        "{ resource.service.name = \"svc-23555ef527\" } | rate()",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00",
+        "30s"
+      ],
+      "kwargs": {},
+      "value": null,
+      "charges": {
+        "tempo": 1
+      },
+      "exception": {
+        "type": "HTTPStatusError",
+        "status": 500
+      }
+    },
+    "8141a21c9e1b3fd8af936d1f2916cb64341f2ae50c3d82c8ad23053aa62ff2a0": {
+      "method": "tempo_metrics_query",
+      "args": [
+        "{ resource.service.name = \"svc-23555ef527\" && status = error } | rate()",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00",
+        "30s"
+      ],
+      "kwargs": {},
+      "value": null,
+      "charges": {
+        "tempo": 1
+      },
+      "exception": {
+        "type": "HTTPStatusError",
+        "status": 500
+      }
+    },
+    "c33f484dedf558a98a59c5a2896b4b751fffc0db683b88fc8b5f3b13dcf5b9ca": {
+      "method": "tempo_metrics_query",
+      "args": [
+        "{ resource.service.name = \"svc-23555ef527\" } | quantile_over_time(span:duration, .95)",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00",
+        "30s"
+      ],
+      "kwargs": {},
+      "value": null,
+      "charges": {
+        "tempo": 1
+      },
+      "exception": {
+        "type": "HTTPStatusError",
+        "status": 500
+      }
+    },
+    "6147951db68503a51d3b994dcd01b3c82d2cbabe7a3577b089b9dd82ac52e80e": {
+      "method": "service_graph",
+      "args": [
+        "svc-23555ef527",
+        "2026-10-20 22:53:34+00:00"
+      ],
+      "kwargs": {},
+      "value": [
+        {
+          "client": "svc-23555ef527",
+          "server": "copilot-stateful",
+          "connection_type": "http",
+          "requests": 3.052577628881444,
+          "failures": 0.0,
+          "p95_seconds": null,
+          "error_ratio": 0.0,
+          "query": "sum(increase(traces_service_graph_request_total{server=\"svc-23555ef527\"}[15m])) by (client, server, connection_type) > 0 or sum(increase(traces_service_graph_request_total{client=\"svc-23555ef527\"}[15m])) by (client, server, connection_type) > 0",
+          "red_queries": {
+            "requests": "sum(increase(traces_service_graph_request_total{server=\"svc-23555ef527\"}[15m])) by (client, server, connection_type) > 0 or sum(increase(traces_service_graph_request_total{client=\"svc-23555ef527\"}[15m])) by (client, server, connection_type) > 0",
+            "failures": "sum(increase(traces_service_graph_request_failed_total{server=\"svc-23555ef527\"}[15m])) by (client, server, connection_type) or sum(increase(traces_service_graph_request_failed_total{client=\"svc-23555ef527\"}[15m])) by (client, server, connection_type)",
+            "p95": "histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{server=\"svc-23555ef527\"}[5m])) by (client, server, connection_type, le)) or histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{client=\"svc-23555ef527\"}[5m])) by (client, server, connection_type, le))"
+          }
+        }
+      ],
+      "charges": {
+        "prometheus": 3
+      },
+      "exception": null
+    },
+    "474305d755dc5e62e0692ab781fabaf3fcbe86fc583a8d49e33c8717b2333786": {
+      "method": "loki_query_range",
+      "args": [
+        "{namespace=\"rca-validation\",pod=\"rc3-workload-6bcd899d47-wrkm4\"}",
+        "2026-10-20 22:38:34+00:00",
+        "2026-10-20 22:53:34+00:00",
+        100
+      ],
+      "kwargs": {},
+      "value": {
+        "status": "success",
+        "data": {
+          "resultType": "streams",
+          "result": [
+            {
+              "stream": {
+                "app": "svc-23555ef527",
+                "detected_level": "info",
+                "level": "info",
+                "namespace": "rca-validation",
+                "pod": "rc3-workload-6bcd899d47-wrkm4",
+                "pod_uid": "4b5c261a-e034-4da7-aae6-bcb32138bec8",
+                "service_name": "svc-23555ef527"
+              },
+              "values": [
+                [
+                  "1792536806069376550",
+                  "{\"message\": \"dependency recovered\", \"trace_id\": \"4725ed6de36ef5332dd34428caf9322b\", \"pod_uid\": \"4b5c261a-e034-4da7-aae6-bcb32138bec8\"}"
+                ],
+                [
+                  "1792536806053321006",
+                  "{\"message\": \"dependency recovered\", \"trace_id\": \"a00a0f587b50944b4d055ff156b3ffe7\", \"pod_uid\": \"4b5c261a-e034-4da7-aae6-bcb32138bec8\"}"
+                ],
+                [
+                  "1792536806036826318",
+                  "{\"message\": \"dependency recovered\", \"trace_id\": \"ea1dfa47e12c6dbd08b0eec4c153d59b\", \"pod_uid\": \"4b5c261a-e034-4da7-aae6-bcb32138bec8\"}"
+                ]
+              ]
+            }
+          ],
+          "stats": {
+            "summary": {
+              "bytesProcessedPerSecond": 57260,
+              "linesProcessedPerSecond": 403,
+              "totalBytesProcessed": 426,
+              "totalLinesProcessed": 3,
+              "execTime": 0.00744,
+              "queueTime": 0.00023,
+              "subqueries": 0,
+              "totalEntriesReturned": 3,
+              "splits": 0,
+              "shards": 1,
+              "totalPostFilterLines": 3,
+              "totalStructuredMetadataBytesProcessed": 24
+            },
+            "querier": {
+              "store": {
+                "totalChunksRef": 0,
+                "totalChunksDownloaded": 0,
+                "chunksDownloadTime": 0,
+                "queryReferencedStructuredMetadata": false,
+                "chunk": {
+                  "headChunkBytes": 0,
+                  "headChunkLines": 0,
+                  "decompressedBytes": 0,
+                  "decompressedLines": 0,
+                  "compressedBytes": 0,
+                  "totalDuplicates": 0,
+                  "postFilterLines": 0,
+                  "headChunkStructuredMetadataBytes": 0,
+                  "decompressedStructuredMetadataBytes": 0
+                },
+                "chunkRefsFetchTime": 0,
+                "congestionControlLatency": 0,
+                "pipelineWrapperFilteredLines": 0
+              }
+            },
+            "ingester": {
+              "totalReached": 1,
+              "totalChunksMatched": 1,
+              "totalBatches": 2,
+              "totalLinesSent": 3,
+              "store": {
+                "totalChunksRef": 0,
+                "totalChunksDownloaded": 0,
+                "chunksDownloadTime": 0,
+                "queryReferencedStructuredMetadata": false,
+                "chunk": {
+                  "headChunkBytes": 426,
+                  "headChunkLines": 3,
+                  "decompressedBytes": 0,
+                  "decompressedLines": 0,
+                  "compressedBytes": 0,
+                  "totalDuplicates": 0,
+                  "postFilterLines": 3,
+                  "headChunkStructuredMetadataBytes": 24,
+                  "decompressedStructuredMetadataBytes": 0
+                },
+                "chunkRefsFetchTime": 162516,
+                "congestionControlLatency": 0,
+                "pipelineWrapperFilteredLines": 0
+              }
+            },
+            "cache": {
+              "chunk": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "index": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "result": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "statsResult": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "volumeResult": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "seriesResult": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "labelResult": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              },
+              "instantMetricResult": {
+                "entriesFound": 0,
+                "entriesRequested": 0,
+                "entriesStored": 0,
+                "bytesReceived": 0,
+                "bytesSent": 0,
+                "requests": 0,
+                "downloadTime": 0,
+                "queryLengthServed": 0
+              }
+            },
+            "index": {
+              "totalChunks": 0,
+              "postFilterChunks": 0,
+              "shardsDuration": 0,
+              "usedBloomFilters": false
+            }
+          }
+        }
+      },
+      "charges": {
+        "loki": 1
+      },
+      "exception": null
+    },
+    "60b4a52ee10f399f5106ef50c6c643f1d48e819e8b505567a3f758dbd3e6f0cc": {
+      "method": "argocd_application",
+      "args": [
+        "svc-23555ef527"
+      ],
+      "kwargs": {},
+      "value": null,
+      "charges": {
+        "argocd": 1
+      },
+      "exception": {
+        "type": "ConnectError",
+        "status": null
+      }
+    }
+  },
+  "snapshot_digest": "172f09267ae349cb9d9999daa51d0949c20093d7d7fcc4aa5ba5cd80aa53d604"
+}

@@ -1,0 +1,1165 @@
+{
+  "base_commit": "914b2d2",
+  "benchmark_version": 2,
+  "groups": {
+    "legacy_capture": {
+      "metrics": {
+        "agentic": {
+          "correct_abstentions": 0,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 1,
+          "false_confirmations": 0,
+          "inconclusive": 0,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 0,
+          "latency_samples": 0,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": null,
+          "p95_seconds": null,
+          "partial_diagnoses": 0,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 14,
+          "total": 1
+        },
+        "classic": {
+          "correct_abstentions": 1,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 1,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 1,
+          "latency_samples": 1,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.003175819991156459,
+          "p95_seconds": 0.003175819991156459,
+          "partial_diagnoses": 0,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 10,
+          "total": 1
+        },
+        "copilot": {
+          "correct_abstentions": 0,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 1,
+          "false_confirmations": 0,
+          "inconclusive": 0,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 0,
+          "latency_samples": 0,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": null,
+          "p95_seconds": null,
+          "partial_diagnoses": 0,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 14,
+          "total": 1
+        }
+      },
+      "passed": false,
+      "results": [
+        {
+          "case": "l004",
+          "category": "unavailable-optional-change-source",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.003175819991156459,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 10,
+          "unreported_causes": []
+        },
+        {
+          "case": "l004",
+          "category": "unavailable-optional-change-source",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": {
+            "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+            "type": "RuntimeError"
+          },
+          "expected_causes": [],
+          "failure_reason": {
+            "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+            "type": "RuntimeError"
+          },
+          "false_confirmation": false,
+          "integrity_ok": null,
+          "latency_seconds": 0.004799687012564391,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": false,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        },
+        {
+          "case": "l004",
+          "category": "unavailable-optional-change-source",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": {
+            "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+            "type": "RuntimeError"
+          },
+          "expected_causes": [],
+          "failure_reason": {
+            "detail": "specialist execution failed: [{\"specialist\": \"changes\", \"error_type\": \"ConnectError\"}]",
+            "type": "RuntimeError"
+          },
+          "false_confirmation": false,
+          "integrity_ok": null,
+          "latency_seconds": 0.5438417239929549,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": false,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        }
+      ],
+      "source": "frozen real pilot observations; memory-backed replay",
+      "source_errors": [
+        {
+          "case": "l004",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l004",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l004",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l004",
+          "error": {
+            "status": null,
+            "type": "ConnectError"
+          },
+          "method": "argocd_application"
+        }
+      ]
+    },
+    "live": {
+      "metrics": {
+        "agentic": {
+          "correct_abstentions": 2,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 2,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 3,
+          "latency_samples": 3,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.5652285239775665,
+          "p95_seconds": 0.6377852630103007,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 44,
+          "total": 3
+        },
+        "classic": {
+          "correct_abstentions": 2,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 2,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 3,
+          "latency_samples": 3,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.5280520649976097,
+          "p95_seconds": 0.610326761030592,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 31,
+          "total": 3
+        },
+        "copilot": {
+          "correct_abstentions": 2,
+          "correct_diagnoses": 0,
+          "correct_rejections": 0,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 2,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 3,
+          "latency_samples": 3,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 2.0589105479884893,
+          "p95_seconds": 2.363229394017253,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 44,
+          "total": 3
+        }
+      },
+      "passed": false,
+      "results": [
+        {
+          "case": "l001",
+          "category": "misleading-healthy-rollout",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.3607667059986852,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 10,
+          "unreported_causes": []
+        },
+        {
+          "case": "l001",
+          "category": "misleading-healthy-rollout",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.3857927889912389,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        },
+        {
+          "case": "l001",
+          "category": "misleading-healthy-rollout",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 1.7218395519885235,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        },
+        {
+          "case": "l002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "trace-causal-propagation"
+          ],
+          "failure_reason": "Actual OOMKilled and independently indexed downstream timeout traces coexist. A single-root diagnosis is partial.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.610326761030592,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "trace-causal-propagation",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 11,
+          "unreported_causes": [
+            "container-oom"
+          ]
+        },
+        {
+          "case": "l002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "trace-causal-propagation"
+          ],
+          "failure_reason": "Actual OOMKilled and independently indexed downstream timeout traces coexist. A single-root diagnosis is partial.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.6377852630103007,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 16,
+          "unreported_causes": [
+            "trace-causal-propagation"
+          ]
+        },
+        {
+          "case": "l002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "trace-causal-propagation"
+          ],
+          "failure_reason": "Actual OOMKilled and independently indexed downstream timeout traces coexist. A single-root diagnosis is partial.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 2.363229394017253,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 16,
+          "unreported_causes": [
+            "trace-causal-propagation"
+          ]
+        },
+        {
+          "case": "l003",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5280520649976097,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 10,
+          "unreported_causes": []
+        },
+        {
+          "case": "l003",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5652285239775665,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        },
+        {
+          "case": "l003",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 2.0589105479884893,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 14,
+          "unreported_causes": []
+        }
+      ],
+      "source": "live production adapters captured from disposable Kind",
+      "source_errors": [
+        {
+          "case": "l001",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l001",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l001",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l002",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l002",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l002",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l003",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l003",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        },
+        {
+          "case": "l003",
+          "error": {
+            "status": 500,
+            "type": "HTTPStatusError"
+          },
+          "method": "tempo_metrics_query"
+        }
+      ]
+    },
+    "synthetic": {
+      "metrics": {
+        "agentic": {
+          "correct_abstentions": 5,
+          "correct_diagnoses": 1,
+          "correct_rejections": 1,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 5,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 7,
+          "latency_samples": 7,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.002414496964775026,
+          "p95_seconds": 0.006157611031085253,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 23,
+          "total": 8
+        },
+        "classic": {
+          "correct_abstentions": 5,
+          "correct_diagnoses": 1,
+          "correct_rejections": 1,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 5,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 7,
+          "latency_samples": 7,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.0004998819786123931,
+          "p95_seconds": 0.0025839239824563265,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 16,
+          "total": 8
+        },
+        "copilot": {
+          "correct_abstentions": 5,
+          "correct_diagnoses": 1,
+          "correct_rejections": 1,
+          "errors": 0,
+          "false_confirmations": 0,
+          "inconclusive": 5,
+          "incorrect_diagnoses": 0,
+          "infrastructure_cost_usd": null,
+          "integrity_passed": 7,
+          "latency_samples": 7,
+          "model_cost_usd": 0,
+          "model_tokens": 0,
+          "p50_seconds": 0.5446989919873886,
+          "p95_seconds": 0.5746394050074741,
+          "partial_diagnoses": 1,
+          "telemetry_cost_usd": null,
+          "telemetry_query_count": 23,
+          "total": 8
+        }
+      },
+      "passed": false,
+      "results": [
+        {
+          "case": "b001",
+          "category": "misleading-deployment",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0004998819786123931,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 1,
+          "unreported_causes": []
+        },
+        {
+          "case": "b001",
+          "category": "misleading-deployment",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.002414496964775026,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b001",
+          "category": "misleading-deployment",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5532305929809809,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "node-not-ready"
+          ],
+          "failure_reason": "Pod cgroup OOM and an independently NotReady node coexist. Single-root output cannot describe both.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0025839239824563265,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 3,
+          "unreported_causes": [
+            "node-not-ready"
+          ]
+        },
+        {
+          "case": "b002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "node-not-ready"
+          ],
+          "failure_reason": "Pod cgroup OOM and an independently NotReady node coexist. Single-root output cannot describe both.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.00603349000448361,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 4,
+          "unreported_causes": [
+            "node-not-ready"
+          ]
+        },
+        {
+          "case": "b002",
+          "category": "simultaneous-causes",
+          "correct": false,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [
+            "container-oom",
+            "node-not-ready"
+          ],
+          "failure_reason": "Pod cgroup OOM and an independently NotReady node coexist. Single-root output cannot describe both.",
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5446989919873886,
+          "partial_diagnosis": true,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 4,
+          "unreported_causes": [
+            "node-not-ready"
+          ]
+        },
+        {
+          "case": "b003",
+          "category": "conflicting-telemetry",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [
+            "container-oom"
+          ],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0025240150280296803,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 3,
+          "unreported_causes": []
+        },
+        {
+          "case": "b003",
+          "category": "conflicting-telemetry",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [
+            "container-oom"
+          ],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.006157611031085253,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 4,
+          "unreported_causes": []
+        },
+        {
+          "case": "b003",
+          "category": "conflicting-telemetry",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [
+            "container-oom"
+          ],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5441472009988502,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": "container-oom",
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 4,
+          "unreported_causes": []
+        },
+        {
+          "case": "b004",
+          "category": "missing-evidence",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0002613430260680616,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 1,
+          "unreported_causes": []
+        },
+        {
+          "case": "b004",
+          "category": "missing-evidence",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0013358189607970417,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b004",
+          "category": "missing-evidence",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5746394050074741,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b005",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0002672440023161471,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 1,
+          "unreported_causes": []
+        },
+        {
+          "case": "b005",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.001716680999379605,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b005",
+          "category": "recovery",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5359778950223699,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b006",
+          "category": "ambiguous-diagnosis",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.001975224004127085,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 6,
+          "unreported_causes": []
+        },
+        {
+          "case": "b006",
+          "category": "ambiguous-diagnosis",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.004896703001577407,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 7,
+          "unreported_causes": []
+        },
+        {
+          "case": "b006",
+          "category": "ambiguous-diagnosis",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5446903639822267,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 7,
+          "unreported_causes": []
+        },
+        {
+          "case": "b007",
+          "category": "stale-inventory",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": true,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": null,
+          "latency_seconds": 0.0002397390198893845,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": 409,
+          "telemetry_query_count": 0,
+          "unreported_causes": []
+        },
+        {
+          "case": "b007",
+          "category": "stale-inventory",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": true,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": null,
+          "latency_seconds": 0.00025354098761454225,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": 409,
+          "telemetry_query_count": 0,
+          "unreported_causes": []
+        },
+        {
+          "case": "b007",
+          "category": "stale-inventory",
+          "correct": true,
+          "correct_abstention": false,
+          "correct_rejection": true,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": null,
+          "latency_seconds": 0.0002308380207978189,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": 409,
+          "telemetry_query_count": 0,
+          "unreported_causes": []
+        },
+        {
+          "case": "b008",
+          "category": "prompt-injection",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "classic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.00025974202435463667,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 1,
+          "unreported_causes": []
+        },
+        {
+          "case": "b008",
+          "category": "prompt-injection",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "agentic",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.0016210659523494542,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        },
+        {
+          "case": "b008",
+          "category": "prompt-injection",
+          "correct": true,
+          "correct_abstention": true,
+          "correct_rejection": false,
+          "engine": "copilot",
+          "error": null,
+          "expected_causes": [],
+          "failure_reason": null,
+          "false_confirmation": false,
+          "integrity_ok": true,
+          "latency_seconds": 0.5451147339772433,
+          "partial_diagnosis": false,
+          "predicted_hypothesis": null,
+          "primary_correct": true,
+          "rejected_status": null,
+          "telemetry_query_count": 2,
+          "unreported_causes": []
+        }
+      ],
+      "source": "controlled synthetic observations; no live telemetry",
+      "source_errors": []
+    }
+  },
+  "limitations": [
+    "Copilot reuses agentic RCA; it is not an independent causal engine.",
+    "No model quality comparison: LLM disabled, tokens and cost zero.",
+    "Multi-cause recall is exposed per case; partial diagnoses fail complete-cause scoring without counting a true cause as a false confirmation.",
+    "Replay latency excludes live source latency; live collection wall time is separate.",
+    "CPU/network energy and telemetry/infrastructure cost measurements unavailable.",
+    "Cases are blinded to runtime inputs, not independently adjudicated by an external team.",
+    "Live source captures recorded optional Tempo metrics HTTP 500s; original response bodies were not captured. A later direct probe returned HTTP 200 with empty series. Root causes of the intermittent 500s remain unverified.",
+    "Legacy unscoped Pod/service planning attempts unavailable Argo CD and is scored as an execution error.",
+    "Six retained regressions are nonblind; they are separate from adversarial comparisons."
+  ],
+  "live_elapsed_seconds": 405.44107867596904,
+  "live_regressions": [
+    {
+      "expected": "trace-causal-propagation",
+      "name": "stateful-downstream-latency",
+      "passed": true,
+      "reported": "trace-causal-propagation"
+    },
+    {
+      "expected": [
+        "trace-causal-propagation"
+      ],
+      "name": "stateful-degradation",
+      "passed": true,
+      "reported": "trace-causal-propagation"
+    },
+    {
+      "expected": [
+        "application-exit"
+      ],
+      "name": "rolling-update-regression",
+      "passed": true,
+      "reported": "application-exit"
+    },
+    {
+      "expected": [
+        null
+      ],
+      "name": "recovery",
+      "passed": true,
+      "reported": null
+    },
+    {
+      "expected": [
+        "container-oom"
+      ],
+      "name": "oomkilled",
+      "passed": true,
+      "reported": "container-oom"
+    },
+    {
+      "expected": [
+        null
+      ],
+      "name": "zero-replicas",
+      "passed": true,
+      "reported": null
+    }
+  ],
+  "live_regressions_passed": true,
+  "measurement": "Frozen-response latency; live group includes PostgreSQL, inventory preparation and Copilot job/SSE/Q&A; excludes source capture, errors and rejections.",
+  "model_requests": 0,
+  "source_fingerprints": {
+    "validation/benchmark_cases.py": "d1492f486bd3d07de0ff060b67f1a3befe0168f26402fd26062579118792632c",
+    "validation/benchmark_legacy_truth_v2.json": "9daefd18c18b3fba45a52b9da923caca06a59d77ce0b079ae2e7b7a57d9c0d37",
+    "validation/benchmark_live_truth_v2.json": "25cb28fd273f911b80e8e7537bb6ff1abe33c3d3a42f9431dec6536c639c6c74",
+    "validation/benchmark_live_v2.py": "5bb40a6f134dc7a5ffcb104b4be88e914c85fae56a17ad17002d8c52a622b468",
+    "validation/benchmark_truth_v2.json": "0ddc6883fe187f41f3bf5afb5c9a3cec3f8a7fde46957aa289ebcfefd749f92d",
+    "validation/benchmark_v2.py": "2ef80d3c51baa719fbf8260caf38f4b60931787ba2dc82be23cc711e9e16b0d4",
+    "validation/fixtures/benchmark-v2/legacy-observations.json": "f149814ae6251080584b22e7a9d00dea2e193c11a3ddf405c53cca61ef73f044",
+    "validation/run.py": "003a9ca0cc2354ccfec75bfc685edc8580bd69420eac1de04f9ba3770949aacd"
+  },
+  "tempo_followup_probe": {
+    "request": "http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-23555ef527%22+%7D+%7C+rate%28%29&start=1792535914&end=1792536814&step=30s",
+    "response": "{\"series\":[],\"metrics\":{}}",
+    "status": 200
+  }
+}
