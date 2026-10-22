@@ -24,7 +24,11 @@ Os modos de worker ainda são identificados como experimentais (leases em Postgr
 
 ## Arquitetura e segurança
 
-![Arquitetura: console e APIs com escopo, jobs persistentes, fontes somente leitura, avaliação determinística e remediação separada](docs/images/ai-sre-rca-architecture.svg)
+![Arquitetura de investigação Archify: operador SRE, interface Next.js, autorização FastAPI, fluxos clássico e agentic opcional, evidências somente leitura, avaliação determinística e persistência PostgreSQL](docs/images/ai-sre-rca-archify.png)
+
+[**Explore a arquitetura interativa do Archify**](docs/archify/ai-sre-rca.html) (baixe o HTML autossuficiente e abra-o localmente) · [Arquitetura completa do sistema](docs/images/ai-sre-rca-architecture.svg)
+
+*O desenho do Archify representa apenas o fluxo de investigação. A execução de remediações e a validação de releases são separadas e não fazem parte desta visualização.*
 
 O Next.js encaminha autenticação ao FastAPI. Verificações de papel e escopo de tenant/cluster no backend protegem incidentes, evidências, jobs e progresso. O PostgreSQL armazena investigações, observações do grafo, auditoria e jobs; o pgvector oferece similaridade com embeddings determinísticos por hash.
 

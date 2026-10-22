@@ -24,7 +24,11 @@ Persistent worker modes are currently reported as experimental (PostgreSQL lease
 
 ## Architecture and safety
 
-![System architecture: scoped console and APIs, persistent jobs, read-only sources, deterministic evaluation and separate remediation](docs/images/ai-sre-rca-architecture.svg)
+![Archify investigation architecture: SRE operator, Next.js workspace, FastAPI authorization boundary, classic and opt-in agentic paths, live read-only evidence, deterministic evaluation, and PostgreSQL persistence](docs/images/ai-sre-rca-archify.png)
+
+[**Explore the interactive Archify architecture**](docs/archify/ai-sre-rca.html) (download the self-contained HTML and open it locally) · [Expanded system architecture](docs/images/ai-sre-rca-architecture.svg)
+
+*The Archify view covers the investigation flow only. Remediation execution and release validation are separate concerns and are intentionally not depicted.*
 
 Next.js forwards authentication to FastAPI. Backend role checks and tenant/cluster scope apply to incidents, evidence, jobs and progress. PostgreSQL stores investigations, graph observations, audit and job state; pgvector supports deterministic hash-embedding similarity.
 
