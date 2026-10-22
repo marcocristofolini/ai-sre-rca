@@ -55,7 +55,8 @@ def materialize_agentic_diagnosis(
         created_at=execution.started_at,
         entities=envelope.entities, graph_edges=envelope.graph_edges,
         evidence=envelope.evidence, hypotheses=hypotheses,
-        root_cause=root, remediation=[], query_budget=execution.query_budget,
+        root_cause=root, root_causes=evaluation.root_causes if resolved else [],
+        remediation=[], query_budget=execution.query_budget,
         trace_analyses=[item for result in specialists for item in result.trace_analyses],
         stateful_dependencies=[item for result in specialists for item in result.stateful_dependencies],
         timeline=[

@@ -41,13 +41,33 @@ def deterministic_answer(question: str, result: InvestigationResult) -> CopilotA
             return CopilotAnswer(answer="Não há hipóteses descartadas registradas.", insufficient_evidence=True, mode="deterministic")
         ids = list(dict.fromkeys(eid for h in rejected for eid in h.contradicting_evidence if eid in {e.id for e in evidence}))
         return CopilotAnswer(answer="Hipóteses descartadas: " + "; ".join(h.statement[:MAX_TEXT] for h in rejected[:5]), insufficient_evidence=not bool(ids), evidence_ids=ids, mode="deterministic")
-    root_hypothesis = next((h for h in result.hypotheses if h.id == result.root_cause.hypothesis_id), None)
-    ids = list(dict.fromkeys(root_hypothesis.supporting_evidence if root_hypothesis else []))
-    ids = [eid for eid in ids if eid in {e.id for e in evidence}]
-    if result.status != "resolved" or not result.root_cause.hypothesis_id or not ids:
-        return CopilotAnswer(answer="As evidências disponíveis não confirmam uma causa raiz para esta investigação.", insufficient_evidence=True, evidence_ids=ids, mode="deterministic")
-    root = result.root_cause
-    return CopilotAnswer(answer=f"Causa registrada pelo motor determinístico: {root.title}. {root.summary[:MAX_TEXT]}", insufficient_evidence=False, evidence_ids=ids, mode="deterministic")
+    roots = result.root_causes or ([result.root_cause] if result.status == "resolved" else [])
+    confirmed = []
+    allowed = {e.id for e in evidence}
+    for root in roots:
+        hypothesis = next((h for h in result.hypotheses if h.id == root.hypothesis_id), None)
+        ids = list(dict.fromkeys(hypothesis.supporting_evidence if hypothesis else []))
+        decision = next((d for d in result.agentic.decisions if d.hypothesis_id == root.hypothesis_id), None) if result.agentic else None
+        if (hypothesis is not None and hypothesis.status == "confirmed" and hypothesis.origin == "playbook"
+                and ids and set(ids) <= allowed
+                and (not result.agentic or (
+                    result.agentic.evidence_integrity_ok and decision is not None
+                    and decision.decision in {"selected", "supported"}))):
+            confirmed.append((root, ids))
+    if result.status != "resolved" or not confirmed or confirmed[0][0].hypothesis_id != result.root_cause.hypothesis_id:
+        previous = next((h for h in result.hypotheses if h.id == result.root_cause.hypothesis_id), None)
+        inconclusive_ids = list(dict.fromkeys(
+            eid for eid in (previous.supporting_evidence if previous else []) if eid in allowed
+        ))
+        return CopilotAnswer(answer="As evidências disponíveis não confirmam uma causa raiz para esta investigação.",
+                             insufficient_evidence=True, evidence_ids=inconclusive_ids, mode="deterministic")
+    ids = list(dict.fromkeys(eid for _, support in confirmed for eid in support))
+    descriptions = [
+        f"{'Principal' if i == 0 else 'Independente ' + str(i+1)}: {root.title}. {root.summary[:MAX_TEXT // 3]}"
+        for i, (root, _) in enumerate(confirmed)
+    ]
+    return CopilotAnswer(answer="Causas verificadas pelo motor determinístico: " + " ".join(descriptions),
+                         insufficient_evidence=False, evidence_ids=ids, mode="deterministic")
 
 
 async def answer_question(question: str, result: InvestigationResult, settings: Settings) -> CopilotAnswer:

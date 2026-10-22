@@ -137,6 +137,18 @@ def validate_result(result):
         match = next((h for h in result.hypotheses if h.id == root),None)
         if not root or not match or match.status != 'confirmed' or not match.supporting_evidence:
             raise ValueError('resolved result has no verified confirmed hypothesis')
+        if result.root_causes:
+            ids = [item.hypothesis_id for item in result.root_causes]
+            if ids[0] != root or None in ids or len(set(ids)) != len(ids):
+                raise ValueError('multiple causes do not preserve unique primary root')
+            for cause in result.root_causes:
+                h = next((item for item in result.hypotheses if item.id == cause.hypothesis_id),None)
+                if not h or h.status != 'confirmed' or not h.supporting_evidence or (
+                    set(h.supporting_evidence) - set(evidence)
+                ):
+                    raise ValueError('multi-root entry lacks integrity-verified confirmed evidence')
+    elif result.root_causes:
+        raise ValueError('inconclusive result cannot promote multiple causes')
     return True
 
 
@@ -202,6 +214,11 @@ async def trial(case_id, engine, data, tools, settings, repo, preflight=None):
         result,answer = await run_engine(engine,data,tools,settings,repo,preflight)
         if getattr(result,'status',None) == 'resolved':
             row['predicted_hypothesis'] = result.root_cause.hypothesis_id
+            row['predicted_causes'] = [
+                c.hypothesis_id for c in result.root_causes
+            ] if result.root_causes else [result.root_cause.hypothesis_id]
+        else:
+            row['predicted_causes'] = []
         if tools.replay_failures:
             raise RuntimeError('; '.join(tools.replay_failures))
         row['integrity_ok'] = validate_result(result)
@@ -273,12 +290,18 @@ def score(row, truth):
     confirmed = prediction is not None
     correct = not failed and ((rejection == expected_rejection and rejection is not None and not confirmed)
         if expected_rejection else (rejection is None and (prediction in truth['accept'] if truth['accept'] else not confirmed)))
-    missing = [cause for cause in truth['causes'] if cause != prediction]
+    reported = row.get('predicted_causes')
+    if reported is None:
+        reported = [prediction] if prediction is not None else []
+    expected = truth['causes']
+    missing = [cause for cause in expected if cause not in reported]
+    unexpected = [cause for cause in reported if cause not in truth['accept']]
+    unique = len(reported) == len(set(reported))
     primary_correct = bool(correct)
-    correct = primary_correct and not missing
-    return row | {'primary_correct':primary_correct,'partial_diagnosis':primary_correct and bool(missing),
+    correct = primary_correct and not missing and not unexpected and unique
+    return row | {'primary_correct':primary_correct,'partial_diagnosis':primary_correct and bool(missing) and not unexpected,
         'category':truth['category'],'expected_causes':truth['causes'],'accepted_hypotheses':truth['accept'],
-        'correct':bool(correct),'false_confirmation':bool(confirmed and (failed or expected_rejection or prediction not in truth['accept'])),
+        'correct':bool(correct),'false_confirmation':bool((confirmed or reported) and (failed or expected_rejection or unexpected or not unique or prediction not in truth['accept'])),
         'correct_abstention':bool(correct and not confirmed and not rejection),
         'correct_rejection':bool(correct and rejection),
         'unreported_causes':missing,
@@ -342,7 +365,7 @@ def write_report(report, directory):
         '| --- | --- | --- | --- | --- | --- | --- |']
     for r in report['results']:
         detail=str(r['failure_reason'] or r['unreported_causes']).replace('|','/').replace('\n',' ')
-        lines.append(f"| {r['case']} | {r['category']} | {r['engine']} | {r['predicted_hypothesis'] or 'none'} | {r['correct']} | {r['integrity_ok']} | {detail} |")
+        lines.append(f"| {r['case']} | {r['category']} | {r['engine']} | {', '.join(r.get('predicted_causes',[])) or 'none'} | {r['correct']} | {r['integrity_ok']} | {detail} |")
     lines+=['','## Captured source errors','',json.dumps(report['source_errors'],indent=2),'']
     lines+=['','## Costs','', 'Query counts count replayed adapter calls, not unique backend HTTP requests. Raw capture counts are separate. Model tokens/cost: 0 (LLM disabled). Other unavailable costs are stated explicitly.','', '## Limits','']+['- '+v for v in report['limitations']]
     (directory/'benchmark-v2.md').write_text('\n'.join(lines)+'\n')

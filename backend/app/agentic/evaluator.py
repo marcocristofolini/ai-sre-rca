@@ -12,6 +12,7 @@ from app.agentic.models import (
     HypothesisExplanationGraph,
 )
 from app.core.integrity import verify_evidence_hash
+from app.core.multicausal import node_not_ready, trace_independent
 from app.core.playbooks import kubernetes_hypothesis_priority
 from app.core.scoring import score_hypothesis
 from app.schemas import Evidence, HypothesisStatus, RootCause
@@ -570,8 +571,20 @@ def evaluate_shared_evidence(
                 and specialist in {"traces", "database"}
                 and hypothesis.status == HypothesisStatus.CONFIRMED
             ):
-                decision = "blocked_by_precedence"
-                reasons.extend(precedence_blockers)
+                # Precedence still determines the primary. A separately
+                # repeatable trace origin may be reported as a second cause,
+                # but only after verifying trace IDs and origin ancestry.
+                analyses = [a for stage in execution.specialist_results
+                            if stage.specialist == "traces" and stage.status == "completed"
+                            for a in stage.trace_analyses]
+                if (specialist == "traces"
+                        and trace_independent(analyses, hypothesis, verified_evidence)
+                        and not _specialist_context_blockers(execution, specialist)):
+                    decision = "supported"
+                    reasons.append("Independent repeated trace origin is secondary to direct Kubernetes evidence")
+                else:
+                    decision = "blocked_by_precedence"
+                    reasons.extend(precedence_blockers)
 
         evaluated.append(
             EvaluatedHypothesis(
@@ -613,6 +626,29 @@ def evaluate_shared_evidence(
     )
 
     selected = selectable[0] if selectable else None
+
+    # Independent Node observations are not inferred from a Pod crash.
+    # Keep the established primary ranking unchanged.
+    kubernetes_complete = any(
+        r.specialist == "kubernetes" and r.status == "completed"
+        for r in execution.specialist_results
+    )
+    observed_node = (
+        node_not_ready(verified_evidence)
+        if not integrity_blocked and kubernetes_complete and not execution.query_budget.get("denied")
+        else None
+    )
+    if (selected is not None and observed_node is not None
+            and not any(h.id == "node-not-ready" for h in evaluated)):
+        node_h, _ = observed_node
+        evaluated.append(EvaluatedHypothesis(
+            id=node_h.id, specialist="kubernetes", statement=node_h.statement,
+            status=HypothesisStatus.CONFIRMED, decision="supported", score=1.0,
+            supporting_evidence=node_h.supporting_evidence,
+            contradicting_evidence=[], reasons=[node_h.rationale], precedence_rank=0,
+        ))
+
+    root_causes: list[RootCause] = []
     if selected is not None:
         for item in evaluated:
             if item.id == selected.id:
@@ -634,6 +670,21 @@ def evaluate_shared_evidence(
             contradicting_signals=len(selected.contradicting_evidence),
         )
         status = "resolved"
+        root_causes = [root_cause]
+        if observed_node is not None and selected.id != "node-not-ready":
+            root_causes.append(observed_node[1])
+        for item in evaluated:
+            if (item.id != selected.id and item.id == "trace-causal-propagation"
+                    and item.decision == "supported"
+                    and item.status == HypothesisStatus.CONFIRMED):
+                root_causes.append(RootCause(
+                    title=item.statement,
+                    summary="Repeated independent trace origins passed the deterministic evaluator's source and context gates.",
+                    hypothesis_id=item.id,
+                    evidence_strength=_evidence_strength(item.supporting_evidence, evidence_by_id),
+                    supporting_signals=len(item.supporting_evidence),
+                    contradicting_signals=len(item.contradicting_evidence),
+                ))
     else:
         root_cause = None
         status = "inconclusive"
@@ -653,6 +704,7 @@ def evaluate_shared_evidence(
         cluster=execution.plan.cluster,
         status=status,
         root_cause=root_cause,
+        root_causes=root_causes,
         evaluated_hypotheses=evaluated,
         explanation_graph=graph,
         generated_at=datetime.now(timezone.utc),

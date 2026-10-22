@@ -249,7 +249,7 @@ The evaluator does **not** trust specialist-local `confirmed` state. It filters 
 - direct Kubernetes signals such as eviction, failed scheduling, node NotReady or active node pressure block downstream promotion;
 - stateful hypotheses outrank their less-specific trace-only parent when both are confirmed.
 
-The result includes a deterministic `root_cause` only when those gates pass. It also returns an explanation graph with hypothesis, evidence, gate and verdict nodes connected by `supports`, `contradicts`, `blocks`, `selected` and `considered` edges.
+The result includes a backward-compatible primary `root_cause` only when those gates pass. An optional ordered `root_causes` collection can additionally represent distinct, independently verified Node or trace failure mechanisms, each tied to a confirmed evaluator hypothesis and evidence IDs; the model and specialist-local opinions cannot populate it directly. The explanation graph retains hypothesis, evidence, gate and verdict nodes connected by `supports`, `contradicts`, `blocks`, `selected` and `considered` edges.
 
 ## v0.8.0-rc.1 status and next validation
 

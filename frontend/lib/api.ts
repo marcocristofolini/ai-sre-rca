@@ -98,6 +98,14 @@ export type Investigation = {
     supporting_signals: number;
     contradicting_signals: number;
   };
+  root_causes?: Array<{
+    hypothesis_id?: string | null;
+    title: string;
+    summary: string;
+    evidence_strength: string;
+    supporting_signals: number;
+    contradicting_signals: number;
+  }>;
   remediation: Array<{ priority: string; action: string; reason: string; requires_approval?: boolean }>;
   created_at?: string;
   trace_analyses: Array<{

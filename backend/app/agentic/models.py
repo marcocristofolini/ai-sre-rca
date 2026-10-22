@@ -309,6 +309,7 @@ class AgenticEvaluationResult(BaseModel):
     cluster: str
     status: Literal["resolved", "inconclusive"]
     root_cause: RootCause | None = None
+    root_causes: list[RootCause] = Field(default_factory=list)
     evaluated_hypotheses: list[EvaluatedHypothesis] = Field(
         default_factory=list
     )

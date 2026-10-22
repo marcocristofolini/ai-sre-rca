@@ -22,6 +22,22 @@ Responder a um incidente exige cruzar estado do Kubernetes, métricas, logs, tra
 
 Os modos de worker ainda são identificados como experimentais (leases em PostgreSQL ou memória volátil no processo). A execução agentic está implementada, mas exige ativação (`AGENTIC_EXECUTION_ENABLED=true`). O planejamento opcional assistido por modelo é experimental e possui controle separado; o servidor recompila apenas tarefas permitidas.
 
+## Imagens da aplicação em funcionamento — demonstração local
+
+As capturas foram feitas no Chromium em **22 de outubro de 2026**, utilizando a aplicação Next.js compilada e conectada a um servidor FastAPI em execução. As quatro páginas retornaram HTTP 200 sem erros de JavaScript no navegador. Os cenários usam **adaptadores e dados sintéticos de demonstração**, não telemetria de produção. Clique nas imagens para ampliar.
+
+**Duas causas independentes em incidente controlado no Kind:** o diagnóstico `l002` registrado é exibido na interface Next.js em execução, com um encerramento por OOM e outra causa comprovada por traces. O cluster era descartável; a tela foi verificada reproduzindo o resultado em modo somente leitura.
+
+[![AI SRE RCA em execução local exibindo duas causas raiz independentes verificadas e links para evidências do ambiente Kind](docs/images/app-multicausal-kind-running.png)](docs/images/app-multicausal-kind-running.png)
+
+| Investigação RCA de Kubernetes | Investigação de traces distribuídos |
+| --- | --- |
+| [![Aplicação AI SRE RCA em execução com diagnóstico Kubernetes e evidências](docs/images/app-investigation-running.png)](docs/images/app-investigation-running.png) | [![Aplicação AI SRE RCA em execução mostrando uma falha propagada em traces](docs/images/app-trace-running.png)](docs/images/app-trace-running.png) |
+| **Investigação de dependências stateful** | **Awareness Graph e topologia** |
+| [![Aplicação em execução investigando dependência PostgreSQL](docs/images/app-dependencies-running.png)](docs/images/app-dependencies-running.png) | [![Aplicação em execução com a visualização do grafo de awareness](docs/images/app-awareness-running.png)](docs/images/app-awareness-running.png) |
+
+As rotas demonstrativas mostram uma causa principal; a captura adicional do Kind mostra duas causas identificadas durante uma execução controlada com telemetria real. Consulte o [relatório de benchmark multicausal e validação local](docs/rca-benchmark-v23-multicausal-results.md). As imagens não representam incidentes de produção.
+
 ## Arquitetura e segurança
 
 ![Arquitetura de investigação Archify: operador SRE, interface Next.js, autorização FastAPI, fluxos clássico e agentic opcional, evidências somente leitura, avaliação determinística e persistência PostgreSQL](docs/images/ai-sre-rca-archify.png)

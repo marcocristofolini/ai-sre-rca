@@ -123,7 +123,8 @@ class InvestigationEngine:
                 tools=self.tools,
                 settings=self.settings,
             )
-            return result
+            from app.core.multicausal import attach_classic_causes
+            return attach_classic_causes(result)
         finally:
             snapshot = end_query_budget(budget_token)
             if result is not None and snapshot:

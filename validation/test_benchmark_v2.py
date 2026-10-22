@@ -202,9 +202,12 @@ async def test_complete_blind_suite_never_uses_network_llm_or_oracle_inputs(monk
     report=await bench.run_offline()
     assert len(report['results'])==24
     assert sum(r['false_confirmation'] for r in report['results'])==0
-    assert all(m['correct_diagnoses']==1 and m['partial_diagnoses']==1 and m['correct_abstentions']==5
+    assert all(m['correct_diagnoses']==2 and m['partial_diagnoses']==0 and m['correct_abstentions']==5
                and m['correct_rejections']==1 and m['errors']==0 for m in report['metrics'].values())
-    assert not report['passed']  # Multi-cause coverage must remain an exposed limitation.
+    assert report['passed']
+    for item in report['results']:
+        if item['case'] == 'b002':
+            assert item['predicted_causes'] == ['container-oom', 'node-not-ready']
     for capture in report['captures']:
         serialized=json.dumps(capture['input'])
         assert all(key not in serialized for key in ('expected','accept','ground_truth','b00'))
@@ -330,3 +333,43 @@ def test_requestless_transport_failure_is_not_lost_in_diagnostics():
     captured = source_failure(httpx.ConnectError('connection refused'))
     assert captured['type'] == 'ConnectError' and captured['request'] is None
     assert captured['exception_chain'][0]['message'] == 'connection refused'
+
+
+@pytest.mark.asyncio
+async def test_multi_root_citations_persistence_and_no_unsupported_cause():
+    from app.llm.copilot import deterministic_answer
+    from app.schemas import InvestigationResult, RootCause
+
+    trial = await bench.compare_case(
+        'b002', incident('b002'), BlindTools('b002'),
+        Settings.model_construct(agentic_execution_enabled=True),
+    )
+    for item in trial['results']:
+        assert item['error'] is None and item['integrity_ok'] is True
+        result = InvestigationResult.model_validate(item['diagnosis'])
+        assert [c.hypothesis_id for c in result.root_causes] == ['container-oom', 'node-not-ready']
+        assert result.root_cause.hypothesis_id == 'container-oom'
+        assert bench.validate_result(result)
+        answer = deterministic_answer('What caused the incident?', result)
+        assert not answer.insufficient_evidence and answer.mode == 'deterministic'
+        assert all(cause.title in answer.answer for cause in result.root_causes)
+        evidence = {e.id for e in result.evidence}
+        assert set(answer.evidence_ids) <= evidence
+        for cause in result.root_causes:
+            h = next(h for h in result.hypotheses if h.id == cause.hypothesis_id)
+            assert set(h.supporting_evidence) <= set(answer.evidence_ids)
+        illegal = result.model_copy(deep=True)
+        illegal.root_causes.append(RootCause(
+            title='Unverified root', summary='Injected unrelated cause',
+            hypothesis_id='arbitrary-model-root', evidence_strength='weak',
+            supporting_signals=0, contradicting_signals=0,
+        ))
+        with pytest.raises(ValueError, match='multi-root'):
+            bench.validate_result(illegal)
+
+    wrong = row()
+    wrong.update(predicted_hypothesis='container-oom',
+                 predicted_causes=['container-oom','node-not-ready','invented-root'])
+    scored = bench.score(wrong, truth(causes=['container-oom','node-not-ready'],
+                                     accept=['container-oom','node-not-ready']))
+    assert not scored['correct'] and scored['false_confirmation']

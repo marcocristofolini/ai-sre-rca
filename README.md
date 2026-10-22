@@ -22,6 +22,22 @@ Incident response spans Kubernetes state, metrics, logs, traces, recent changes 
 
 Persistent worker modes are currently reported as experimental (PostgreSQL leased workers or volatile in-process memory). Agentic execution is implemented but opt-in (`AGENTIC_EXECUTION_ENABLED=true`). Optional model-assisted planning is experimental and separately gated; the server recompiles allow-listed tasks.
 
+## Application screenshots — running local demo
+
+These screenshots were captured in Chromium on **22 October 2026** from the built Next.js application connected to a running FastAPI server. All four pages returned HTTP 200 without browser page errors. The scenarios use **synthetic demo adapters**, not production infrastructure or telemetry. Click an image to view it at full resolution.
+
+**Multiple independent causes from a controlled Kind incident:** the recorded `l002` diagnosis is displayed in the running Next.js interface, with a verified OOM failure and a separate trace-derived root. The cluster was disposable; this is a read-only replay for UI verification.
+
+[![AI SRE RCA running locally, displaying two independently verified root causes with evidence links from controlled Kind telemetry](docs/images/app-multicausal-kind-running.png)](docs/images/app-multicausal-kind-running.png)
+
+| Kubernetes RCA investigation | Distributed trace investigation |
+| --- | --- |
+| [![Running AI SRE RCA Kubernetes diagnosis showing confirmed root and evidence](docs/images/app-investigation-running.png)](docs/images/app-investigation-running.png) | [![Running AI SRE RCA trace diagnosis showing a verified downstream failure](docs/images/app-trace-running.png)](docs/images/app-trace-running.png) |
+| **Stateful dependency investigation** | **Awareness and topology** |
+| [![Running AI SRE RCA PostgreSQL stateful dependency analysis](docs/images/app-dependencies-running.png)](docs/images/app-dependencies-running.png) | [![Running AI SRE RCA awareness graph application view](docs/images/app-awareness-running.png)](docs/images/app-awareness-running.png) |
+
+The demo routes illustrate one primary cause; the additional Kind screenshot shows two causes recovered from a controlled live-telemetry run. See [multi-causal benchmark and local validation](docs/rca-benchmark-v23-multicausal-results.md). None of the screenshots is a production incident.
+
 ## Architecture and safety
 
 ![Archify investigation architecture: SRE operator, Next.js workspace, FastAPI authorization boundary, classic and opt-in agentic paths, live read-only evidence, deterministic evaluation, and PostgreSQL persistence](docs/images/ai-sre-rca-archify.png)

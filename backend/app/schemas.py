@@ -274,6 +274,9 @@ class InvestigationResult(BaseModel):
     similar_incidents: list[SimilarIncident] = Field(default_factory=list)
     timeline: list[TimelineEvent]
     root_cause: RootCause
+    # Primary root remains backward-compatible; each additional entry has a
+    # separately confirmed hypothesis and verified evidence references.
+    root_causes: list[RootCause] = Field(default_factory=list)
     remediation: list[Remediation]
     trace_analyses: list[TraceAnalysis] = Field(default_factory=list)
     stateful_dependencies: list[StatefulDependencyAnalysis] = Field(default_factory=list)

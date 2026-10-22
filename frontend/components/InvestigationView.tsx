@@ -136,6 +136,25 @@ export default function InvestigationView({ data, mode = 'demo', jobId }: {
           <section className={`panel diagnosisConclusion ${hasConfirmedRoot ? 'confirmed' : 'inconclusive'}`} aria-label="Resumo do diagnóstico">
             <div className="diagnosisConclusionTop"><span className="sectionLabel">Diagnóstico</span><span className="diagnosisPill">{hasConfirmedRoot ? 'Causa confirmada pelo motor' : data.status === 'investigating' ? 'Investigação em andamento' : 'Diagnóstico inconclusivo'}</span></div>
             <h2>{data.root_cause.title}</h2><p>{data.root_cause.summary}</p>
+            {hasConfirmedRoot && (data.root_causes?.length ?? 0) > 1 && (
+              <div aria-label="Causas independentes confirmadas" className="hypothesisEvidence">
+                <h3>{data.root_causes?.length} causas independentes verificadas</h3>
+                {data.root_causes?.slice(1).map((cause) => {
+                  const hypothesis = data.hypotheses.find((h) => h.id === cause.hypothesis_id);
+                  const decision = data.agentic?.decisions.find((d) => d.hypothesis_id === cause.hypothesis_id);
+                  if (!hypothesis || hypothesis.status !== 'confirmed' || hypothesis.origin !== 'playbook' ||
+                      !hypothesis.supporting_evidence.length ||
+                      hypothesis.supporting_evidence.some((id) => !evidence.has(id)) ||
+                      (data.agentic && (decision?.decision !== 'supported' || !data.agentic.evidence_integrity_ok))) {
+                    return null;
+                  }
+                  return <article className="linkedEvidence" key={cause.hypothesis_id}>
+                    <h4>{cause.title}</h4><p>{cause.summary}</p>
+                    <a href={`#evidence-${encodeURIComponent(hypothesis.supporting_evidence[0])}`}>Ver evidências da causa →</a>
+                  </article>;
+                })}
+              </div>
+            )}
             <div className="signalRow"><span>Força: <b>{strengthLabel[data.root_cause.evidence_strength] ?? data.root_cause.evidence_strength}</b></span><span>{data.root_cause.supporting_signals} sinais de suporte</span><span>{data.root_cause.contradicting_signals} sinais contrários</span></div>
             <a className="diagnosisTextLink" href="#final-rca">Consultar conclusão e evidências →</a>
           </section>
