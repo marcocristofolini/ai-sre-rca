@@ -40,6 +40,45 @@ CREATE TABLE IF NOT EXISTS remediation_plans (
   updated_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS orchestration_jobs (
+  id VARCHAR(64) PRIMARY KEY,
+  tenant_id VARCHAR(255) NOT NULL,
+  idempotency_key VARCHAR(128),
+  request_fingerprint VARCHAR(64) NOT NULL,
+  status VARCHAR(24) NOT NULL,
+  cluster VARCHAR(255) NOT NULL,
+  incident_id VARCHAR(64) NOT NULL,
+  actor VARCHAR(255) NOT NULL,
+  payload JSONB NOT NULL,
+  result JSONB,
+  error TEXT,
+  error_type VARCHAR(255),
+  submitted_at TIMESTAMPTZ NOT NULL,
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  lease_owner VARCHAR(128),
+  lease_expires_at TIMESTAMPTZ,
+  progress_sequence INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT orchestration_jobs_tenant_idem_uq UNIQUE (tenant_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS orchestration_jobs_claim_idx
+  ON orchestration_jobs(status, lease_expires_at, submitted_at);
+CREATE INDEX IF NOT EXISTS orchestration_jobs_tenant_created_idx
+  ON orchestration_jobs(tenant_id, submitted_at);
+
+CREATE TABLE IF NOT EXISTS orchestration_progress_events (
+  job_id VARCHAR(64) NOT NULL REFERENCES orchestration_jobs(id) ON DELETE CASCADE,
+  sequence INTEGER NOT NULL,
+  tenant_id VARCHAR(255) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (job_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS orchestration_progress_events_created_idx
+  ON orchestration_progress_events(job_id, sequence);
+
 CREATE INDEX IF NOT EXISTS idx_remediation_tenant_created
   ON remediation_plans(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_remediation_incident

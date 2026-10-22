@@ -1,15 +1,18 @@
 import { notFound } from 'next/navigation';
 import InvestigationView from '../../../components/InvestigationView';
+import IncidentCopilot from '../../../components/IncidentCopilot';
 import { fetchIncident, IncidentFetchError } from '../../../lib/api';
 
-export default async function IncidentPage({ params }: {
+export default async function IncidentPage({ params, searchParams }: {
   params: Promise<{ incidentId: string }>;
+  searchParams: Promise<{ jobId?: string }>;
 }) {
   const { incidentId } = await params;
+  const { jobId } = await searchParams;
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(incidentId)) notFound();
   try {
     const data = await fetchIncident(incidentId);
-    return <InvestigationView data={data} mode="persisted" />;
+    return <><InvestigationView data={data} mode="persisted" jobId={jobId} /><div className="diagnosis diagnosisCopilot"><IncidentCopilot incidentId={incidentId} evidenceIds={data.evidence.map((item) => item.id)} /></div></>;
   } catch (error) {
     if (error instanceof IncidentFetchError) {
       if (error.status === 404) notFound();

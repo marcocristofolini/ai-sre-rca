@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -45,13 +47,20 @@ REPORT_SCHEMA = "ai-sre-rca.validation.v3"
 PROMETHEUS_PORT = 19090
 LOKI_PORT = 13100
 TEMPO_PORT = 13200
-WORKLOAD_PORT = 18080
+WORKLOAD_PORT = int(os.getenv("VALIDATION_WORKLOAD_PORT", "18080"))
 WORKLOAD_IMAGE = "ai-sre-rc3-workload:local"
 PORT_FORWARDS: list[subprocess.Popen[str]] = []
+OWNED_CLUSTER: str | None = None
+OWNED_POSTGRES = False
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def redact(text: str) -> str:
+    text = re.sub(r'(?i)(PASSWORD=|Bearer\s+)[^\s]+', r'\1[REDACTED]', text)
+    return re.sub(r'(postgres(?:ql)?(?:\+asyncpg)?://[^:\s]+:)[^@\s]+@', r'\1[REDACTED]@', text)
 
 
 def run(
@@ -61,7 +70,7 @@ def run(
     capture: bool = True,
     input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    print("+", " ".join(command), flush=True)
+    print("+", redact(" ".join(command)), flush=True)
     process = subprocess.run(
         command,
         text=True,
@@ -71,12 +80,12 @@ def run(
     )
     if check and process.returncode != 0:
         if process.stdout:
-            print(process.stdout, file=sys.stderr)
+            print(redact(process.stdout), file=sys.stderr)
         if process.stderr:
-            print(process.stderr, file=sys.stderr)
+            print(redact(process.stderr), file=sys.stderr)
         raise RuntimeError(
             f"command failed with exit code {process.returncode}: "
-            + " ".join(command)
+            + redact(" ".join(command))
         )
     return process
 
@@ -282,7 +291,10 @@ def delete_existing_cluster(cluster_name: str) -> None:
 
 
 def create_cluster(cluster_name: str, node_image: str) -> str:
-    delete_existing_cluster(cluster_name)
+    global OWNED_CLUSTER
+    if cluster_name in output(["kind", "get", "clusters"]).splitlines():
+        raise RuntimeError("Refusing to replace an existing Kind cluster")
+    OWNED_CLUSTER = cluster_name
     run(
         [
             "kind",
@@ -403,6 +415,10 @@ def deploy_observability(context: str, cluster_name: str) -> None:
             "--timeout=180s",
         )
 
+    start_observability_forwards(context)
+
+
+def start_observability_forwards(context: str) -> None:
     start_port_forward(context, "prometheus", PROMETHEUS_PORT, 9090)
     start_port_forward(context, "loki", LOKI_PORT, 3100)
     start_port_forward(context, "tempo", TEMPO_PORT, 3200)
@@ -529,7 +545,10 @@ def release_postgres_connections(context: str) -> None:
 
 
 def start_postgres(port: int) -> str:
-    run(["docker", "rm", "-f", POSTGRES_CONTAINER], check=False)
+    global OWNED_POSTGRES
+    if run(["docker", "container", "inspect", POSTGRES_CONTAINER], check=False).returncode == 0:
+        raise RuntimeError("Refusing to replace an existing PostgreSQL container")
+    OWNED_POSTGRES = True
     run(
         [
             "docker",
@@ -1666,7 +1685,7 @@ async def validate_backend(
 def environment_metadata(context: str) -> dict[str, Any]:
     kubernetes = kubectl_json(context, "version")
     return {
-        "git_sha": os.getenv("GITHUB_SHA")
+        "git_sha": os.getenv("VALIDATION_COMMIT") or os.getenv("GITHUB_SHA")
         or output(["git", "-C", str(ROOT), "rev-parse", "HEAD"]),
         "kind": output(["kind", "version"]),
         "docker_server": output(
@@ -1674,6 +1693,13 @@ def environment_metadata(context: str) -> dict[str, Any]:
         ),
         "kubernetes": kubernetes.get("serverVersion", {}),
         "node_image": os.getenv("KIND_NODE_IMAGE", DEFAULT_NODE_IMAGE),
+        "source_sha256": {
+            name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+            for name in ('validation/run.py','validation/copilot.py','validation/workload/app.py',
+                'backend/app/agentic/specialists.py','backend/app/agentic/workload_kubernetes.py',
+                'backend/app/core/k8s_signals.py','backend/app/core/kubernetes_investigator.py',
+                'backend/app/core/trace_analysis.py','backend/app/core/trace_ids.py','backend/app/integrations/http_tools.py')
+        },
     }
 
 
@@ -1698,6 +1724,17 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
         "| --- | --- | --- | --- | --- | --- |",
     ]
     validation = report.get("validation") or {}
+    if 'benchmark_v2' in validation:
+        benchmark = validation['benchmark_v2']
+        summary = {key:benchmark.get(key) for key in ('passed','metrics','failure','untested_cases')}
+        lines += ['', '## Independent RCA Benchmark v2', '',
+            '[Per-case report](benchmark-v2/benchmark-v2.md)', '',
+            '```json', json.dumps(summary, indent=2, default=str), '```', '']
+    if 'copilot' in validation:
+        copilot = validation['copilot']
+        summary = {key:copilot.get(key) for key in ('passed','rca_accuracy','untested_scenarios','source_health','failure','missing_telemetry','changed_membership_confirmation','ambiguous_identity')}
+        summary['scenarios'] = [{key:item.get(key) for key in ('name','expected','reported','passed','seconds')} for item in copilot.get('scenarios',[])]
+        lines += ["", "## Copilot live telemetry", "", "```json", json.dumps(summary, indent=2, default=str), "```", ""]
     for item in validation.get("scenarios", []):
         lines.append(
             "| {name} | {expected} | {classic} | {agentic} | {integrity} | {result} |".format(
@@ -1826,12 +1863,10 @@ def write_reports(report_dir: Path, report: dict[str, Any]) -> None:
 
 
 def cleanup(cluster_name: str) -> None:
-    run(
-        ["kind", "delete", "cluster", "--name", cluster_name],
-        check=False,
-        capture=False,
-    )
-    run(["docker", "rm", "-f", POSTGRES_CONTAINER], check=False)
+    if OWNED_CLUSTER == cluster_name:
+        run(["kind", "delete", "cluster", "--name", cluster_name], check=False, capture=False)
+    if OWNED_POSTGRES:
+        run(["docker", "rm", "-f", POSTGRES_CONTAINER], check=False)
 
 
 def parse_args() -> argparse.Namespace:
@@ -1856,13 +1891,19 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=ROOT / "validation-artifacts",
     )
+    parser.add_argument("--benchmark-v2", choices=("smoke", "full"), help="Independent comparative benchmark; full also retains six live regressions")
+    parser.add_argument("--copilot", action="store_true", help="Validate Copilot against live workload ownership and telemetry")
     parser.add_argument("--keep", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    require_commands(["docker", "kind", "kubectl", "git"])
+    if args.benchmark_v2:
+        args.copilot = True
+    global POSTGRES_CONTAINER
+    POSTGRES_CONTAINER = args.cluster_name + "-postgres"
+    require_commands(["docker", "kind", "kubectl"] + ([] if os.getenv("VALIDATION_COMMIT") else ["git"]))
     report: dict[str, Any] = {
         "schema_version": REPORT_SCHEMA,
         "generated_at": utcnow().isoformat(),
@@ -1873,27 +1914,28 @@ def main() -> int:
         context = create_cluster(args.cluster_name, args.node_image)
         database_url = start_postgres(POSTGRES_PORT)
 
-        oom = wait_until(
-            "OOMKilled container state",
-            lambda: wait_for_oom(context),
-        )
-        crash = wait_until(
-            "container restart backoff with non-zero exit",
-            lambda: wait_for_crashloop(context),
-            timeout_seconds=90,
-        )
-        failed = wait_until(
-            "FailedScheduling caused by insufficient resources",
-            lambda: wait_for_failed_scheduling(context),
-        )
-        observations = {
-            "oomkilled": oom,
-            "crashloop": crash,
-            "failed-scheduling": failed,
-        }
-
+        observations = {}
+        if not args.copilot:
+            oom = wait_until(
+                "OOMKilled container state",
+                lambda: wait_for_oom(context),
+            )
+            crash = wait_until(
+                "container restart backoff with non-zero exit",
+                lambda: wait_for_crashloop(context),
+                timeout_seconds=90,
+            )
+            failed = wait_until(
+                "FailedScheduling caused by insufficient resources",
+                lambda: wait_for_failed_scheduling(context),
+            )
+            observations = {
+                "oomkilled": oom,
+                "crashloop": crash,
+                "failed-scheduling": failed,
+            }
         deploy_observability(context, args.cluster_name)
-        observability_signal = generate_observability_failure(context)
+        observability_signal = None if args.copilot else generate_observability_failure(context)
 
         runtime_dir = args.report_dir / "runtime"
         api_server, token_file, ca_file = export_cluster_credentials(
@@ -1907,14 +1949,21 @@ def main() -> int:
             ca_file=ca_file,
         )
         report["environment"] = environment_metadata(context)
-        report["validation"] = asyncio.run(
-            validate_backend(
+        if args.benchmark_v2:
+            from validation.benchmark_live_v2 import validate_benchmark
+            report["validation"] = asyncio.run(validate_benchmark(context, settings, args.report_dir, args.benchmark_v2))
+        elif args.copilot:
+            from validation.copilot import validate_copilot
+            report["validation"] = asyncio.run(validate_copilot(context, settings, args.report_dir))
+        else:
+            report["validation"] = asyncio.run(
+                validate_backend(
                 context=context,
                 settings=settings,
                 observations=observations,
                 observability_signal=observability_signal,
+                )
             )
-        )
         report["passed"] = bool(report["validation"]["passed"])
     except Exception as exc:
         report["error"] = {
@@ -1927,10 +1976,17 @@ def main() -> int:
         )
     finally:
         report["finished_at"] = utcnow().isoformat()
+        if not report['passed'] and OWNED_CLUSTER == args.cluster_name:
+            args.report_dir.mkdir(parents=True, exist_ok=True)
+            for label, command in [('pods', ['get','pods','-n',NAMESPACE,'-o','wide']), ('events', ['get','events','-n',NAMESPACE]), ('workload', ['logs','-n',NAMESPACE,'deployment/rc3-workload','--tail=100'])]:
+                captured = run(['kubectl','--context',context,*command],check=False)
+                (args.report_dir / f'failure-{label}.log').write_text(redact(captured.stdout + captured.stderr))
         write_reports(args.report_dir, report)
         stop_port_forwards()
         if not args.keep:
             cleanup(args.cluster_name)
+            for filename in ('kubernetes.token', 'kubernetes.ca.crt'):
+                (args.report_dir / 'runtime' / filename).unlink(missing_ok=True)
 
     print(
         f"real environment validation: {'PASS' if report['passed'] else 'FAIL'}"

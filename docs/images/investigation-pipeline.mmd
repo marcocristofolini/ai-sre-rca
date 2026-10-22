@@ -1,0 +1,12 @@
+flowchart TB
+    AUTH[1 Authorize incident / tenant / cluster] --> SCOPE[2 Resolve UID ownership + telemetry + time]
+    SCOPE --> REVIEW[3 Review typed proposal and budgets; no job]
+    REVIEW --> CONFIRM[4 Explicit confirmation; reauthorize + recompile]
+    CONFIRM --> JOB[5 Idempotent persistent job; revalidate queued scope]
+    JOB --> READ[6 Bounded read-only specialists + SSE / replay]
+    READ --> HASH[7 Verify hashes / references / identities]
+    HASH --> EVAL[8 Deterministic causal gates]
+    EVAL --> SAVE[9 Persist cause or inconclusive + evidence / graph / audit]
+    SAVE --> QA[Authorized follow-up + verified citations + insufficient_evidence]
+    SCOPE -. unsafe scope .-> REJECT[409 conflict / 422 bounds / 503 required telemetry; no job]
+    EVAL -. missing causal support .-> INC[No confirmed cause]

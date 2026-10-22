@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.integrity import compute_evidence_hash
 
@@ -16,6 +16,22 @@ class HypothesisStatus(str, Enum):
     CONFIRMED = "confirmed"
     RULED_OUT = "ruled_out"
     INCONCLUSIVE = "inconclusive"
+
+
+class WorkloadMember(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["ReplicaSet", "Pod"]
+    name: str = Field(min_length=1, max_length=253, pattern=r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
+    uid: str = Field(min_length=1, max_length=255)
+    terminating: bool = False
+
+
+class WorkloadScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["Deployment", "StatefulSet"]
+    name: str = Field(min_length=1, max_length=253)
+    uid: str = Field(min_length=1, max_length=255)
+    members: list[WorkloadMember] = Field(max_length=32)
 
 
 class IncidentInput(BaseModel):
@@ -31,6 +47,22 @@ class IncidentInput(BaseModel):
     starts_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     labels: dict[str, str] = Field(default_factory=dict)
     annotations: dict[str, str] = Field(default_factory=dict)
+    ends_at: datetime | None = None
+    workload: WorkloadScope | None = None
+
+    @model_validator(mode="after")
+    def validate_explicit_window(self):
+        if self.ends_at is not None:
+            if self.starts_at.tzinfo is None or self.ends_at.tzinfo is None:
+                raise ValueError("explicit time bounds require a timezone")
+            if not 0 < (self.ends_at - self.starts_at).total_seconds() <= 3600:
+                raise ValueError("explicit window must be positive and at most one hour")
+        return self
+
+    def query_window(self, before_minutes: int, after_minutes: int = 5):
+        if self.ends_at is not None:
+            return self.starts_at, self.ends_at
+        return self.starts_at - timedelta(minutes=before_minutes), self.starts_at + timedelta(minutes=after_minutes)
 
 
 class Entity(BaseModel):
@@ -247,6 +279,17 @@ class InvestigationResult(BaseModel):
     stateful_dependencies: list[StatefulDependencyAnalysis] = Field(default_factory=list)
     query_budget: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CopilotQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class CopilotAnswer(BaseModel):
+    answer: str
+    insufficient_evidence: bool
+    evidence_ids: list[str] = Field(default_factory=list)
+    mode: Literal["model", "deterministic"]
 
 
 class TraceCausalHop(BaseModel):

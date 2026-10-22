@@ -1,0 +1,119 @@
+{
+  "1ca0f1dfa928f079a84263a0ba228d52c47d75adbe1a7f13ec9900f1e561a632": {
+    "method": "tempo_metrics_query",
+    "args": [
+      "{ resource.service.name = \"svc-2fc0fb2e85\" } | rate()",
+      "2026-10-21 03:01:12.726238+00:00",
+      "2026-10-21 03:16:12.726238+00:00",
+      "30s"
+    ],
+    "kwargs": {},
+    "value": null,
+    "charges": {
+      "tempo": 1
+    },
+    "exception": {
+      "type": "HTTPStatusError",
+      "status": 500,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%7D+%7C+rate%28%29&start=1792551672&end=1792552572&step=30s"
+      },
+      "response_body": "error finding generators in Querier.queryRangeRecent: empty ring\n",
+      "exception_chain": [
+        {
+          "type": "HTTPStatusError",
+          "message": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%7D+%7C+rate%28%29&start=1792551672&end=1792552572&step=30s'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+        }
+      ]
+    }
+  },
+  "f09b1dd3428c4eaae18a54edc5f2dcf47bc704dd28e06555539a6bf060bdf40f": {
+    "method": "tempo_metrics_query",
+    "args": [
+      "{ resource.service.name = \"svc-2fc0fb2e85\" && status = error } | rate()",
+      "2026-10-21 03:01:12.726238+00:00",
+      "2026-10-21 03:16:12.726238+00:00",
+      "30s"
+    ],
+    "kwargs": {},
+    "value": null,
+    "charges": {
+      "tempo": 1
+    },
+    "exception": {
+      "type": "HTTPStatusError",
+      "status": 500,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%26%26+status+%3D+error+%7D+%7C+rate%28%29&start=1792551672&end=1792552572&step=30s"
+      },
+      "response_body": "error finding generators in Querier.queryRangeRecent: empty ring\n",
+      "exception_chain": [
+        {
+          "type": "HTTPStatusError",
+          "message": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%26%26+status+%3D+error+%7D+%7C+rate%28%29&start=1792551672&end=1792552572&step=30s'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+        }
+      ]
+    }
+  },
+  "61a9243383529b03ac8ef902001079ae0da8c224d3914a9a11d1077ad2fd1608": {
+    "method": "tempo_metrics_query",
+    "args": [
+      "{ resource.service.name = \"svc-2fc0fb2e85\" } | quantile_over_time(span:duration, .95)",
+      "2026-10-21 03:01:12.726238+00:00",
+      "2026-10-21 03:16:12.726238+00:00",
+      "30s"
+    ],
+    "kwargs": {},
+    "value": null,
+    "charges": {
+      "tempo": 1
+    },
+    "exception": {
+      "type": "HTTPStatusError",
+      "status": 500,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%7D+%7C+quantile_over_time%28span%3Aduration%2C+.95%29&start=1792551672&end=1792552572&step=30s"
+      },
+      "response_body": "error finding generators in Querier.queryRangeRecent: empty ring\n",
+      "exception_chain": [
+        {
+          "type": "HTTPStatusError",
+          "message": "Server error '500 Internal Server Error' for url 'http://127.0.0.1:13200/api/metrics/query_range?q=%7B+resource.service.name+%3D+%22svc-2fc0fb2e85%22+%7D+%7C+quantile_over_time%28span%3Aduration%2C+.95%29&start=1792551672&end=1792552572&step=30s'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"
+        }
+      ]
+    }
+  },
+  "60b4a52ee10f399f5106ef50c6c643f1d48e819e8b505567a3f758dbd3e6f0cc": {
+    "method": "argocd_application",
+    "args": [
+      "svc-23555ef527"
+    ],
+    "kwargs": {},
+    "value": null,
+    "charges": {
+      "kubernetes": 1
+    },
+    "exception": {
+      "type": "ConnectError",
+      "status": null,
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:9/api/v1/applications/svc-23555ef527"
+      },
+      "response_body": null,
+      "exception_chain": [
+        {
+          "type": "ConnectError",
+          "message": "All connection attempts failed"
+        },
+        {
+          "type": "ConnectError",
+          "message": "All connection attempts failed"
+        }
+      ]
+    }
+  }
+}

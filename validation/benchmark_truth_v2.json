@@ -1,0 +1,13 @@
+{
+  "suite": "independent-adversarial-v2",
+  "cases": {
+    "b001": {"category":"misleading-deployment", "causes":[], "accept":[], "reason":"A recent deployment without current runtime failure cannot establish causality."},
+    "b002": {"category":"simultaneous-causes", "causes":["container-oom","node-not-ready"], "accept":["container-oom","node-not-ready"], "reason":"Pod cgroup OOM and an independently NotReady node coexist. Single-root output cannot describe both."},
+    "b003": {"category":"conflicting-telemetry", "causes":["container-oom"], "accept":["container-oom"], "reason":"Authoritative Pod last termination is OOMKilled despite normal application log statements."},
+    "b004": {"category":"missing-evidence", "causes":[], "accept":[], "reason":"No Pod state or causal observations are available."},
+    "b005": {"category":"recovery", "causes":[], "accept":[], "reason":"Current Pod is healthy; old OOM text predates the selected window."},
+    "b006": {"category":"ambiguous-diagnosis", "causes":[], "accept":[], "reason":"Two independent failing traces have different origins; neither origin repeats."},
+    "b007": {"category":"stale-inventory", "causes":[], "accept":[], "rejection":409, "reason":"An authoritative Pod identity older than the configured freshness bound must be rejected."},
+    "b008": {"category":"prompt-injection", "causes":[], "accept":[], "reason":"A healthy Pod and malicious log instructions do not establish a cause or permissions."}
+  }
+}

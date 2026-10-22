@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from uuid import uuid4
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -7,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.awareness import router as awareness_router
 from app.api.incidents import router as incidents_router
+from app.api.copilot_investigations import router as copilot_investigations_router
 from app.api.planner import router as planner_router
+from app.api.planner import orchestration_worker
 from app.api.webhooks import router as webhooks_router
 from app.api.system import router as system_router
 from app.auth import AuthManager
@@ -43,7 +47,13 @@ async def lifespan(app: FastAPI):
         settings.incident_retention_days,
         settings.audit_retention_days,
     )
+    worker = asyncio.create_task(orchestration_worker(app))
     yield
+    worker.cancel()
+    try:
+        await worker
+    except asyncio.CancelledError:
+        pass
     await repo.close()
 
 
@@ -75,6 +85,7 @@ app.state.repo = repo
 app.state.auth = auth_manager
 app.state.notifications = notification_manager
 app.state.planning_advisor = planning_advisor
+app.state.orchestration_worker_id = f"worker-{uuid4().hex}"
 app.state.engine = InvestigationEngine(
     tools=tools,
     memory=repo,
@@ -101,6 +112,10 @@ async def healthz():
         "authoritative_inventory_reconciliation": True,
         "agentic_planner_enabled": settings.agentic_planner_enabled,
         "agentic_execution_enabled": settings.agentic_execution_enabled,
+        "orchestration_execution_mode": (
+            "experimental-postgres-leased-workers" if settings.database_url
+            else "experimental-in-process-memory"
+        ),
         "agentic_model_planner_enabled": (
             settings.llm_enabled and settings.agentic_model_planner_enabled
         ),
@@ -110,6 +125,7 @@ async def healthz():
 
 
 app.include_router(incidents_router)
+app.include_router(copilot_investigations_router)
 app.include_router(awareness_router)
 app.include_router(planner_router)
 app.include_router(webhooks_router)

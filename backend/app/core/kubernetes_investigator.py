@@ -299,7 +299,7 @@ async def investigate_pod_scenario(
     hypothesis_generator: HypothesisGenerator,
 ) -> InvestigationResult:
     assert incident.namespace and incident.pod
-    start = incident.starts_at
+    start = incident.ends_at or incident.starts_at
     rs, deployment, service_name, argo_app_name = await _workload_context(tools, incident, pod)
     deploy_ref = _owner(rs, "Deployment")
     target_kind = "Deployment"
@@ -313,8 +313,7 @@ async def investigate_pod_scenario(
     logs_task = _optional(
         tools.loki_query_range(
             logs_query,
-            start - timedelta(minutes=20),
-            start + timedelta(minutes=5),
+            *incident.query_window(20),
             200,
         ),
         {"data": {"result": []}},
@@ -635,7 +634,7 @@ async def investigate_pod_scenario(
             hmap["container-crash-loop"].supporting_evidence.append(restart_ev.id)
         if any(str(item.get("reason", "")).lower() == "oomkilled" for item in terminations):
             hmap["oom-restart"].supporting_evidence.extend([container_ev.id, restart_ev.id])
-        probe_events = [ev for ev in event_evidence if "probe" in ev.summary.lower() or ev.facts.get("reason") == "Unhealthy"]
+        probe_events = [ev for ev in event_evidence if ("probe" in ev.summary.lower() or ev.facts.get("reason") == "Unhealthy") and 'readiness' not in ev.summary.lower()]
         if probe_events:
             hmap["probe-failure"].supporting_evidence.extend([probe_events[0].id, restart_ev.id])
         nonzero = [
@@ -766,7 +765,7 @@ async def investigate_node_not_ready(
     hypothesis_generator: HypothesisGenerator,
 ) -> InvestigationResult:
     assert incident.node
-    start = incident.starts_at
+    start = incident.ends_at or incident.starts_at
     node = await tools.get_node(incident.node)
     events, pods, nodeclaim = await _gather(
         _optional(tools.get_cluster_events(incident.node), []),

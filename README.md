@@ -1,484 +1,127 @@
 # AI SRE RCA
 
-[![GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml/badge.svg)](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml)
-[![Release](https://img.shields.io/github/v/release/marcocristofolini/ai-sre-rca?include_prereleases)](https://github.com/marcocristofolini/ai-sre-rca/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+**Evidence-first investigation for Kubernetes and distributed services.** AI SRE RCA combines scoped telemetry collection, persistent investigations and conversational assistance with deterministic root-cause evaluation.
 
-[Português do Brasil](README_PT-BR.md) · **English**
+**Version: `0.8.0-rc.3`** ([VERSION](VERSION)); development release candidate. [Português do Brasil](README_PT-BR.md).
 
-**AI SRE RCA** is an SRE incident-investigation platform for Kubernetes, distributed observability and stateful dependencies. It collects live evidence, reconstructs causal relationships, keeps persistent operational context and produces a structured RCA without allowing an LLM to invent the root cause.
+## What it solves
 
-> **Agentic for deciding where to investigate. Evidence-first for collecting facts. Deterministic for deciding what can be asserted.**
+Incident response spans Kubernetes state, metrics, logs, traces, recent changes and past incidents. AI SRE RCA brings these into one investigation workspace, records where evidence came from and distinguishes observed failure mechanisms from correlations. Missing evidence produces an inconclusive result.
 
-Current status: **v0.8.0-rc.3 in development**.
+## Current capabilities
 
----
-
-## The problem it solves
-
-During an incident, an engineer usually needs to jump between Kubernetes, metrics, logs, traces, recent changes, stateful dependencies and historical incidents. The hard part is not only finding data. It is separating correlation from causality and refusing conclusions based only on temporal coincidence.
-
-AI SRE RCA automates that investigation while keeping an explicit boundary between **context** and **causal evidence**.
-
-It can answer questions such as:
-
-- did the Pod fail because of OOM, CrashLoop, eviction or a Node issue?
-- did the failure originate inside the service or in a downstream dependency?
-- do PostgreSQL, Kafka or Redis have current telemetry that confirms the cause?
-- is a recent deployment causal or merely close in time?
-- what is the likely blast radius in the known topology?
-- has a similar incident happened before?
-- is the previous cause still valid after the system recovers?
-- is there a safe and explicitly allowed remediation action?
-
----
-
-## Incident history and investigation form
-
-Open `/incidents` to list authorized diagnoses, search by title or ID, and filter by cluster/status. Pagination uses 25 items and excludes full evidence payloads. `resolved` means diagnosis completion, not confirmed recovery.
-
-At `/incidents/new`, investigators provide a title, cluster, alert, severity and known target. Tenant comes from the session; global sessions must provide a concrete tenant. Agentic mode appears only when enabled server-side. Submission uses Server Actions with server-side authentication forwarding, field validation and a pending submission lock. Completion opens the saved diagnosis.
-
-The flow is synchronous and does not yet show live specialist progress. If completion cannot be confirmed, check history before retrying. In demo mode, list and form identify collection through demo adapters.
-
-## Incident diagnosis workspace
-
-The diagnosis workspace uses a scoped dark theme and a directed SVG topology built from the returned graph edges. The graph displays up to 48 connected entities and 96 relationships, announces truncation, and keeps every relationship in an expandable text list. Topology alone does not establish causality.
-
-The interface presents alert context, diagnosis summary, entities and relationships, expandable hypotheses, runtime telemetry, evidence, timeline, final RCA and remediation recommendations. Ruled-out hypotheses start collapsed. Each hypothesis retains its supporting and contradicting evidence links; evidence exposes collected facts, source query, timestamp, reference and recorded hash.
-
-- `/`, `/trace` and `/stateful/{postgresql|kafka|redis}` use demo adapters and visibly identify that data origin.
-- `/incidents/{incident_id}` reads a persisted classic investigation through `GET /api/v1/incidents/{incident_id}`, forwarding authentication server-side. The saved-investigation link on demo pages opens the persisted result. Webhook/API investigations can be opened directly using their incident ID.
-- A confirmed-cause badge requires a completed result whose root hypothesis is confirmed by a playbook. Inconclusive results and LLM proposals cannot receive that badge. `resolved` means the investigation concluded; it does not establish service recovery.
-- Recommendations remain informational in this view. Counts describe observed context rather than confirmed blast radius or downtime. Displaying a recorded hash does not reverify evidence integrity.
-
-CI checks navigation, hypothesis/evidence expansion, inconclusive and restricted-access states, authentication forwarding and mobile layout. Actual Chromium screenshots and the report are uploaded as `diagnosis-ui-<run_id>` by the [GitHub-first gate](https://github.com/marcocristofolini/ai-sre-rca/actions/workflows/github-first-gate.yml). Screenshots use the demo engine rather than production telemetry. The agentic workspace includes execution and evaluator decisions. The incident list and form are available; live progress remains pending.
-
-
-## What the application does
-
-| Capability | What it delivers |
+| Area | Implemented behavior |
 | --- | --- |
-| **Kubernetes RCA** | Investigates OOMKilled, CrashLoopBackOff, eviction, FailedScheduling, NodeNotReady, HPA, KEDA, Karpenter and capacity signals. |
-| **Trace-aware RCA** | Reconstructs span trees and finds a downstream origin repeated across independent traces. |
-| **Stateful dependencies** | Promotes PostgreSQL, Kafka and Redis into deterministic investigators when causal identity and current telemetry agree. |
-| **Metrics and logs** | Queries Prometheus and Loki through narrow read-only adapters and server-owned scopes. |
-| **Changes** | Correlates Argo CD and GitHub without treating temporal proximity as automatic proof. |
-| **Persistent Awareness Graph** | Keeps entities, relationships, history, tombstones, authoritative inventory, changes and operational context across incidents. |
-| **Blast radius** | Traverses only allowed, current causal relationships. |
-| **Agentic investigation** | Plans Kubernetes, metrics, logs, traces, database and changes specialists with typed budgets and dependencies. |
-| **Incident memory** | Retrieves similar incidents from PostgreSQL/pgvector as context, never as a substitute for current evidence. |
-| **Audit and integrity** | Provides SHA-256 evidence hashes, tenant/cluster isolation, structured export and audit trail. |
-| **Guarded remediation** | Keeps mutation separate from the investigator with allow-lists, dry-run, human approval, drift protection and rollback. |
-| **Real validation** | Runs Kind, PostgreSQL/pgvector, Prometheus, Loki, Tempo/OpenTelemetry and controlled scenarios in GitHub Actions. |
+| Investigation scope | Pod, Service, Deployment and StatefulSet selection from authorized inventory, with bounded time windows. Deployment → ReplicaSet → Pod and StatefulSet → Pod ownership uses Kubernetes UIDs and controller ownerReferences. |
+| Persistent Orchestrator | Bounded read-only specialist execution, persisted jobs, idempotent submission, leases, concurrency limits and recovery. SSE progress supports replay; polling is available. Synchronous APIs remain supported. |
+| Copilot | Questions about saved causes, evidence, rejected hypotheses, timeline and recorded next steps. Answers carry verified incident evidence IDs and an explicit insufficient-evidence state. No model is required. |
+| Interactive investigation | Natural-language request plus an explicit inventory/time selection compiles into a typed proposal. Scope and budgets are reviewed before explicit confirmation creates a job. Free text never grants scope or selects tools. |
+| Deterministic RCA | Integrity and reference checks, playbook scoring, source precedence, repeated trace-origin and dependency telemetry gates. Models cannot change verdicts or execute remediation. |
+| Persistent context | Awareness Graph with authoritative inventory, history, tombstones, changes and bounded topology; incident memory in PostgreSQL/pgvector. Historical similarity is context, not causal evidence. |
+| Workspace | Live specialist progress, evidence, hypotheses, timeline, final diagnosis and follow-up questions on the completed investigation. |
 
----
+Persistent worker modes are currently reported as experimental (PostgreSQL leased workers or volatile in-process memory). Agentic execution is implemented but opt-in (`AGENTIC_EXECUTION_ENABLED=true`). Optional model-assisted planning is experimental and separately gated; the server recompiles allow-listed tasks.
 
-## How an investigation works
+## Architecture and safety
 
-`POST /api/v1/incidents/investigate` uses the classic engine and persists the incident, updating the graph. The experimental `/api/v1/planner/investigate` path requires `AGENTIC_EXECUTION_ENABLED=true`. It returns execution, evaluation, `incident_id` and `investigation_url`, persists the evaluated diagnosis and records incident-linked audit events. Open the returned link to inspect specialists, budgets, decisions and evidence in the same workspace. `/plan` and `/execute` still do not persist a diagnosis.
+![System architecture: scoped console and APIs, persistent jobs, read-only sources, deterministic evaluation and separate remediation](docs/images/ai-sre-rca-architecture.svg)
 
-~~~mermaid
-flowchart TD
-    I["Incident with tenant and cluster scope"] --> MODE{"API route"}
-    MODE -->|"/incidents/investigate"| CORE["Classic deterministic engine"]
-    CORE --> SAVE["Persist incident and graph observations"]
-    SAVE --> UI["API and investigator UI"]
-    MODE -->|"/planner/investigate"| CTX["Freeze operational context"]
-    CTX --> PLAN["Compile bounded specialist plan"]
-    PLAN --> READ["Read-only specialists"]
-    READ -->|"Traces provide dependency identity"| DEP["Database specialist"]
-    READ --> ENV["Shared Evidence Envelope"]
-    DEP --> ENV
-    ENV --> VERIFY{"Integrity and causal gates pass?"}
-    VERIFY -->|Yes| RESULT["Deterministic verdict and explanation"]
-    VERIFY -->|No| INC["Inconclusive evaluation"]
-    RESULT --> PERSIST["Persist evaluated diagnosis"]
-    INC --> PERSIST
-    PERSIST --> RESP["API, audit and incident UI"]
-~~~
+Next.js forwards authentication to FastAPI. Backend role checks and tenant/cluster scope apply to incidents, evidence, jobs and progress. PostgreSQL stores investigations, graph observations, audit and job state; pgvector supports deterministic hash-embedding similarity.
 
-The optional LLM may help **prioritize investigation branches**, but it cannot create evidence, choose arbitrary tools, change budgets, write graph facts or confirm a root cause.
+Investigation adapters are read-only. Retrieved text, logs and model responses are untrusted. Copilot bounds context and model output, verifies citations against the authorized investigation and falls back deterministically on unavailable or rejected responses. These controls do not establish that all model prose is factually correct.
 
----
+Remediation is a separate service/credential boundary, disabled by default: typed proposals, policy, dry-run, human approval, drift checks and audited allow-listed execution. The current action is `scale_deployment`; the Copilot does not invoke it. See [architecture](docs/architecture.md) and [remediation](docs/remediation.md).
 
-## Architecture
+## Integrations and telemetry prerequisites
 
-The platform is divided into four planes so investigation, persistent context, mutation and release validation remain separate.
+- **Kubernetes:** live state, events, UID ownership, inventory, HPA/KEDA/Karpenter signals.
+- **Prometheus:** service, Kubernetes and dependency metrics; **Loki:** scoped structured logs; **Tempo/OpenTelemetry:** traces and causal propagation.
+- **Argo CD / GitHub:** collected deployment/revision context; proximity alone does not prove causality.
+- **PostgreSQL, Redis and Kafka dependency analyzers:** require matching current telemetry and trace-derived dependency identity. Kafka live failure/recovery validation remains pending.
+- **Alertmanager:** ingestion; **Slack/PagerDuty:** optional notifications after persistence.
 
-[![AI SRE RCA system architecture](docs/images/ai-sre-rca-architecture.svg)](docs/architecture.md)
+Dynamic workload scope requires fresh, complete authoritative inventory and verified controller/Pod UID relationships. Workload and Service scopes require explicit telemetry identity mappings (`ai-sre.io/telemetry-service`); resource names and selectors alone are not ownership proof. Controller log queries require trustworthy Loki `pod_uid` labels matching the selected Pods. Do not derive these labels from untrusted log bodies.
 
-Detailed architecture: [docs/architecture.md](docs/architecture.md).
+Prometheus/Loki readiness and Kubernetes readiness where applicable are checked before dynamic job creation. Traces require instrumented services and correctly propagated context. Ambiguous identities, stale/incomplete inventory, unavailable required telemetry and changed membership are rejected rather than guessed. Rolling updates include all verified ReplicaSets; zero replicas provide context without inventing Pod telemetry.
 
----
+## Local quick start
 
-## Application running
+Prerequisites: Git, Docker Engine/Desktop and Docker Compose. Run from the repository root:
 
-The screenshots below show **v0.8.0-rc.1 running locally with `DEMO_MODE=true`**, using demo adapters. They are rendered application screens. Real-source validation is recorded separately in the Kind gate reports.
-
-### Kubernetes investigation
-
-![Kubernetes RCA showing an evidence-backed root cause](docs/images/investigator-k8s.png)
-
-### Distributed trace causality
-
-![Trace-aware RCA showing downstream failure propagation](docs/images/trace-aware-rca.png)
-
-### Stateful PostgreSQL dependency
-
-![PostgreSQL RCA showing connection-exhaustion evidence](docs/images/stateful-postgresql.png)
-
-### Persistent Awareness Graph
-
-![Persistent Awareness Graph explorer](docs/images/awareness-explorer.png)
-
-### Integration health
-
-![Operations UI showing source capabilities](docs/images/operations.png)
-
----
-
-## Main components
-
-### Investigation Engine
-
-The deterministic core normalizes the incident, collects typed evidence, applies playbooks and computes support/contradiction. A hypothesis can become root cause only when its evidence references are valid and the required causal gates pass.
-
-### Investigation Planner
-
-Compiles a bounded plan with these allowed specialists:
-
-- Kubernetes
-- metrics
-- logs
-- traces
-- database
-- changes
-
-The server recompiles the plan before execution. Clients never execute an arbitrary task graph.
-
-### Trace-aware RCA
-
-Searches representative traces in Tempo, rebuilds parent/child span relationships and identifies the deepest failing span. One trace is not enough to confirm causality. Promotion requires repeated origin across independent traces.
-
-### Stateful Dependency RCA
-
-Dependencies inferred from traces can be investigated with current telemetry:
-
-- **PostgreSQL:** connection utilization, locks, deadlocks, replication lag and long transactions;
-- **Kafka:** consumer lag, under-replicated partitions, offline partitions and consumer-group members;
-- **Redis:** memory pressure, evictions, blocked clients, client saturation and command latency.
-
-A stateful cause is promoted only when the dependency is causally relevant **and** current telemetry independently confirms the anomaly.
-
-### Persistent Awareness Graph
-
-Keeps operational topology across incidents with stable tenant/cluster identity, append-only history and authoritative reconciliation.
-
-It includes:
-
-- current, stale, historical and tombstoned state;
-- Kubernetes entities and relationships;
-- ChangeEvents;
-- inventory reconciliation;
-- graph health;
-- retention;
-- blast radius;
-- change timeline;
-- Awareness Explorer;
-- Operational Context Snapshot used by the planner.
-
-More detail: [docs/persistent-awareness-graph.md](docs/persistent-awareness-graph.md).
-
-### Guarded remediation
-
-The investigator remains read-only. Mutation lives in a separate service and identity.
-
-The flow is:
-
-~~~text
-confirmed RCA
-→ typed proposal
-→ policy gates
-→ Kubernetes dry-run
-→ human approval
-→ drift check
-→ allow-listed mutation
-→ audit
-→ explicit rollback
-~~~
-
-The first supported action is <code>scale_deployment</code>. There is no shell, <code>kubectl exec</code>, generic patch or arbitrary mutation primitive.
-
-More detail: [docs/remediation.md](docs/remediation.md).
-
----
-
-## Integrations
-
-| System | Purpose |
-| --- | --- |
-| Kubernetes | runtime state, ownership, events, scheduling, inventory |
-| Prometheus | service, Kubernetes and dependency metrics |
-| Loki | logs bounded by namespace, Pod or service |
-| Tempo / OpenTelemetry | traces, causal paths and service graph |
-| Argo CD | deployment state and applied revision |
-| GitHub | commit/revision metadata |
-| Karpenter | NodeClaim, NodePool and capacity |
-| PostgreSQL + pgvector | incidents, awareness graph, audit and vector memory |
-| Alertmanager | automatic incident ingestion |
-| Slack / PagerDuty | optional notification after persistence |
-
----
-
-## Safety model
-
-The platform is designed to **fail closed**.
-
-- the investigator uses only GET/LIST/WATCH in Kubernetes;
-- there is no <code>pods/exec</code>;
-- there is no investigator shell;
-- evidence receives SHA-256 integrity hashes;
-- integrity failure blocks root-cause selection;
-- historical context cannot count as causal proof;
-- a recent change is not automatically blamed;
-- similar incidents are hints only;
-- incomplete branches, exhausted budgets or unavailable sources do not fabricate healthy state;
-- the LLM does not confirm RCA;
-- remediation uses separate credentials and explicit approval;
-- tenant and cluster are part of identity and access boundaries.
-
----
-
-## Runtime modes
-
-| Mode | Purpose |
-| --- | --- |
-| <code>DEMO_MODE=true</code> | Explore the UI and investigation flows without external systems. |
-| Docker Compose | Run frontend, backend and PostgreSQL/pgvector locally. |
-| Test environment | Deploy GitHub-validated images into a Kubernetes test cluster. |
-| Helm / production | Connect real sources, OIDC, RBAC, Secrets, NetworkPolicy and multi-cluster routing. |
-
----
-
-## Quick start
-
-~~~bash
+```bash
 cp .env.example .env
 docker compose up --build
-~~~
+```
 
-Open:
+Open [the console](http://localhost:3000), `/incidents` for saved investigations and `/incidents/new` to start one. Backend API documentation is at [localhost:8080/docs](http://localhost:8080/docs).
 
-~~~text
-UI:       http://localhost:3000
-Swagger:  http://localhost:8080/docs
-Health:   http://localhost:8080/healthz
-~~~
+Compose uses demo adapters, PostgreSQL/pgvector and local development credentials; authentication and LLM calls are disabled by default. **It is not a secured production deployment.** Compose declares backend environment values directly: editing `.env` alone does not override them.
 
-Demo surfaces:
+For live operation, configure backend environment/Helm values using [.env.example](.env.example) and the [operations guide](docs/operations.md):
 
-~~~text
-/                         Kubernetes RCA
-/trace                    trace-aware RCA
-/stateful/postgresql      PostgreSQL
-/stateful/kafka           Kafka
-/stateful/redis           Redis
-/awareness                Persistent Awareness Graph
-/ops                      source health
-~~~
+| Setting | Purpose |
+| --- | --- |
+| `DEMO_MODE=false`, `DATABASE_URL` | Production adapters and persistent PostgreSQL/pgvector; without a database, the repository is in memory. |
+| `AUTH_ENABLED=true`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | Verify tokens; map role, tenant and cluster claims using the corresponding `OIDC_*_CLAIM` settings. |
+| `CLUSTER_CONFIG_JSON` | Trusted per-cluster endpoints/credentials for Kubernetes, Prometheus, Loki and Tempo. |
+| `AWARENESS_INVENTORY_CLUSTERS`, `AWARENESS_INVENTORY_TENANT_ID` | Explicit authoritative collector scope; see the [graph guide](docs/persistent-awareness-graph.md). |
+| `AGENTIC_EXECUTION_ENABLED=true` | Enable read-only orchestrated investigations and Copilot proposals. |
+| `QUERY_BUDGET_*` | Global call, per-source and elapsed-time limits; dynamic scope requires positive enabled budgets. |
+| `LLM_ENABLED`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | Optional compatible chat provider; default is deterministic fallback. |
 
-Compose starts in demo mode and defines the backend environment directly in `docker-compose.yml`. Editing `.env` alone does not activate real integrations; configure Compose or use the Helm overrides described in the runbook.
+Keep credentials out of Git. Scope remote read credentials to the intended cluster; configure remediation credentials separately.
 
-Backend only:
+### Usage
 
-~~~bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-DEMO_MODE=true uvicorn app.main:app --reload --port 8080
-~~~
+With Compose's local demo configuration:
 
-Tests, from the repository root:
+```bash
+curl -fsS http://localhost:8080/api/v1/incidents/demo
+curl -fsS http://localhost:8080/api/v1/incidents
+```
 
-~~~bash
-(cd backend && pytest -q)
-~~~
+Open a saved incident, ask “What evidence supports the root cause?”, then review its citations. With agentic execution and valid inventory enabled, choose the target/time window, propose an investigation, review the compiled scope and explicitly confirm. Watch SSE progress and ask follow-up questions after completion. Kubernetes state is live; historical windows apply to telemetry. Time selection is whole-minute, ends in the past and is limited to 60 minutes; the default effective minimum is 15 minutes.
 
----
+Authenticated deployments require a valid bearer token; API scope remains authoritative. See [API contracts and failure behavior](docs/architecture.md#api-contracts).
 
-## Test environment
+## Local validation: recorded results
 
-The repository has a GitHub-first chain that builds and deploys validated images without depending on a developer workstation.
+The [Real-World RCA Validation v1 report](docs/real-world-rca-validation-v1.md), recorded in base `3bec577`, reports:
 
-After the gate passes on `main`, `Publish test images` publishes images to GHCR. Deployment is started manually in **Actions → Deploy test environment** and requires cluster credentials configured in the GitHub Environment `test`. The workflow waits for rollouts and runs backend/frontend smoke checks.
+| Check | Local result |
+| --- | --- |
+| Controlled live RCA | **6/6 scoped cases matched expected outcomes**, including recovery and zero-replica negative cases |
+| Docker/PostgreSQL backend and harness | **325 passed**, zero skipped; five additional subtests, one existing deprecation warning |
+| Workload telemetry tests | **8 passed**; local HTTP with mocked OTLP export |
+| Browser checks | **50 passed**: 44 independent regressions + 6 live production-adapter checks |
+| Next.js production build | **Passed**, including TypeScript and standalone assets |
 
-Published images:
+Real cases used disposable Kind workloads and live Kubernetes, Prometheus, Loki and Tempo: downstream timeout from Deployment and StatefulSet scopes, process exit after rollout, OOMKilled, recovery and zero replicas. The rollout result proves the process-exit mechanism, not Git revision causality. These are controlled local results, **not production reliability, general RCA accuracy or release certification**. Raw reports/logs remain local and excluded from Git; the committed summary is linked above. The documentation update does not rerun these application suites.
 
-~~~text
-ghcr.io/marcocristofolini/ai-sre-rca-backend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-backend:sha-<12-character-sha>
-ghcr.io/marcocristofolini/ai-sre-rca-frontend:edge
-ghcr.io/marcocristofolini/ai-sre-rca-frontend:sha-<12-character-sha>
-~~~
+### Reproduce validation with Docker
 
-Runbook: [docs/test-environment.md](docs/test-environment.md).
+```bash
+make test-docker
+# Requires Kind and kubectl; creates only a disposable validation environment:
+sh validation/run-docker.sh --copilot --cluster-name ai-sre-real-validation-local
+```
 
----
+Reuse cached images. See [validation prerequisites and reports](validation/README.md) for the complete harness, PostgreSQL configuration and independent browser entry points. Feature suites stay separate: `validate-diagnosis-ui.py`, `validate-copilot-ui.py`, `validate-copilot-v2-ui.py`, `validate-copilot-scope-ui.py` and the live `validate-real-copilot-ui.py`, under `scripts/`. Browser runners require their documented API fixtures and a built standalone frontend with `.next/static` and `public` assets. Do not run host Python or create a venv.
 
-## Main APIs
+## Limits and next work
 
-### Incidents
-
-~~~text
-GET  /healthz
-GET  /api/v1/incidents?q=&cluster=&status=&limit=25&offset=0
-GET  /api/v1/incidents/{id}
-POST /api/v1/incidents/investigate
-POST /api/v1/webhooks/alertmanager
-~~~
-
-### Persistent Awareness Graph
-
-~~~text
-GET  /api/v1/awareness/graph
-GET  /api/v1/awareness/health
-GET  /api/v1/awareness/history/{target_id}
-GET  /api/v1/awareness/topology
-GET  /api/v1/awareness/services/{service_name}
-GET  /api/v1/awareness/blast-radius/{target_id}
-GET  /api/v1/awareness/changes
-POST /api/v1/awareness/inventory/reconcile
-POST /api/v1/awareness/retention/purge
-~~~
-
-### Agentic investigation
-
-~~~text
-POST /api/v1/planner/plan
-POST /api/v1/planner/execute
-POST /api/v1/planner/investigate
-~~~
-
-`/plan` only compiles the plan. `/execute` collects evidence and returns no root cause. `/investigate` also runs deterministic evaluation. The last two return 404 while `AGENTIC_EXECUTION_ENABLED=false`, the default. Model-assisted planning additionally requires `AGENTIC_MODEL_PLANNER_ENABLED=true` and `LLM_ENABLED=true`.
-
-The full OpenAPI interface is available at <code>/docs</code>.
-
----
-
-## Real-environment validation
-
-The release gate uses a disposable Kind cluster and executes real or controlled scenarios.
-
-It currently validates:
-
-- OOMKilled;
-- restart-backoff / CrashLoop safety;
-- FailedScheduling;
-- authoritative Kubernetes inventory;
-- tombstones;
-- Persistent Awareness Graph;
-- Prometheus;
-- Loki;
-- Tempo/OpenTelemetry;
-- service graph;
-- trace causality;
-- stateful PostgreSQL and Redis failure/recovery;
-- classic/agentic parity;
-- SHA-256 evidence integrity.
-
-Reports are emitted as JSON and Markdown and tied to the validated Git SHA.
-
-Full contract: [validation/README.md](validation/README.md).
-
----
-
-## GitHub-first delivery
-
-GitHub is the merge and release authority.
-
-~~~text
-branch
-→ Pull Request
-→ GitHub-first gate
-   → CI
-   → CodeQL
-   → Real Environment Validation
-→ gate
-→ merge to main
-→ Publish test images
-→ Deploy test environment (manual)
-~~~
-
-Release promotion validates the SHA, <code>VERSION</code> and real-environment evidence before creating the tag.
-
-Details: [docs/github-first.md](docs/github-first.md).
-
----
-
-## Current status
-
-**v0.8.0-rc.3** focuses on real stateful telemetry and recovery validation.
-
-Current work includes:
-
-- PostgreSQL 17 + postgres_exporter in the disposable environment;
-- controlled connection pressure;
-- deterministic PostgreSQL root-cause promotion;
-- dependency recovery;
-- fresh post-recovery traces;
-- proof that stale causes stop being promoted;
-- Redis with 16 MiB maxmemory and redis_exporter scoped to `cache:6379`;
-- actual OOM write rejection, `redis-memory-pressure` RCA and recovery with successful fresh operations.
-
-Next rc.3 targets:
-
-- Kafka + kafka_exporter;
-- Kafka failure/recovery semantics;
-- release-candidate closure.
-
-Full roadmap: [docs/roadmap.md](docs/roadmap.md).
-
----
-
-## Repository layout
-
-~~~text
-backend/
-  app/core/             engine, causality, playbooks and scoring
-  app/agentic/          planner, specialists and evaluator
-  app/integrations/     read-only adapters
-  app/remediation/      separate remediation service
-  app/db/               PostgreSQL/pgvector
-  tests/                regressions and safety invariants
-
-frontend/               Next.js UI
-helm/ai-sre-rca/        chart, RBAC and deployment
-validation/             real-environment release gate
-docs/                   architecture, operations and runbooks
-~~~
-
----
+- Development release candidate; local validation does not replace preserved release/security gates. No production deployment is implied.
+- Inventory completeness, freshness, bounded membership and explicit telemetry identities are required; unsupported or oversized scopes fail closed.
+- Replay is bounded by retained events and job retention; clients must handle replay gaps. `resolved` means diagnosis finished, not recovery confirmed.
+- Model-assisted planning is experimental; deterministic fallback currently returns Portuguese text even in an English UI. No arbitrary tools, shell or autonomous remediation.
+- Broader fault coverage, Kafka live validation, telemetry onboarding and larger-scale/concurrency evaluation remain work ahead. See [roadmap](docs/roadmap.md).
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [Agentic investigation](docs/agentic-investigation.md)
-- [Persistent Awareness Graph](docs/persistent-awareness-graph.md)
-- [Guarded remediation](docs/remediation.md)
-- [Operations and security](docs/operations.md)
-- [Test environment](docs/test-environment.md)
-- [GitHub-first delivery](docs/github-first.md)
-- [Roadmap](docs/roadmap.md)
-- [Validation harness](validation/README.md)
-- [Changelog](CHANGELOG.md)
+- [Architecture and API contracts](docs/architecture.md) · [investigation lifecycle](docs/images/investigation-pipeline.svg) · [security boundaries](docs/images/security-boundaries.svg)
+- [Agentic investigation](docs/agentic-investigation.md) · [Awareness Graph](docs/persistent-awareness-graph.md)
+- [Trace causality](docs/trace-causality.md) · [stateful dependencies](docs/stateful-dependencies.md)
+- [Operations](docs/operations.md) · [controlled live results](docs/real-world-rca-validation-v1.md) · [historical workload validation](docs/copilot-workload-validation.md)
+- [Release process](docs/github-first.md) · [test environment](docs/test-environment.md) · [MIT license](LICENSE)
 
----
-
-## Core principle
-
-**Context guides. Evidence proves. The deterministic evaluator decides.**
-
-That principle applies to Kubernetes, traces, stateful dependencies, changes, incident memory and agentic investigation.
-
+Historical demo screenshots (`v0.8.0-rc.1`, not live validation): [Kubernetes](docs/images/investigator-k8s.png), [traces](docs/images/trace-aware-rca.png), [PostgreSQL](docs/images/stateful-postgresql.png), [graph](docs/images/awareness-explorer.png), [integration health](docs/images/operations.png).

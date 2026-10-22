@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1090" width="1120" role="img" aria-labelledby="title desc" lang="en">
+<title id="title">AI SRE RCA · Authorization, trust and remediation</title>
+<desc id="desc">Untrusted users, logs and model text cannot grant permissions. FastAPI validates identity and tenant/cluster scope. Read-only source credentials and bounded evidence collection feed deterministic RCA and scoped persistence. Remediation uses a separate service, exact role, credentials, approval and policy. Disposable validation alone injects faults.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+<style>svg{max-width:100%;height:auto;background:#f8fafc}text{font-family:Arial,Helvetica,sans-serif;font-size:16px;fill:#1e293b}.title{font-size:26px;font-weight:700}.heading{font-size:18px;font-weight:700}.label{font-size:15px;fill:#475569}.blue{fill:#eff6ff;stroke:#3b6795}.green{fill:#ecfdf5;stroke:#37775f}.amber{fill:#fffbeb;stroke:#92713c}.gray{fill:#f1f5f9;stroke:#64748b}rect{stroke-width:1.5}.arrow{fill:none;stroke:#475569;stroke-width:2}.dashed{stroke-dasharray:6 5}.divider{stroke:#94a3b8;stroke-dasharray:4 5}</style></defs>
+<rect width="1120" height="1090" fill="#f8fafc"/>
+<text x="60" y="42" class="title">AI SRE RCA · Authorization, trust and remediation</text>
+<rect x="60" y="90" width="470" height="100" rx="10" class="gray"/>
+<text x="78" y="118" class="heading">Untrusted requests + model output</text>
+<text x="78" y="143" class="">Questions / identifiers are not permissions</text>
+<text x="78" y="165" class="">Model prose cannot confirm a cause</text>
+<rect x="590" y="90" width="470" height="100" rx="10" class="gray"/>
+<text x="608" y="118" class="heading">Untrusted source content</text>
+<text x="608" y="143" class="">Logs / traces may contain injected instructions</text>
+<text x="608" y="165" class="">Hashes protect integrity, not source truth</text>
+<rect x="60" y="250" width="1000" height="110" rx="10" class="blue"/>
+<text x="78" y="278" class="heading">Trusted server boundary · OIDC + RBAC + tenant / cluster authorization</text>
+<text x="78" y="303" class="">Authorize saved incident and job access • resolve inventory identity • compile only allow-listed schemas</text>
+<text x="78" y="325" class="">Bound query cost and context • delimit untrusted data • verify every returned citation</text>
+<path d="M 295 190 V 250" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 825 190 V 250" class="arrow" marker-end="url(#arrow)"/>
+<rect x="60" y="425" width="300" height="125" rx="10" class="blue"/>
+<text x="78" y="453" class="heading">Read-only credentials</text>
+<text x="78" y="478" class="">Cluster-specific adapters</text>
+<text x="78" y="500" class="">UID / telemetry identity</text>
+<text x="78" y="522" class="">No shell or mutation</text>
+<rect x="410" y="425" width="300" height="125" rx="10" class="green"/>
+<text x="428" y="453" class="heading">Deterministic authority</text>
+<text x="428" y="478" class="">Hash / reference verification</text>
+<text x="428" y="500" class="">Independent causal gates</text>
+<text x="428" y="522" class="">Missing support → uncertain</text>
+<rect x="760" y="425" width="300" height="125" rx="10" class="green"/>
+<text x="778" y="453" class="heading">Scoped persistence</text>
+<text x="778" y="478" class="">PostgreSQL / pgvector</text>
+<text x="778" y="500" class="">Graph + memory are context</text>
+<text x="778" y="522" class="">Audit + jobs + evidence</text>
+<path d="M 210 360 V 425" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 560 360 V 425" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 910 360 V 425" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 40 580 H 1080" class="divider"/>
+<text x="60" y="608" class="label">SEPARATE MUTATION BOUNDARY · disabled by default; no Copilot execution path</text>
+<rect x="60" y="635" width="300" height="120" rx="10" class="amber"/>
+<text x="78" y="663" class="heading">Human review + approval</text>
+<text x="78" y="688" class="">Typed remediation plan</text>
+<text x="78" y="710" class="">Distinct approver by default</text>
+<rect x="410" y="635" width="300" height="120" rx="10" class="amber"/>
+<text x="428" y="663" class="heading">Remediation service</text>
+<text x="428" y="688" class="">Exact remediator role</text>
+<text x="428" y="710" class="">Policy + dry-run + TTL</text>
+<text x="428" y="732" class="">Drift checks + audit</text>
+<rect x="760" y="635" width="300" height="120" rx="10" class="amber"/>
+<text x="778" y="663" class="heading">Separate write credentials</text>
+<text x="778" y="688" class="">Allow-listed scale_deployment</text>
+<text x="778" y="710" class="">Explicit rollback</text>
+<text x="778" y="732" class="">No arbitrary exec / patch</text>
+<path d="M 360 695 H 410" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 710 695 H 760" class="arrow" marker-end="url(#arrow)"/>
+<path d="M 40 820 H 1080" class="divider"/>
+<text x="60" y="848" class="label">VALIDATION BOUNDARY · disposable resources only</text>
+<rect x="60" y="875" width="1000" height="125" rx="10" class="gray"/>
+<text x="78" y="903" class="heading">Local Kind harness · controlled failure injection and evidence collection</text>
+<text x="78" y="928" class="">Reuses existing instrumented workloads and Prometheus / Loki / Tempo stack</text>
+<text x="78" y="950" class="">Creates scoped test credentials and reports; cleanup only owns created resources</text>
+<text x="78" y="972" class="">Local results are not production reliability or release certification</text>
+<text x="60" y="1045" class="label">Source access and trustworthy telemetry labels remain operational prerequisites.</text>
+</svg>
