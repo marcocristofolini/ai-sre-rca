@@ -399,6 +399,7 @@ async def _kubernetes(
         proxy = WorkloadKubernetesTools(tools, budget, incident)
         entities, graph_edges, hypotheses = [], [], []
         try:
+            await proxy.verify_controller()
             for member in incident.workload.members:
                 if member.kind != 'Pod':
                     continue

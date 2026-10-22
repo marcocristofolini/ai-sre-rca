@@ -892,6 +892,7 @@ async def enrich_with_trace_causality(
 
     if (
         result.status == "inconclusive"
+        and not any(ev.category == "verified-workload-root-conflict" for ev in result.evidence)
         and hypothesis.status == HypothesisStatus.CONFIRMED
     ):
         supporting = len(hypothesis.supporting_evidence)

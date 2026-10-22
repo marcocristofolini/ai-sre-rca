@@ -26,13 +26,16 @@ class WorkloadKubernetesTools:
                 raise ValueError('live Kubernetes controller ownership changed')
         return item
 
+    async def verify_controller(self):
+        if not self.root_verified:
+            root = self.incident.workload
+            operation = 'get_deployment' if root.kind == 'Deployment' else 'get_statefulset'
+            await self._resource(root.kind, self.incident.namespace, root.name, operation)
+            self.root_verified = True
+
     async def get_pod(self, namespace, name):
         if name not in self.pods:
-            if not self.root_verified:
-                root = self.incident.workload
-                operation = 'get_deployment' if root.kind == 'Deployment' else 'get_statefulset'
-                await self._resource(root.kind, namespace, root.name, operation)
-                self.root_verified = True
+            await self.verify_controller()
             self.pods[name] = await self._resource('Pod', namespace, name, 'get_pod')
             if self.incident.workload.kind == 'Deployment':
                 owner = next(r for r in self.pods[name]['metadata']['ownerReferences'] if r.get('controller') is True)
