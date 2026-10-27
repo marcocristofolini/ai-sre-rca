@@ -37,7 +37,12 @@ q3:"O que valida uma segunda causa raiz?",a3:"Ela precisa de hipótese determin�
 q4:"Posso executar sem LLM?",a4:"Sim. A avaliação determinística e as respostas fallback do Copilot funcionam sem modelo. O planejamento opcional por modelo é experimental e controlado separadamente.",
 q5:"Como iniciar localmente?",a5:"Clone o repositório público, revise o exemplo de .env e execute Docker Compose. O modo demonstrativo não é uma instalação segura para produção. Consulte a documentação operacional e de segurança antes de conectar clusters reais.",
 ctaEye:"Criado para engenheiros de confiabilidade",ctaTitle:"Não adivinhe. Investigue.",ctaCopy:"Explore o código, entenda a arquitetura e reproduza as evidências no seu ambiente.",ctaButton:"Explore Tracecroft AI no GitHub ↗",
-footerTag:"Investigação SRE e Platform Engineering de código aberto, orientada por evidências.",footerDocs:"Documentação",footerLegal:"Projeto open source independente. Licença MIT.",footerNotice:"Sem alegação de SLA de produção, certificação SOC 2 ou vínculo comercial com Sherlocks AI."
+footerTag:"Investigação SRE e Platform Engineering de código aberto, orientada por evidências.",footerDocs:"Documentação",footerLegal:"Projeto open source independente. Licença MIT.",footerNotice:"Sem alegação de SLA de produção, certificação SOC 2 ou vínculo comercial com Sherlocks AI.",
+historicEye:"Galeria histórica do produto",
+historicTitle:"A evolução do ambiente de investigação.",
+historicLead:"As capturas demonstrativas arquivadas da v0.8.0-rc.1 são preservadas por transparência. Não são verificações de navegador recentes nem refletem a identidade visual atual.",
+historic1:"Explorador Kubernetes original",historic2:"RCA com traces",historic3:"Analisador PostgreSQL",historic4:"Explorador de contexto",historic5:"Saúde de operações e integrações",
+archMore:"Explore também os diagramas originais: visão do sistema, ciclo da investigação, fronteiras de segurança e arquitetura histórica RC3."
 };
 const enTitle="Tracecroft AI | Follow the evidence. Find the cause.";
 const ptTitle="Tracecroft AI | Siga as evidências. Encontre a causa.";
