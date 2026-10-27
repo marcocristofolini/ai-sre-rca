@@ -10,7 +10,7 @@ export default async function TraceDemoPage() {
       <main>
         <section className="panel errorPanel">
           <div className="sectionLabel">TRACE DEMO UNAVAILABLE</div>
-          <h1>AI SRE RCA</h1>
+          <h1>Tracecroft AI</h1>
           <p>Start the FastAPI service on port 8080, then reload this page.</p>
           <pre>{String(error)}</pre>
         </section>

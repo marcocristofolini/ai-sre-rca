@@ -95,7 +95,7 @@ export default function InvestigationView({ data, mode = 'demo', jobId }: {
     <main className="diagnosis" lang="pt-BR">
       <a className="diagnosisSkip" href="#diagnosis-content">Ir para o diagnóstico</a>
       <header className="topbar">
-        <a className="brand" href="/"><span className="brandMark">SRE</span><span>AI SRE RCA</span></a>
+        <a className="brand" href="/"><span className="brandMark"><img src="/tracecroft-mark.svg" alt="" width="30" height="30" /></span><span>Tracecroft <span className="brandNameAI">AI</span></span></a>
         <nav className="topActions" aria-label="Aplicação">
           <a className="demoLink" href="/showcase">Produto</a>
           <a className="demoLink" href="/incidents">Incidentes</a>

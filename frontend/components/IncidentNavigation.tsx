@@ -1,6 +1,6 @@
 export default function IncidentNavigation() {
   return <header className="topbar">
-    <a className="brand" href="/incidents"><span className="brandMark">SRE</span><span>AI SRE RCA</span></a>
+    <a className="brand" href="/incidents"><span className="brandMark"><img src="/tracecroft-mark.svg" alt="" width="30" height="30" /></span><span>Tracecroft <span className="brandNameAI">AI</span></span></a>
     <nav className="topActions" aria-label="Aplicação">
       <a className="demoLink" href="/showcase">Produto</a>
       <a className="demoLink" href="/incidents">Incidentes</a>

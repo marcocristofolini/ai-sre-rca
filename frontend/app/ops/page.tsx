@@ -68,7 +68,7 @@ export default async function OpsPage({ searchParams }: Props) {
       <main>
         <section className="panel errorPanel">
           <div className="sectionLabel">OPERATIONS UNAVAILABLE</div>
-          <h1>AI SRE RCA</h1>
+          <h1>Tracecroft AI</h1>
           <p>Check OIDC claims, cluster scope and backend connectivity.</p>
           <pre>{String(error)}</pre>
         </section>
