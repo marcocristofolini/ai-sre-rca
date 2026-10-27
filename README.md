@@ -1,8 +1,13 @@
-# AI SRE RCA
+# Tracecroft AI
 
-**Evidence-first investigation for Kubernetes and distributed services.** AI SRE RCA combines scoped telemetry collection, persistent investigations and conversational assistance with deterministic root-cause evaluation.
+**Evidence-first investigation for Kubernetes and distributed services.** Tracecroft AI (the evolution of the AI SRE RCA project) combines scoped telemetry collection, persistent investigations and conversational assistance with deterministic root-cause evaluation.
 
 **Version: `0.8.0-rc.3`** ([VERSION](VERSION)); development release candidate. [Português do Brasil](README_PT-BR.md).
+
+
+[**Explore the Tracecroft AI website**](https://tracecroft-ai.marcocristofolini.dev) · [Source website](website/) · [Interactive Archify architecture](docs/archify/ai-sre-rca.html)
+
+> **Brand and repository:** Tracecroft AI is the product name. The repository remains `ai-sre-rca` to preserve existing clone URLs, history, code references and integrations. Existing benchmark evidence, UX captures and historical project identifiers remain credited to the original engineering work.
 
 ## What it solves
 
@@ -21,6 +26,12 @@ Incident response spans Kubernetes state, metrics, logs, traces, recent changes 
 | Workspace | Live specialist progress, evidence, hypotheses, timeline, primary and secondary verified causes with evidence links, plus follow-up questions about completed investigations. |
 
 Persistent worker modes are currently reported as experimental (PostgreSQL leased workers or volatile in-process memory). Agentic execution is implemented but opt-in (`AGENTIC_EXECUTION_ENABLED=true`). Optional model-assisted planning is experimental and separately gated; the server recompiles allow-listed tasks.
+
+## Tracecroft AI visual identity
+
+The circuit-inspired **T** mark represents branching service traces converging on verified evidence. The new near-black, cyan and violet identity applies to the application shell and the standalone bilingual website; it does not alter investigation permissions, evaluation or remediation. The [website](website/) features all five original verified browser captures, the interactive self-contained Archify diagram, feature breakdowns, integrations and validation methodology.
+
+![Tracecroft AI circuit-inspired symbol](frontend/public/tracecroft-mark.svg)
 
 ## Independent multiple-root diagnosis
 

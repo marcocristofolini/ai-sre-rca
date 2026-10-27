@@ -1,0 +1,21 @@
+/* Tracecroft AI design system - presentation only; deterministic RCA unchanged. */
+:root { --bg:#080C16;--panel:#101729;--panel-2:#131D30;--border:#243148;--text:#F2F6FC;--muted:#A0ADC4;--accent:#40DDCF;--warn:#F3C876;--danger:#FF7E93;--trace-cyan:#3AE4D6;--trace-purple:#A18DFF }
+html,body { font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+body { background-color:var(--bg);background-image:radial-gradient(ellipse 60% 40% at 15% 0%,rgba(72,97,217,.13),transparent 72%),radial-gradient(ellipse 45% 45% at 85% 15%,rgba(44,224,198,.075),transparent 75%); }
+.topbar { min-height:68px;height:auto;padding:10px 0;border-bottom:1px solid rgba(142,160,195,.12);gap:16px }
+.brand { font-size:15px;font-weight:750;letter-spacing:-.04em;color:#F4F8FF;text-decoration:none }
+.brand .brandMark { display:grid;place-items:center;width:40px;height:40px;padding:6px;border:1px solid rgba(96,215,225,.32);border-radius:12px;background:linear-gradient(145deg,rgba(54,222,211,.10),rgba(146,118,242,.14));box-shadow:0 4px 20px rgba(43,208,213,.07) }
+.brandMark img {width:100%;height:100%;display:block}
+.brand .brandNameAI {color:#A18DFF;font-weight:650;letter-spacing:-.035em}
+.panel,.diagnosisSection { background:linear-gradient(180deg,rgba(19,27,45,.98),rgba(11,17,29,.98));border-color:rgba(149,166,202,.16);border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.14) }
+.demoLink { color:#B5C1D4;border-radius:9px;transition:background .2s,border-color .2s,color .2s }
+.demoLink:hover,.demoLink:focus-visible {background:rgba(82,198,229,.09);color:#F4FBFF;border-color:rgba(76,226,220,.36)}
+:where(a,button,input,select,summary):focus-visible {outline:2px solid #59E6DA;outline-offset:3px}
+.root,.diagnosisFinal.confirmed {border-left:3px solid #41DBCE}
+.hypothesis.confirmed {border-left-color:#45DDCE}
+.kind,.symbol,.timeline time {color:#65DDD9}
+.statusBadge {border-color:rgba(56,221,205,.35);background:rgba(42,224,205,.09);color:#54E5D8}
+.linkedEvidence {border-color:rgba(109,183,241,.2)}
+.linkedEvidence a,.diagnosis a:not(.brand) {text-underline-offset:3px}
+@media(max-width:768px){.topbar{align-items:flex-start;flex-wrap:wrap}.topActions{flex-wrap:wrap}.brand{font-size:14px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}

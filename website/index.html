@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tracecroft AI | Follow the evidence. Find the cause.</title>
+<meta name="description" content="Tracecroft AI is an evidence-first open-source incident investigation platform for Kubernetes and distributed systems. Deterministic multi-root RCA, Copilot, traces, metrics and logs.">
+<meta name="theme-color" content="#070C17">
+<meta property="og:type" content="website"><meta property="og:title" content="Tracecroft AI | Evidence-first root cause investigation"><meta property="og:description" content="Investigate with evidence, not guesses. Tracecroft AI combines Kubernetes, Prometheus, Loki, Tempo and deterministic multi-root analysis."><meta property="og:image" content="https://tracecroft-ai.marcocristofolini.dev/assets/app-multicausal-kind-running.png">
+<meta property="og:url" content="https://tracecroft-ai.marcocristofolini.dev/">
+<link rel="canonical" href="https://tracecroft-ai.marcocristofolini.dev/"><link rel="icon" type="image/svg+xml" href="./favicon.svg"><link rel="stylesheet" href="./site.css">
+</head>
+<body>
+<a href="#main" style="position:absolute;top:-90px;left:16px;z-index:100;background:#3ee4d7;color:#001a21;padding:10px" onfocus="this.style.top='8px'" onblur="this.style.top='-90px'">Skip to content</a>
+<header>
+<div class="shell nav">
+<a href="#top" class="logo" aria-label="Tracecroft AI home"><img src="./assets/tracecroft-mark.svg" alt="" width="45" height="45"><span>tracecroft <small>AI</small></span></a>
+<nav class="navlinks" aria-label="Primary navigation">
+<a href="#platform" data-i18n="navPlatform">Platform</a><a href="#how" data-i18n="navHow">How it works</a><a href="#proof" data-i18n="navProof">Validation</a><a href="#screens" data-i18n="navScreens">Screenshots</a><a href="#architecture" data-i18n="navArch">Architecture</a>
+</nav>
+<div class="nav-right"><div class="lang" aria-label="Language"><button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="pt" aria-pressed="false">PT</button></div><a class="button sm nav-cta" href="https://github.com/marcocristofolini/ai-sre-rca" rel="noopener" target="_blank"><span data-i18n="navCode">Source code</span><span class="arrow">↗</span></a></div>
+</div>
+</header>
+<main id="main">
+<section class="hero" id="top">
+<div class="shell hero-grid">
+<div>
+<div class="pill"><span class="status-dot"></span><span data-i18n="heroPill">OPEN SOURCE • ENGINEERING PREVIEW</span></div>
+<h1><span data-i18n="heroA">Follow the evidence.</span><br><span class="gradient-text" data-i18n="heroB">Find the cause.</span></h1>
+<p class="hero-copy" data-i18n="heroCopy">When services fail, fragmented dashboards are only part of the story. Tracecroft AI connects Kubernetes state, metrics, logs and traces to produce auditable, evidence-backed root cause investigations.</p>
+<div class="hero-actions"><a class="button" href="#screens"><span data-i18n="heroView">Explore the product</span><span class="arrow">↗</span></a><a class="button secondary" href="#architecture"><span data-i18n="heroArch">View architecture</span><span class="arrow">↘</span></a></div>
+<div class="hero-note"><span data-i18n="heroRule1">Read-only investigation</span><span data-i18n="heroRule2">Verified source evidence</span><span data-i18n="heroRule3">Human-controlled remediation</span></div>
+</div>
+<div class="visual-wrap"><div class="glow"></div><div class="terminal" aria-label="Illustrative summary of a controlled multi-causal investigation">
+<div class="terminal-top"><i class="dot"></i><i class="dot"></i><i class="dot"></i><b>tracecroft / investigation #l002</b></div>
+<div class="terminal-body">
+<p class="line"><span>cluster / namespace</span><strong>kind-validation / rca-validation</strong></p>
+<div class="terminal-heading" data-i18n="panelTitle">One incident. Two verified causes.</div>
+<div class="root-card"><span class="tag" data-i18n="panelConfirm">EVIDENCE CONFIRMED · CAUSE 01</span><strong>container-oom</strong><p data-i18n="panelCause1">Kubernetes confirms container termination by the OOM killer. Root established from live Pod evidence.</p></div>
+<div class="trace-row"><i class="trace-point cyan"></i><strong>trace-causal-propagation</strong><span>cause 02</span></div>
+<div class="trace-row"><i class="trace-point purple"></i><span data-i18n="panelTrace">Repeated trace ancestry</span><span>Tempo</span></div>
+<div class="trace-row"><i class="trace-point"></i><span data-i18n="panelIntegrity">Evidence integrity</span><span>SHA-256 ✓</span></div>
+</div>
+<div class="terminal-bottom"><span data-i18n="panelFoot">Controlled Kind benchmark · not production</span><b>verified</b></div>
+</div></div>
+</div>
+</section>
+<div class="trust"><div class="shell trust-inner"><span data-i18n="toolsLabel">ENGINEERED FOR THE STACK YOU ALREADY OPERATE</span><div class="trust-tools"><span>Kubernetes</span><span>Prometheus</span><span>Loki</span><span>Tempo</span><span>PostgreSQL</span><span>Argo CD</span></div></div></div>
+<section class="section" id="platform"><div class="shell"><div class="section-top"><span class="eyebrow" data-i18n="platformEyebrow">The platform</span><h2 data-i18n="platformTitle">Evidence before conclusions.</h2><p data-i18n="platformLead">A full investigation workspace built around scoped sources, independent causal verification, and the discipline to say “inconclusive” when the evidence is not there.</p></div>
+<div class="feature-grid">
+<article class="feature"><div class="icon">⌘</div><h3 data-i18n="f1t">Kubernetes ownership intelligence</h3><p data-i18n="f1p">Explore Pods, Deployments, StatefulSets and ReplicaSets with UID-based ownership. Detect OOMKilled, scheduling, rollout and controller changes without guessing identity.</p><small>UID VERIFIED / READ ONLY</small></article>
+<article class="feature"><div class="icon">◈</div><h3 data-i18n="f2t">Independent multi-root RCA</h3><p data-i18n="f2p">Keep a backwards-compatible primary cause while reporting additional causes only when each has its own validated evidence and confirmed hypothesis.</p><small>CLASSIC / AGENTIC / COPILOT</small></article>
+<article class="feature"><div class="icon">⟢</div><h3 data-i18n="f3t">Distributed trace causality</h3><p data-i18n="f3p">Correlate repeatable trace ancestry with failed operations and dependency context. Temporal coincidence alone never becomes a root cause.</p><small>TEMPO / OTEL</small></article>
+<article class="feature"><div class="icon">▣</div><h3 data-i18n="f4t">Investigation Copilot</h3><p data-i18n="f4p">Select scope and time explicitly, confirm bounded jobs, watch specialist progress over SSE and ask for answers grounded in the persisted incident.</p><small>AUTHORIZATION FIRST</small></article>
+<article class="feature"><div class="icon">⊞</div><h3 data-i18n="f5t">Persistent awareness graph</h3><p data-i18n="f5p">Maintain an authoritative infrastructure map with service relationships, historical observations, changes and tombstones. Similar incidents provide context, not proof.</p><small>POSTGRESQL / PGVECTOR</small></article>
+<article class="feature"><div class="icon">⊙</div><h3 data-i18n="f6t">Stateful dependency analysis</h3><p data-i18n="f6p">Inspect PostgreSQL, Redis and Kafka signals using scoped telemetry and verified dependency identities. Recovery checks prevent stale causes from being promoted.</p><small>METRICS + LOGS + TRACES</small></article>
+</div></div></section>
+<section class="section" id="how" style="background:#0A101C;border-top:1px solid #1B2B41;border-bottom:1px solid #1B2B41"><div class="shell split"><div class="split-copy"><span class="eyebrow" data-i18n="howEyebrow">The investigation lifecycle</span><h2 data-i18n="howTitle">From incident signal to a defensible answer.</h2><p data-i18n="howLead">Tracecroft separates evidence collection from causal authority. Neither a model response nor a specialist's suggestion can override deterministic verification.</p><div class="callout"><span>◉</span><span data-i18n="howCta">No arbitrary shell execution in the investigation path. Remediation is isolated and requires explicit approval.</span></div></div>
+<div class="steps">
+<div class="step"><div class="n">01</div><div><strong data-i18n="s1t">Authorize the scope</strong><p data-i18n="s1p">Choose an allowed cluster, workload and bounded time window.</p></div></div>
+<div class="step"><div class="n">02</div><div><strong data-i18n="s2t">Collect live evidence</strong><p data-i18n="s2p">Read Kubernetes, Prometheus, Loki, Tempo and selected dependency sources.</p></div></div>
+<div class="step"><div class="n">03</div><div><strong data-i18n="s3t">Test independent hypotheses</strong><p data-i18n="s3p">Check provenance, hash integrity, ownership and repeated causal signals.</p></div></div>
+<div class="step"><div class="n">04</div><div><strong data-i18n="s4t">Persist a bounded verdict</strong><p data-i18n="s4p">Store primary and additional supported roots with linked evidence and audit context.</p></div></div>
+<div class="step"><div class="n">05</div><div><strong data-i18n="s5t">Review before acting</strong><p data-i18n="s5p">Inspect findings in the workspace; remediation remains separately gated.</p></div></div>
+</div></div></section>
+<section class="section" id="proof"><div class="shell"><div class="section-top"><span class="eyebrow" data-i18n="proofEye">Validation, not vanity metrics</span><h2 data-i18n="proofTitle">Tested against the evidence.</h2><p data-i18n="proofLead">Numbers below describe local, controlled regression and adversarial experiments on October 22, 2026. They are not production accuracy, commercial SLAs, or independent certifications.</p></div>
+<div class="metrics">
+<div class="metric"><div class="value">306<em>/306</em></div><p data-i18n="m1">Backend + PostgreSQL tests passed</p><small>DOCKER / LOCAL</small></div>
+<div class="metric"><div class="value">9<em>/9</em></div><p data-i18n="m2">Live benchmark evidence checks</p><small>KIND / SHA-256</small></div>
+<div class="metric"><div class="value">0</div><p data-i18n="m3">False confirmations in measured cases</p><small>BLINDED BENCHMARK</small></div>
+<div class="metric"><div class="value">3<em>/3</em></div><p data-i18n="m4">Paths reporting both l002 causes</p><small>CLASSIC / AGENTIC / COPILOT</small></div>
+</div><div class="proof-note" data-i18n="proofNote">The benchmark uses 8 synthetic scenarios and 3 live cases with frozen oracle definitions. Kafka live failure/recovery, broader production-like cases and full release gates remain separate work. Model calls were disabled.</div><div class="architecture-links"><a href="https://github.com/marcocristofolini/ai-sre-rca/blob/main/docs/rca-benchmark-v23-multicausal-results.md" rel="noopener" target="_blank" data-i18n="readReport">Read the validation report ↗</a><a href="https://github.com/marcocristofolini/ai-sre-rca/blob/main/validation/benchmark_v2.py" rel="noopener" target="_blank" data-i18n="readCode">Inspect benchmark code ↗</a></div>
+</div></section>
+<section class="section" id="screens" style="background:#0A101C;border-top:1px solid #1B2B41"><div class="shell"><div class="section-top"><span class="eyebrow" data-i18n="screensEye">The actual interface</span><h2 data-i18n="screensTitle">Built for the engineer on call.</h2><p data-i18n="screensLead">These are genuine browser screenshots of Tracecroft's predecessor engineering build. Four screens use local demo data. The multi-causal screen replays a verified result captured during a disposable Kind run.</p></div>
+<div class="gallery">
+<figure class="shot wide"><button type="button" data-image="./assets/app-multicausal-kind-running.png" aria-label="Expand multi-causal investigation"><img src="./assets/app-multicausal-kind-running.png" loading="lazy" width="1440" height="1160" alt="Controlled Kubernetes OOM and trace-causal-propagation diagnosis displayed with two independent causes"></button><figcaption><strong data-i18n="img1">Multi-root RCA · controlled Kind result</strong><span data-i18n="imgOpen">Expand image ↗</span></figcaption></figure>
+<figure class="shot"><button type="button" data-image="./assets/app-investigation-running.png" aria-label="Expand Kubernetes investigation"><img src="./assets/app-investigation-running.png" loading="lazy" width="1440" height="1000" alt="Kubernetes incident investigation workspace"></button><figcaption><strong data-i18n="img2">Kubernetes RCA</strong><span data-i18n="imgOpen">Expand image ↗</span></figcaption></figure>
+<figure class="shot"><button type="button" data-image="./assets/app-trace-running.png" aria-label="Expand trace investigation"><img src="./assets/app-trace-running.png" loading="lazy" width="1440" height="1000" alt="Distributed trace dependency investigation"></button><figcaption><strong data-i18n="img3">Distributed trace causality</strong><span data-i18n="imgOpen">Expand image ↗</span></figcaption></figure>
+<figure class="shot"><button type="button" data-image="./assets/app-dependencies-running.png" aria-label="Expand stateful investigation"><img src="./assets/app-dependencies-running.png" loading="lazy" width="1440" height="1000" alt="PostgreSQL stateful dependency diagnosis"></button><figcaption><strong data-i18n="img4">Stateful dependencies</strong><span data-i18n="imgOpen">Expand image ↗</span></figcaption></figure>
+<figure class="shot"><button type="button" data-image="./assets/app-awareness-running.png" aria-label="Expand awareness graph"><img src="./assets/app-awareness-running.png" loading="lazy" width="1440" height="1000" alt="Infrastructure awareness and topology graph"></button><figcaption><strong data-i18n="img5">Infrastructure awareness graph</strong><span data-i18n="imgOpen">Expand image ↗</span></figcaption></figure>
+</div></div></section>
+<section class="section" id="architecture"><div class="shell"><div class="section-top"><span class="eyebrow" data-i18n="archEye">Architecture, exposed</span><h2 data-i18n="archTitle">Explore the real investigation architecture.</h2><p data-i18n="archLead">This is the original Archify 3.1.0 interactive architecture diagram, preserved as HTML. It maps the classic and opt-in agentic paths through live evidence, deterministic evaluation and persistence.</p></div>
+<div class="architecture-frame"><iframe src="./architecture/ai-sre-rca.html" title="Interactive Tracecroft AI / AI SRE RCA investigation architecture by Archify" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
+<div class="architecture-links"><a href="./architecture/ai-sre-rca.html" target="_blank" rel="noopener" data-i18n="openArch">Open interactive full-screen architecture ↗</a><a href="https://github.com/marcocristofolini/ai-sre-rca/blob/main/docs/architecture.md" target="_blank" rel="noopener" data-i18n="openDocs">Read complete architecture documentation ↗</a></div>
+<p class="small-note" data-i18n="archNote">The diagram focuses on investigation; remediation execution and release validation are intentionally outside its scope. Source links refer to a fixed committed revision.</p>
+</div></section>
+<section class="section" id="integrations" style="background:#0A101C;border-top:1px solid #1B2B41"><div class="shell"><div class="section-top"><span class="eyebrow" data-i18n="intEye">Built around observable systems</span><h2 data-i18n="intTitle">One investigation, many evidence sources.</h2><p data-i18n="intLead">Capabilities depend on configured adapters and explicit telemetry identity mappings; listing an integration is not a claim of universal out-of-box production support.</p></div>
+<div class="integration-list"><span>Kubernetes / EKS / AKS</span><span>Prometheus</span><span>Grafana Loki</span><span>Grafana Tempo</span><span>OpenTelemetry</span><span>PostgreSQL / pgvector</span><span>Redis</span><span>Apache Kafka</span><span>Argo CD</span><span>GitHub</span><span>Alertmanager</span><span>HPA / KEDA / Karpenter</span><span>Slack / PagerDuty</span></div>
+<div class="security-grid" style="margin-top:45px">
+<div class="security"><h3 data-i18n="sec1">Scope by design</h3><p data-i18n="secp1">Tenant, cluster, workload and bounded time window are checked before live reads. Inventory is resolved by UID rather than matching names.</p></div>
+<div class="security"><h3 data-i18n="sec2">Evidence integrity</h3><p data-i18n="secp2">Correlate independent sources and preserve SHA-256 evidence references. Unverified claims do not become deterministic root causes.</p></div>
+<div class="security"><h3 data-i18n="sec3">Human approval</h3><p data-i18n="secp3">Investigation uses read-only adapters. Remediation is a separate, disabled-by-default workflow with explicit approval and audit controls.</p></div>
+</div></div></section>
+<section class="section" id="faq"><div class="shell"><div class="section-top"><span class="eyebrow">FAQ</span><h2 data-i18n="faqTitle">Questions before you integrate.</h2></div><div class="faq">
+<details><summary data-i18n="q1">Is Tracecroft AI production-ready?</summary><p data-i18n="a1">This is an open-source engineering release candidate. Controlled local tests have passed, but that is not equivalent to audited production readiness, broad accuracy measurement or a service-level guarantee.</p></details>
+<details><summary data-i18n="q2">Does it autonomously change my infrastructure?</summary><p data-i18n="a2">No. Investigation adapters are read-only. Remediation is isolated, disabled by default and requires policy checks, review and approval.</p></details>
+<details><summary data-i18n="q3">What makes a second root cause valid?</summary><p data-i18n="a3">It must have its own confirmed deterministic playbook hypothesis, integrity-verified evidence and independent causal verification. It is not inferred from a coincident alert or generated text.</p></details>
+<details><summary data-i18n="q4">Can I run it without an LLM?</summary><p data-i18n="a4">Yes. Deterministic evaluation and Copilot fallbacks work without model execution. Optional model-assisted planning is experimental and separately gated.</p></details>
+<details><summary data-i18n="q5">How do I start locally?</summary><p data-i18n="a5">Clone the public repository, review the .env example, then run Docker Compose. Demo mode is not a hardened production installation. Consult the operations and security documentation before attaching real clusters.</p></details>
+</div></div></section>
+<section class="cta-section"><div class="shell"><div class="cta"><span class="eyebrow" data-i18n="ctaEye">Built for reliability engineers</span><h2 data-i18n="ctaTitle">Don't guess. Trace it.</h2><p data-i18n="ctaCopy">Inspect the code, follow the architecture, and reproduce the evidence on your own environment.</p><a class="button" href="https://github.com/marcocristofolini/ai-sre-rca" rel="noopener" target="_blank" data-i18n="ctaButton">Explore Tracecroft AI on GitHub ↗</a></div></div></section>
+</main>
+<footer class="footer"><div class="shell"><div class="footer-grid"><div><a href="#top" class="logo"><img src="./assets/tracecroft-mark.svg" alt="" width="44" height="44"><span>tracecroft <small>AI</small></span></a><p data-i18n="footerTag">Evidence-first open-source investigation for SRE and Platform Engineering.</p></div><div class="footer-links"><a href="https://github.com/marcocristofolini/ai-sre-rca" rel="noopener" target="_blank">GitHub</a><a href="https://github.com/marcocristofolini/ai-sre-rca/blob/main/README.md" target="_blank" rel="noopener" data-i18n="footerDocs">Documentation</a><a href="#architecture" data-i18n="navArch">Architecture</a><a href="https://marcocristofolini.dev" target="_blank" rel="noopener">Marco Cristofolini</a></div></div><div class="legal"><span>© <span id="year">2026</span> Tracecroft AI · <span data-i18n="footerLegal">Independent open-source project. MIT License.</span></span><span data-i18n="footerNotice">No production SLA, SOC 2 certification or commercial affiliation with Sherlocks AI is claimed.</span></div></div></footer>
+<dialog class="lightbox" id="lightbox" aria-label="Expanded application screenshot"><button type="button" id="closeLightbox" aria-label="Close enlarged image">✕ Close</button><img id="lightboxImage" src="" alt=""></dialog>
+<script src="./site.js" defer></script>
+</body></html>

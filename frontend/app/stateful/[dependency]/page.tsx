@@ -23,7 +23,7 @@ export default async function StatefulDependencyDemoPage({
       <main>
         <section className="panel errorPanel">
           <div className="sectionLabel">STATEFUL DEMO UNAVAILABLE</div>
-          <h1>AI SRE RCA</h1>
+          <h1>Tracecroft AI</h1>
           <p>Start the FastAPI service on port 8080, then reload this page.</p>
           <pre>{String(error)}</pre>
         </section>

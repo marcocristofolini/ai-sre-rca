@@ -1,8 +1,13 @@
-# AI SRE RCA
+# Tracecroft AI
 
-**Investigação de Kubernetes e serviços distribuídos baseada em evidências.** O AI SRE RCA reúne coleta delimitada de telemetria, investigações persistentes e assistência conversacional com avaliação determinística de causa raiz.
+**Investigação de Kubernetes e serviços distribuídos baseada em evidências.** O Tracecroft AI (evolução do projeto AI SRE RCA) reúne coleta delimitada de telemetria, investigações persistentes e assistência conversacional com avaliação determinística de causa raiz.
 
 **Versão: `0.8.0-rc.3`** ([VERSION](VERSION)); candidata a lançamento em desenvolvimento. [English](README.md).
+
+
+[**Conheça o website do Tracecroft AI**](https://tracecroft-ai.marcocristofolini.dev) · [Código do website](website/) · [Arquitetura Archify interativa](docs/archify/ai-sre-rca.html)
+
+> **Marca e repositório:** Tracecroft AI é o nome do produto. O repositório continua `ai-sre-rca` para preservar URLs, histórico, referências técnicas e integrações. Benchmarks e capturas anteriores mantêm sua proveniência original.
 
 ## Problemas que resolve
 
@@ -21,6 +26,12 @@ Responder a um incidente exige cruzar estado do Kubernetes, métricas, logs, tra
 | Workspace | Progresso dos especialistas, evidências, hipóteses, cronologia, causas primária e secundárias verificadas com links para evidências e perguntas sobre as investigações concluídas. |
 
 Os modos de worker ainda são identificados como experimentais (leases em PostgreSQL ou memória volátil no processo). A execução agentic está implementada, mas exige ativação (`AGENTIC_EXECUTION_ENABLED=true`). O planejamento opcional assistido por modelo é experimental e possui controle separado; o servidor recompila apenas tarefas permitidas.
+
+## Nova identidade visual Tracecroft AI
+
+O símbolo **T** inspirado em circuitos representa traces de serviços convergindo para evidências verificadas. A identidade grafite, ciano e violeta integra a interface e o website bilíngue independente, sem alterar permissões de investigação, vereditos determinísticos ou remediação. O [website](website/) reúne as cinco capturas reais verificadas, o desenho Archify autossuficiente, funcionalidades, integrações e metodologia de validação.
+
+![Símbolo Tracecroft AI inspirado em circuitos](frontend/public/tracecroft-mark.svg)
 
 ## Diagnóstico de múltiplas causas independentes
 
