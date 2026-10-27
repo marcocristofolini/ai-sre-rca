@@ -5,7 +5,7 @@
 **Versão: `0.8.0-rc.3`** ([VERSION](VERSION)); candidata a lançamento em desenvolvimento. [English](README.md).
 
 
-[**Conheça o website do Tracecroft AI**](https://tracecroft-ai.marcocristofolini.dev) · [Código do website](website/) · [Arquitetura Archify interativa](docs/archify/ai-sre-rca.html)
+[**Website Tracecroft AI (publicação pendente)**](https://tracecroft-ai.marcocristofolini.dev) · [Código e guia de publicação](website/README.md) · [Arquitetura Archify interativa](docs/archify/ai-sre-rca.html)
 
 > **Marca e repositório:** Tracecroft AI é o nome do produto. O repositório continua `ai-sre-rca` para preservar URLs, histórico, referências técnicas e integrações. Benchmarks e capturas anteriores mantêm sua proveniência original.
 
@@ -28,6 +28,8 @@ Responder a um incidente exige cruzar estado do Kubernetes, métricas, logs, tra
 Os modos de worker ainda são identificados como experimentais (leases em PostgreSQL ou memória volátil no processo). A execução agentic está implementada, mas exige ativação (`AGENTIC_EXECUTION_ENABLED=true`). O planejamento opcional assistido por modelo é experimental e possui controle separado; o servidor recompila apenas tarefas permitidas.
 
 ## Nova identidade visual Tracecroft AI
+
+[Guia da marca, cores e aplicações](docs/tracecroft-brand.md) · [Código do website](website/) · [Capturas verificadas](#imagens-da-aplicação-em-funcionamento--demonstração-local)
 
 O símbolo **T** inspirado em circuitos representa traces de serviços convergindo para evidências verificadas. A identidade grafite, ciano e violeta integra a interface e o website bilíngue independente, sem alterar permissões de investigação, vereditos determinísticos ou remediação. O [website](website/) reúne as cinco capturas reais verificadas, o desenho Archify autossuficiente, funcionalidades, integrações e metodologia de validação.
 
