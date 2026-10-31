@@ -16,7 +16,8 @@
 - [x] GitHub-first real-environment gate passes the PostgreSQL stateful/recovery path end-to-end
 - [x] Redis + redis_exporter failure/recovery implementation with bounded validation keys and real OOM write rejection
 - [x] GitHub-first real-environment gate passes the Redis failure/recovery path end-to-end
-- [ ] real Kafka + kafka_exporter failure/recovery validation
+- [x] Kafka/KRaft exporter fixture and fail-closed signal/recovery contract tests (offline only; [runbook](kafka-exporter-preflight.md))
+- [ ] real Kafka + kafka_exporter failure/recovery validation, including Prometheus/Tempo/Loki and Classic/Agentic causal parity
 - [x] v0.8.0-rc.3 runtime, frontend and Helm version metadata aligned
 - [x] validated main builds can publish immutable GHCR test images
 - [x] test-environment Helm values and GitHub deployment/smoke workflow
