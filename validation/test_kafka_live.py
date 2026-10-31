@@ -90,7 +90,7 @@ class KafkaExportContractTests(unittest.TestCase):
         self.assertIsNone(parse_exporter(duplicate).lag)
 
     def test_cleanup_after_partially_failed_apply(self):
-        good_nodes = '{"items": [{"metadata": {"labels": {"kind.x-k8s.io/cluster": "test"}}}]}'
+        good_nodes = '{"items": [{"metadata": {"name": "test-control-plane"}, "spec": {"providerID": "kind://docker/test/test-control-plane"}}]}'
         with patch("validation.kafka_live.kubectl") as command, patch(
             "validation.kafka_live.subprocess.run"
         ) as process:

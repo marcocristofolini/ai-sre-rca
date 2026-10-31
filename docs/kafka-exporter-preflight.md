@@ -1,4 +1,4 @@
-# Kafka validation: real exporter preflight (in progress)
+# Kafka validation: real exporter preflight (passed in disposable Kind)
 
 This is a **first, opt-in part** of the Kafka failure/recovery validation
 needed for Tracecroft AI v0.8.0-rc.3. It does **not** certify the RCA engine or
@@ -20,8 +20,8 @@ validation scenarios remain unchanged.
   leadership healthy.
 - Missing, duplicated, NaN or ambiguous metric samples are **unknown**, not
   zero. Errors fail closed rather than being reported as successful recovery.
-- A caller must select a `kind-*` context whose nodes have the correct Kind
-  cluster labels. Existing named fixtures, including services, are refused.
+- A caller must select a `kind-*` context whose nodes have matching Kind
+  `kind://docker/<cluster>/<node>` provider IDs. Existing named fixtures, including services, are refused.
   The runner cleans up only the resources it owns, even after partial apply.
   No production Kafka, non-Kind context or existing application is targeted.
 - Pinned OCI manifest index digests (Docker Hub API):
@@ -46,12 +46,41 @@ python3 -m py_compile validation/kafka_live.py
 These checks are **not live Kafka evidence**. Run them inside the existing
 backend test image when Docker is available.
 
+## Verified real Kafka signal observations — October 31, 2026
+
+The opt-in runner was executed in the disposable two-node `kind-tracecroft-kafka`
+cluster, using the pinned Kafka 4.1.0 and exporter 1.10.0 images, with its own
+real topic, group and consumer. The initial run **failed** because the broker
+readiness and exporter startup probes were too aggressive for the Java process,
+and the Python subprocess timeout was shorter than the Kubernetes rollout.
+Those issues were fixed and the runner re-executed to completion (**PASS**,
+exit code 0).
+
+| Observation | Failure #1 | Failure #2 | Recovery #1 | Recovery #2 |
+| --- | ---: | ---: | ---: | ---: |
+| Kafka brokers | 1 | 1 | 1 | 1 |
+| Consumer group lag (messages) | 200 | 200 | 0 | 0 |
+| Consumer group members | 0 | 0 | 1 | 1 |
+| Under-replicated partitions | 0 | 0 | 0 | 0 |
+| Offline partitions | 0 | 0 | 0 | 0 |
+
+The controlled telemetry report is preserved in
+[the Kind JSON record](validation/kafka-exporter-kind-2026-10-31.json).
+It contains only the isolated test context, timestamps and exporter measurements.
+The snapshots were collected at
+`08:22:44Z`, `08:22:51Z`, `08:23:01Z`, and `08:23:08Z`
+on October 31, 2026. They confirm that observed consumer lag appeared
+during the stopped-consumer fault and was drained after the consumer returned.
+This **does not** validate the complete Classic/Agentic Kafka RCA, real Tempo/Loki
+correlation or the final release gate. No runtime model tokens or GitHub Actions
+were used.
+
 ## Running against an isolated Kind cluster
 
 Requires Docker Desktop WSL integration, a working `docker`, `kind`,
-`kubectl`, and the existing `ai-sre-rca-test` validation image. The connected
-WSL session currently lacks Docker integration, so **no live broker test has
-been executed or claimed**.
+`kubectl`, and the existing `ai-sre-rca-test` validation image. Docker Desktop
+was restarted for the October 31 live run, and the Kafka signal preflight
+passed. The full Kafka RCA validation remains pending.
 
 Create an independently named disposable cluster and the validation
 namespace, using the repository's pinned node image:

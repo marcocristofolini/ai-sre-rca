@@ -100,7 +100,9 @@ def assert_signal(snapshot: KafkaSnapshot, *, stage: str, minimum_lag: int = 128
 
 def kubectl(context: str, *args: str, stdin: str | None = None) -> str:
     cmd = ["kubectl", "--context", context, "-n", NAMESPACE, *args]
-    result = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=120)
+    # Kubernetes rollout may legitimately wait for the configured 240s.
+    timeout = 270 if args and args[0] == "rollout" else 120
+    result = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         # Do not echo data from a live dependency or leak incidental secrets.
         raise RuntimeError(f"kubectl {args[0]} failed ({result.returncode}): {result.stderr[-250:]}")
@@ -146,15 +148,25 @@ def wait_for_stage(stage: str, *, deadline_seconds: int = 120) -> list[KafkaSnap
 def run_live(context: str) -> dict:
     if not re.fullmatch(r"kind-[a-z0-9-]{1,48}", context):
         raise ValueError("Kafka preflight restricted to explicit disposable Kind contexts")
-    # A context name alone is not proof that it points to Kind. Require the
-    # cluster/node label provided by Kind; refuse unknown or mixed nodes.
+    # A context name alone is not proof of a Kind cluster. Match every node's
+    # providerID to the cluster and exact Kind node name; Kind v1.37 does not
+    # add a kind.x-k8s.io/cluster label to its nodes.
     nodes = json.loads(kubectl(context, "get", "nodes", "-o", "json"))
     observed = nodes.get("items") or []
-    expected_name = context.removeprefix("kind-")
-    if not observed or any(
-        node.get("metadata", {}).get("labels", {}).get("kind.x-k8s.io/cluster")
-        != expected_name for node in observed
-    ):
+    name = context.removeprefix("kind-")
+    node_pattern = re.compile(
+        rf"kind://docker/{re.escape(name)}/{re.escape(name)}-(?:control-plane|worker[0-9]*)"
+    )
+    if (not observed or
+            not any(node.get("metadata", {}).get("name") == f"{name}-control-plane"
+                    for node in observed) or
+            any(
+                not node_pattern.fullmatch(node.get("spec", {}).get("providerID") or "")
+                or not (node.get("spec", {}).get("providerID") or "").endswith(
+                    "/" + (node.get("metadata", {}).get("name") or "")
+                )
+                for node in observed
+            )):
         raise RuntimeError("Refusing non-Kind or ambiguous cluster target")
     # Refuse to mutate existing fixtures in a shared cluster.
     for resource in ("deployment/kafka", "deployment/kafka-exporter",
