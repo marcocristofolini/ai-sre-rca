@@ -1,0 +1,80 @@
+{
+  "context": "kind-tracecroft-kafka-prom",
+  "failure": [
+    {
+      "brokers": 1.0,
+      "lag": 200.0,
+      "members": 0.0,
+      "observed_at": "2026-10-31T09:03:52.580887+00:00",
+      "offline_partitions": 0,
+      "under_replicated": 0.0
+    },
+    {
+      "brokers": 1.0,
+      "lag": 200.0,
+      "members": 0.0,
+      "observed_at": "2026-10-31T09:03:59.600710+00:00",
+      "offline_partitions": 0,
+      "under_replicated": 0.0
+    }
+  ],
+  "group": "checkout-workers",
+  "note": "Real exporter + Prometheus telemetry; Tempo/Loki and RCA parity not evaluated.",
+  "passed": true,
+  "prometheus_failure": [
+    {
+      "brokers": 1.0,
+      "lag": 200.0,
+      "members": 0.0,
+      "observed_at": "2026-10-31T09:03:59.641047+00:00",
+      "offline_partitions": 0.0,
+      "under_replicated": 0.0
+    },
+    {
+      "brokers": 1.0,
+      "lag": 200.0,
+      "members": 0.0,
+      "observed_at": "2026-10-31T09:04:06.687535+00:00",
+      "offline_partitions": 0.0,
+      "under_replicated": 0.0
+    }
+  ],
+  "prometheus_recovery": [
+    {
+      "brokers": 1.0,
+      "lag": 0.0,
+      "members": 1.0,
+      "observed_at": "2026-10-31T09:04:23.760349+00:00",
+      "offline_partitions": 0.0,
+      "under_replicated": 0.0
+    },
+    {
+      "brokers": 1.0,
+      "lag": 0.0,
+      "members": 1.0,
+      "observed_at": "2026-10-31T09:04:30.800485+00:00",
+      "offline_partitions": 0.0,
+      "under_replicated": 0.0
+    }
+  ],
+  "recovery": [
+    {
+      "brokers": 1.0,
+      "lag": 0.0,
+      "members": 1.0,
+      "observed_at": "2026-10-31T09:04:16.696937+00:00",
+      "offline_partitions": 0,
+      "under_replicated": 0.0
+    },
+    {
+      "brokers": 1.0,
+      "lag": 0.0,
+      "members": 1.0,
+      "observed_at": "2026-10-31T09:04:23.717170+00:00",
+      "offline_partitions": 0,
+      "under_replicated": 0.0
+    }
+  ],
+  "schema": "tracecroft.kafka-exporter-preflight.v2",
+  "topic": "orders-events"
+}

@@ -67,6 +67,12 @@ exit code 0).
 The controlled telemetry report is preserved in
 [the Kind JSON record](validation/kafka-exporter-kind-2026-10-31.json).
 It contains only the isolated test context, timestamps and exporter measurements.
+A second, isolated Kind run on October 31 completed **PASS** with Kafka
+and Prometheus. Both sources independently returned the expected values,
+with two consecutive samples during the failure and the recovery. The
+Prometheus series were required to be fresh, unique and explicitly scoped;
+missing, ambiguous, down or stale targets fail closed.
+
 The snapshots were collected at
 `08:22:44Z`, `08:22:51Z`, `08:23:01Z`, and `08:23:08Z`
 on October 31, 2026. They confirm that observed consumer lag appeared
@@ -104,9 +110,13 @@ kind delete cluster --name tracecroft-kafka
 
 ## Still required before checking off the Kafka roadmap item
 
-1. Scrape the Kafka exporter through the real Kind Prometheus service, with
-   correct `instance=kafka:9092` identity and verify the Kafka adapter's
-   scoped PromQL selects only this topic and group.
+1. **Done — Kafka exporter → Prometheus ingestion:** real Kind Prometheus
+   scraping every 2s with `instance=kafka:9092`, explicit topic/group
+   selectors, `up=1`, and ≤12s sample freshness. Direct exporter and
+   scoped PromQL each confirmed 200→0 lag and 0→1 members in two readings.
+   [Verified report](validation/kafka-exporter-prometheus-kind-2026-10-31.json),
+   schema `tracecroft.kafka-exporter-preflight.v2`. This proves ingestion,
+   not yet the complete production Kafka RCA adapter or causal verdict.
 2. Generate an **observed** failed and healthy application request, with
    fresh Loki logs and OpenTelemetry/Tempo traces containing the Kafka
    dependency identity; do not fabricate broker errors from test intent.

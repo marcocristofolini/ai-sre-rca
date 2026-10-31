@@ -12,6 +12,8 @@ import math
 import re
 import subprocess
 import time
+import urllib.parse
+from typing import Callable
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -22,7 +24,9 @@ NAMESPACE = "rca-validation"
 TOPIC = "orders-events"
 GROUP = "checkout-workers"
 PORT = 19308
+PROM_PORT = 19309
 MANIFEST = Path(__file__).with_name("manifests") / "kafka.yaml"
+PROM_MANIFEST = Path(__file__).with_name("manifests") / "kafka-prometheus.yaml"
 METRIC = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+([^\s]+)(?:\s+.*)?$')
 LABEL = re.compile(r'(?:^|,)\s*([A-Za-z_][A-Za-z0-9_]*)="((?:\\.|[^"\\])*)"')
 
@@ -127,12 +131,66 @@ def _read_exporter() -> KafkaSnapshot:
         return parse_exporter(response.read().decode("utf-8"))
 
 
-def wait_for_stage(stage: str, *, deadline_seconds: int = 120) -> list[KafkaSnapshot]:
+def _parse_prometheus_scalar(payload: dict, *, now: float) -> float | None:
+    if payload.get("status") != "success":
+        return None
+    results = payload.get("data", {}).get("result")
+    if not isinstance(results, list) or len(results) != 1:
+        return None
+    vector = results[0].get("value") if isinstance(results[0], dict) else None
+    if not isinstance(vector, list) or len(vector) != 2:
+        return None
+    try:
+        timestamp, value = float(vector[0]), float(vector[1])
+    except (ValueError, TypeError):
+        return None
+    # Prometheus range lookback may otherwise return a stale pre-recovery value.
+    if not (math.isfinite(timestamp) and math.isfinite(value)):
+        return None
+    if timestamp > now + 3 or now - timestamp > 12:
+        return None
+    return value
+
+
+def _prometheus_scalar(query: str) -> float | None:
+    url = (f"http://127.0.0.1:{PROM_PORT}/api/v1/query?"
+           + urllib.parse.urlencode({"query": query}))
+    with urllib.request.urlopen(url, timeout=5) as response:
+        if response.status != 200:
+            return None
+        payload = json.load(response)
+    return _parse_prometheus_scalar(payload, now=time.time())
+
+
+def _read_prometheus() -> KafkaSnapshot:
+    # Every identity is fixed to this validation service and exporter target.
+    selector = 'job="kafka-exporter",instance="kafka:9092"'
+    topic = 'topic="orders-events"'
+    group = 'consumergroup="checkout-workers"'
+    up = _prometheus_scalar(f"up{{{selector}}}")
+    if up != 1:
+        raise ValueError("Kafka Prometheus target missing or down")
+    result = {
+        "brokers": _prometheus_scalar(f"kafka_brokers{{{selector}}}"),
+        "lag": _prometheus_scalar(
+            f"sum(kafka_consumergroup_lag{{{selector},{topic},{group}}})"),
+        "members": _prometheus_scalar(
+            f"min(kafka_consumergroup_members{{{selector},{group}}})"),
+        "under_replicated": _prometheus_scalar(
+            f"sum(kafka_topic_partition_under_replicated_partition{{{selector},{topic}}})"),
+        "offline_partitions": _prometheus_scalar(
+            f"sum(kafka_topic_partition_leader{{{selector},{topic}}} < bool 0)"),
+    }
+    return KafkaSnapshot(**result, observed_at=datetime.now(timezone.utc).isoformat())
+
+
+def wait_for_stage(stage: str, *, deadline_seconds: int = 120,
+                   observer: Callable[[], KafkaSnapshot] = _read_exporter) -> list[KafkaSnapshot]:
     deadline = time.monotonic() + deadline_seconds
     good: list[KafkaSnapshot] = []
     while time.monotonic() < deadline:
         try:
-            item = _read_exporter()
+            item = observer()
             assert_signal(item, stage=stage)
             good.append(item)
             if len(good) == 2:
@@ -171,7 +229,10 @@ def run_live(context: str) -> dict:
     # Refuse to mutate existing fixtures in a shared cluster.
     for resource in ("deployment/kafka", "deployment/kafka-exporter",
                      "deployment/kafka-validation-consumer",
-                     "service/kafka", "service/kafka-exporter"):
+                     "deployment/kafka-validation-prometheus",
+                     "configmap/kafka-validation-prometheus-config",
+                     "service/kafka", "service/kafka-exporter",
+                     "service/kafka-validation-prometheus"):
         found = subprocess.run(["kubectl", "--context", context, "-n", NAMESPACE,
                                 "get", resource, "-o", "name"],
                                capture_output=True, text=True, timeout=15)
@@ -179,14 +240,15 @@ def run_live(context: str) -> dict:
             raise RuntimeError(f"Existing {resource} refused: use a new Kind cluster")
         if found.returncode != 1 or "NotFound" not in found.stderr:
             raise RuntimeError(f"Cannot prove {resource} absent; refusing to deploy")
-    forward: subprocess.Popen | None = None
+    forwards: list[subprocess.Popen] = []
     owned = False
     try:
         # Even an unsuccessful apply can create a subset of the manifests.
         # Set ownership before writing so finally can remove those resources.
         owned = True
         kubectl(context, "apply", "-f", str(MANIFEST))
-        for deployment in ("kafka", "kafka-exporter"):
+        kubectl(context, "apply", "-f", str(PROM_MANIFEST))
+        for deployment in ("kafka", "kafka-exporter", "kafka-validation-prometheus"):
             kubectl(context, "rollout", "status", f"deployment/{deployment}",
                     "--timeout=240s")
         _broker(context, "kafka-topics.sh", "--bootstrap-server", "localhost:9092",
@@ -200,32 +262,44 @@ def run_live(context: str) -> dict:
                          "--from-beginning", "--max-messages", "1", "--timeout-ms", "30000")
         if "validation-seed" not in seeded:
             raise RuntimeError("Kafka seed was not consumed by the intended group")
-        forward = subprocess.Popen(["kubectl", "--context", context, "-n", NAMESPACE,
-                                    "port-forward", "service/kafka-exporter", f"{PORT}:9308"],
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for service, local_port, remote_port in (
+            ("kafka-exporter", PORT, 9308),
+            ("kafka-validation-prometheus", PROM_PORT, 9090),
+        ):
+            forwards.append(subprocess.Popen(
+                ["kubectl", "--context", context, "-n", NAMESPACE,
+                 "port-forward", f"service/{service}", f"{local_port}:{remote_port}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            ))
         _broker(context, "kafka-console-producer.sh", "--bootstrap-server",
                 "localhost:9092", "--topic", TOPIC,
                 stdin="".join(f"validation-{n}\n" for n in range(200)))
         failed = wait_for_stage("failed")
+        failed_prometheus = wait_for_stage("failed", observer=_read_prometheus)
         kubectl(context, "scale", "deployment/kafka-validation-consumer", "--replicas=1")
         kubectl(context, "rollout", "status", "deployment/kafka-validation-consumer",
                 "--timeout=180s")
         recovered = wait_for_stage("recovered")
-        return {"schema": "tracecroft.kafka-exporter-preflight.v1", "context": context,
+        recovered_prometheus = wait_for_stage("recovered", observer=_read_prometheus)
+        return {"schema": "tracecroft.kafka-exporter-preflight.v2", "context": context,
                 "topic": TOPIC, "group": GROUP,
                 "failure": [asdict(item) for item in failed],
-                "recovery": [asdict(item) for item in recovered], "passed": True,
-                "note": "Real exporter telemetry only; full RCA causal parity not evaluated."}
+                "recovery": [asdict(item) for item in recovered],
+                "prometheus_failure": [asdict(item) for item in failed_prometheus],
+                "prometheus_recovery": [asdict(item) for item in recovered_prometheus],
+                "passed": True,
+                "note": "Real exporter + Prometheus telemetry; Tempo/Loki and RCA parity not evaluated."}
     finally:
-        if forward is not None:
+        for forward in forwards:
             forward.terminate()
             try:
                 forward.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 forward.kill()
         if owned:
-            kubectl(context, "delete", "-f", str(MANIFEST), "--ignore-not-found=true",
-                    "--wait=false")
+            for manifest in (PROM_MANIFEST, MANIFEST):
+                kubectl(context, "delete", "-f", str(manifest),
+                        "--ignore-not-found=true", "--wait=false")
 
 
 def main() -> None:

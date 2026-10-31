@@ -96,10 +96,59 @@ class KafkaExportContractTests(unittest.TestCase):
         ) as process:
             from subprocess import CompletedProcess
             process.return_value = CompletedProcess([], 1, "", "Error from server (NotFound)")
-            command.side_effect = [good_nodes, RuntimeError("partial apply"), ""]
+            command.side_effect = [good_nodes, RuntimeError("partial apply"), "", ""]
             with self.assertRaisesRegex(RuntimeError, "partial apply"):
                 run_live("kind-test")
             self.assertEqual(command.call_args_list[-1].args[1:3], ("delete", "-f"))
+            self.assertEqual(command.call_args_list[-2].args[1:3], ("delete", "-f"))
+
+    def test_prometheus_rejects_stale_missing_or_ambiguous_samples(self):
+        from validation.kafka_live import _parse_prometheus_scalar
+        now = 1730000000
+        def sample(value, timestamp=None):
+            return {"status": "success", "data": {"result": [
+                {"value": [now if timestamp is None else timestamp, value]}
+            ]}}
+        self.assertEqual(_parse_prometheus_scalar(sample("200"), now=now), 200)
+        for item in (
+            sample("NaN"),
+            sample("0", now - 30),
+            sample("0", now + 10),
+            {"status": "success", "data": {"result": []}},
+            {"status": "success", "data": {"result": [
+                {"value": [now, "0"]}, {"value": [now, "0"]}
+            ]}},
+            {"status": "error", "data": {"result": []}},
+        ):
+            with self.subTest(item=item):
+                self.assertIsNone(_parse_prometheus_scalar(item, now=now))
+
+    def test_prometheus_queries_are_scoped_and_require_target_up(self):
+        from validation.kafka_live import _read_prometheus
+        queries = []
+        def metric(query):
+            queries.append(query)
+            if query.startswith("up{"):
+                return 1
+            if "kafka_brokers" in query:
+                return 1
+            if "kafka_consumergroup_lag" in query:
+                return 200
+            if "kafka_consumergroup_members" in query:
+                return 0
+            return 0
+        with patch("validation.kafka_live._prometheus_scalar", side_effect=metric):
+            assert_signal(_read_prometheus(), stage="failed")
+        self.assertEqual(len(queries), 6)
+        self.assertTrue(all('instance="kafka:9092"' in item for item in queries))
+        self.assertTrue(all('job="kafka-exporter"' in item for item in queries))
+        lag = next(query for query in queries if "kafka_consumergroup_lag" in query)
+        self.assertIn('topic="orders-events"', lag)
+        self.assertIn('consumergroup="checkout-workers"', lag)
+        with patch("validation.kafka_live._prometheus_scalar", return_value=None):
+            with self.assertRaisesRegex(ValueError, "target missing"):
+                _read_prometheus()
+
 
 
 if __name__ == "__main__":

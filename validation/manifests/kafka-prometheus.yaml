@@ -1,0 +1,59 @@
+# Isolated Kafka-only Prometheus scrape, deployed only by kafka_live.py.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-validation-prometheus-config
+  namespace: rca-validation
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 2s
+      evaluation_interval: 2s
+    scrape_configs:
+      - job_name: kafka-exporter
+        static_configs:
+          - targets: ["kafka-exporter:9308"]
+        relabel_configs:
+          - target_label: instance
+            replacement: "kafka:9092"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-validation-prometheus
+  namespace: rca-validation
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: kafka-validation-prometheus}
+  template:
+    metadata:
+      labels: {app: kafka-validation-prometheus}
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.2.1@sha256:6927e0919a144aa7616fd0137d4816816d42f6b816de3af269ab065250859a62
+          args: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+          ports:
+            - {name: http, containerPort: 9090}
+          readinessProbe:
+            httpGet: {path: /-/ready, port: 9090}
+            periodSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: kafka-validation-prometheus-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-validation-prometheus
+  namespace: rca-validation
+spec:
+  selector: {app: kafka-validation-prometheus}
+  ports:
+    - {name: http, port: 9090, targetPort: 9090}
