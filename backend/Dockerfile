@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM python:3.14-slim
+FROM python:3.15-slim
 WORKDIR /app
 COPY pyproject.toml ./
 RUN --mount=type=cache,target=/root/.cache/pip \
