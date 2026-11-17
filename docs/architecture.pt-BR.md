@@ -106,7 +106,7 @@ O harness descartável reutiliza Kind, workload instrumentado, Prometheus, Loki,
 
 ## Backends de telemetria
 
-Métricas, logs e traces são lidos por uma interface neutra quanto à fonte ([ADR-0001](adr/0001-telemetry-interface.md)): requisições de sinais tipadas são traduzidas por backend e os resultados carregam a sua proveniência. Prometheus/Loki/Tempo são o padrão; um cluster pode escolher outro backend (hoje, Datadog) com `metrics_backend`, `logs_backend` e `traces_backend`. Sinais não suportados falham fechado em vez de gerar evidência, e cada backend mantém a sua própria fonte de orçamento de consultas.
+Métricas, logs e traces são lidos por uma interface neutra quanto à fonte ([ADR-0001](adr/0001-telemetry-interface.md)): requisições de sinais tipadas são traduzidas por backend e os resultados carregam a sua proveniência. Prometheus/Loki/Tempo são o padrão; um cluster pode escolher outro backend (hoje, Datadog e CloudWatch) com `metrics_backend`, `logs_backend` e `traces_backend`. Sinais não suportados falham fechado em vez de gerar evidência, e cada backend mantém a sua própria fonte de orçamento de consultas.
 
 ## Diagramas e referências detalhadas
 

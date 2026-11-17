@@ -79,7 +79,7 @@ Remediation is a separate service/credential boundary, disabled by default: type
 ## Integrations and telemetry prerequisites
 
 - **Kubernetes:** live state, events, UID ownership, inventory, HPA/KEDA/Karpenter signals.
-- **Prometheus:** service, Kubernetes and dependency metrics; **Loki:** scoped structured logs; **Tempo/OpenTelemetry:** traces and causal propagation. **Datadog** (read-only metrics, logs and APM traces) can replace them per cluster; see [telemetry backends](docs/adr/0001-telemetry-interface.md) and the [operations guide](docs/operations.md#datadog-backend-metrics-logs-and-traces). Evidence is labelled with the backend that produced it.
+- **Prometheus:** service, Kubernetes and dependency metrics; **Loki:** scoped structured logs; **Tempo/OpenTelemetry:** traces and causal propagation. **Datadog** (read-only metrics, logs and APM traces) and **CloudWatch** (Container Insights metrics and Logs Insights, via the AWS default credential chain) can replace them per cluster; see [telemetry backends](docs/adr/0001-telemetry-interface.md) and the [operations guide](docs/operations.md#datadog-backend-metrics-logs-and-traces). Evidence is labelled with the backend that produced it.
 - **Argo CD / GitHub:** collected deployment/revision context; proximity alone does not prove causality.
 - **PostgreSQL, Redis and Kafka dependency analyzers:** require matching current telemetry and trace-derived dependency identity. Kafka live failure/recovery validation remains pending.
 - **Alertmanager:** ingestion; **Slack/PagerDuty:** optional notifications after persistence.
@@ -109,6 +109,7 @@ For live operation, configure backend environment/Helm values using [.env.exampl
 | `AUTH_ENABLED=true`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | Verify tokens; map role, tenant and cluster claims using the corresponding `OIDC_*_CLAIM` settings. |
 | `CLUSTER_CONFIG_JSON` | Trusted per-cluster endpoints/credentials for Kubernetes, Prometheus, Loki and Tempo, and per-cluster `metrics_backend` / `logs_backend` / `traces_backend` selection. |
 | `DATADOG_API_KEY`, `DATADOG_APP_KEY`, `DATADOG_SITE` | Optional Datadog backend credentials; environment only. |
+| `AWS_REGION` | Optional CloudWatch backend default region; credentials come from the AWS default chain (IRSA/Pod Identity), never from settings. |
 | `AWARENESS_INVENTORY_CLUSTERS`, `AWARENESS_INVENTORY_TENANT_ID` | Explicit authoritative collector scope; see the [graph guide](docs/persistent-awareness-graph.md). |
 | `AGENTIC_EXECUTION_ENABLED=true` | Enable read-only orchestrated investigations and Copilot proposals. |
 | `QUERY_BUDGET_*` | Global call, per-source and elapsed-time limits; dynamic scope requires positive enabled budgets. |

@@ -106,7 +106,7 @@ The disposable validation harness reuses the existing Kind, instrumented workloa
 
 ## Telemetry backends
 
-Metrics, logs and traces are read through a source-neutral interface ([ADR-0001](adr/0001-telemetry-interface.md)): typed signal requests are translated per backend and results carry their provenance. Prometheus/Loki/Tempo are the defaults; a cluster can select another backend (currently Datadog) with `metrics_backend`, `logs_backend` and `traces_backend`. Unsupported signals fail closed instead of producing evidence, and each backend keeps its own query-budget source.
+Metrics, logs and traces are read through a source-neutral interface ([ADR-0001](adr/0001-telemetry-interface.md)): typed signal requests are translated per backend and results carry their provenance. Prometheus/Loki/Tempo are the defaults; a cluster can select another backend (currently Datadog and CloudWatch) with `metrics_backend`, `logs_backend` and `traces_backend`. Unsupported signals fail closed instead of producing evidence, and each backend keeps its own query-budget source.
 
 ## Diagrams and detailed references
 
