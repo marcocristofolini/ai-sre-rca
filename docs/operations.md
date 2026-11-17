@@ -91,6 +91,20 @@ The selected cluster is stored in a context variable, so concurrent investigatio
 
 `CLUSTER_CONFIG_JSON` is validated fail-closed at settings load. Invalid JSON, a non-object registry, or a cluster entry that is not an object prevents the service configuration from loading instead of silently falling back to an empty registry.
 
+### Datadog backend (metrics and logs)
+
+Select Datadog per cluster instead of Prometheus/Loki with `metrics_backend` and `logs_backend` in `CLUSTER_CONFIG_JSON`:
+
+```json
+{ "prod-us": { "metrics_backend": "datadog", "logs_backend": "datadog", "datadog_site": "datadoghq.eu" } }
+```
+
+Credentials come only from the environment: `DATADOG_API_KEY`, `DATADOG_APP_KEY` (and optionally `DATADOG_SITE`, default `datadoghq.com`, `DATADOG_TIMEOUT_SECONDS`). `datadog_site` must be one of Datadog's regional sites; any other value is rejected before a request is made, so keys are never sent to another host.
+
+Supported signals: container memory working set (`sum:kubernetes.memory.working_set{kube_namespace,pod_name}`) via `GET /api/v1/query` and pod logs (`kube_namespace:<ns> pod_name:<pod>`) via the read-only `POST /api/v2/logs/events/search`. Node filesystem, stateful dependencies and the service graph are not supported by this backend and return explained no-data (fail closed). APM traces are not part of this adapter yet.
+
+Query budgets are tracked as `datadog_metrics` and `datadog_logs` (capabilities `metrics` and `logs`). Not verified yet and to confirm against a real account: the minimum Datadog permissions for the application key, and that the `kubernetes.*` metric and `kube_namespace`/`pod_name` tag names match your Agent configuration.
+
 ## Query budget
 
 Each investigation owns an independent budget:
