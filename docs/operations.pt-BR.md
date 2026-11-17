@@ -93,17 +93,17 @@ O cluster selecionado fica em `ContextVar`, impedindo vazamento de estado entre 
 
 ### Backend Datadog (métricas e logs)
 
-Selecione o Datadog por cluster, no lugar de Prometheus/Loki, com `metrics_backend` e `logs_backend` em `CLUSTER_CONFIG_JSON`:
+Selecione o Datadog por cluster, no lugar de Prometheus/Loki/Tempo, com `metrics_backend`, `logs_backend` e `traces_backend` em `CLUSTER_CONFIG_JSON`:
 
 ```json
-{ "prod-us": { "metrics_backend": "datadog", "logs_backend": "datadog", "datadog_site": "datadoghq.eu" } }
+{ "prod-us": { "metrics_backend": "datadog", "logs_backend": "datadog", "traces_backend": "datadog", "datadog_site": "datadoghq.eu" } }
 ```
 
 As credenciais vêm só do ambiente: `DATADOG_API_KEY`, `DATADOG_APP_KEY` (e opcionalmente `DATADOG_SITE`, padrão `datadoghq.com`, `DATADOG_TIMEOUT_SECONDS`). `datadog_site` precisa ser um dos sites regionais do Datadog; qualquer outro valor é rejeitado antes da requisição, então as chaves nunca são enviadas a outro host.
 
-Sinais suportados: working set de memória do container (`sum:kubernetes.memory.working_set{kube_namespace,pod_name}`) via `GET /api/v1/query` e logs do pod (`kube_namespace:<ns> pod_name:<pod>`) via o `POST /api/v2/logs/events/search` somente leitura. Filesystem de nó, dependências stateful e grafo de serviços não são suportados por este backend e retornam sem dados com explicação (fail closed). Traces APM ainda não fazem parte deste adaptador.
+Sinais suportados: working set de memória do container (`sum:kubernetes.memory.working_set{kube_namespace,pod_name}`) via `GET /api/v1/query` e logs do pod (`kube_namespace:<ns> pod_name:<pod>`) via o `POST /api/v2/logs/events/search` somente leitura. Filesystem de nó, dependências stateful e grafo de serviços não são suportados por este backend e retornam sem dados com explicação (fail closed). Traces APM usam a Spans API: busca de traces (`POST /api/v2/spans/events/search`, traces com falha primeiro), leitura por `trace_id` e RED (taxa e taxa de erro) via `POST /api/v2/spans/analytics/aggregate` (totais na janela). O p95 não é reportado de propósito, porque a unidade das durações de span do Datadog não foi verificada. A evidência de trace é rotulada `datadog`, nunca `tempo`.
 
-Os orçamentos de consulta são contados como `datadog_metrics` e `datadog_logs` (capabilities `metrics` e `logs`). Ainda não verificado e a confirmar em uma conta real: as permissões mínimas da application key e se os nomes de métrica `kubernetes.*` e das tags `kube_namespace`/`pod_name` batem com a configuração do seu Agent.
+Os orçamentos de consulta são contados como `datadog_metrics`, `datadog_logs` e `datadog_traces` (capabilities `metrics`, `logs` e `traces`). Ainda não verificado e a confirmar em uma conta real: as permissões mínimas da application key e se os nomes de métrica `kubernetes.*` e das tags `kube_namespace`/`pod_name` batem com a configuração do seu Agent; para traces, o formato dos ids de span (os ids são repassados sem alteração), a consulta `status:error` e o campo de status do span (`attributes.status`, senão a tag `error:true`; sem nenhum dos dois o status fica desconhecido, nunca presumido).
 
 ## Query budget
 
