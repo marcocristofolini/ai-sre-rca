@@ -10,7 +10,7 @@ Tracecroft's differentiator is auditable, deterministic verdicts. No item here m
 | 2 | Alert grouping and noise report | #77 | Sonnet 5.5 | Done |
 | 3 | Source-neutral telemetry interface (prerequisite for 4 and 5) | #73 | Opus 5.5 (ADR), Sonnet 5.5 (code) | Done |
 | 4 | Datadog read-only evidence adapter | #74 | Sonnet 5.5 | Done |
-| 5 | CloudWatch read-only evidence adapter | #75 | Sonnet 5.5 | Open |
+| 5 | CloudWatch read-only evidence adapter | #75 | Sonnet 5.5 | Done |
 | 6 | Degraded mode for incomplete telemetry identity | #81 | Opus 5.5 | Open |
 | 7 | Preflight `doctor` command for onboarding | #82 | Sonnet 5.5 | Open |
 | 8 | One-command reproducible public benchmark | #85 | Haiku 5.5 | Open |
