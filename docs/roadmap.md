@@ -1,5 +1,7 @@
 # Roadmap — v0.8.0-rc.3 development
 
+See also the [competitive roadmap](roadmap-competitive.md) for gap items tracked as GitHub issues.
+
 ## v0.8.0-rc.3 — stateful telemetry + recovery validation
 
 - [x] real PostgreSQL 17 dependency deployed inside the disposable Kind environment
