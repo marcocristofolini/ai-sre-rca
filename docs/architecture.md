@@ -104,6 +104,10 @@ Implemented: persistent jobs/SSE, dynamic scopes, UID-based workload collection,
 
 The disposable validation harness reuses the existing Kind, instrumented workload, Prometheus, Loki, Tempo and PostgreSQL resources. Controlled fault injection belongs only to that environment, not runtime investigation. [Recorded local results](real-world-rca-validation-v1.md): 6/6 scoped cases, 325 backend/harness tests, 8 telemetry tests, 50 browser checks and a successful Next.js production build. Recovery and zero replicas are negative cases; rollout diagnosis establishes process exit rather than Git revision causality. Raw reports are local artifacts. These results do not satisfy release promotion gates; this documentation change does not rerun application suites.
 
+## Telemetry backends
+
+Metrics, logs and traces are read through a source-neutral interface ([ADR-0001](adr/0001-telemetry-interface.md)): typed signal requests are translated per backend and results carry their provenance. Prometheus/Loki/Tempo are the defaults; a cluster can select another backend (currently Datadog) with `metrics_backend`, `logs_backend` and `traces_backend`. Unsupported signals fail closed instead of producing evidence, and each backend keeps its own query-budget source.
+
 ## Diagrams and detailed references
 
 SVGs have explicit accessible titles/descriptions and opaque high-contrast backgrounds. Editable layout source: [generate-diagrams.mjs](images/generate-diagrams.mjs); matching Mermaid graphs: [system](images/ai-sre-rca-architecture.mmd), [lifecycle](images/investigation-pipeline.mmd), [security](images/security-boundaries.mmd). Regenerate with `node docs/images/generate-diagrams.mjs` from the repository root. The repository has no Mermaid CLI dependency, so SVGs use the small local generator rather than a network renderer or embedded fonts.

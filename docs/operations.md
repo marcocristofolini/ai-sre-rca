@@ -91,7 +91,7 @@ The selected cluster is stored in a context variable, so concurrent investigatio
 
 `CLUSTER_CONFIG_JSON` is validated fail-closed at settings load. Invalid JSON, a non-object registry, or a cluster entry that is not an object prevents the service configuration from loading instead of silently falling back to an empty registry.
 
-### Datadog backend (metrics and logs)
+### Datadog backend (metrics, logs and traces)
 
 Select Datadog per cluster instead of Prometheus/Loki/Tempo with `metrics_backend`, `logs_backend` and `traces_backend` in `CLUSTER_CONFIG_JSON`:
 

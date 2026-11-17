@@ -91,7 +91,7 @@ O cluster selecionado fica em `ContextVar`, impedindo vazamento de estado entre 
 
 `CLUSTER_CONFIG_JSON` é validado em modo fail-closed ao carregar as settings. JSON inválido, registry que não seja um objeto ou entrada de cluster que não seja um objeto impedem o carregamento da configuração, em vez de virar silenciosamente um registry vazio.
 
-### Backend Datadog (métricas e logs)
+### Backend Datadog (métricas, logs e traces)
 
 Selecione o Datadog por cluster, no lugar de Prometheus/Loki/Tempo, com `metrics_backend`, `logs_backend` e `traces_backend` em `CLUSTER_CONFIG_JSON`:
 

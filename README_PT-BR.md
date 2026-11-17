@@ -79,7 +79,7 @@ A remediação tem serviço e credenciais separados e fica desativada por padrã
 ## Integrações e pré-requisitos de telemetria
 
 - **Kubernetes:** estado atual, eventos, propriedade por UID, inventário e sinais de HPA/KEDA/Karpenter.
-- **Prometheus:** métricas de serviços, Kubernetes e dependências; **Loki:** logs estruturados com escopo; **Tempo/OpenTelemetry:** traces e propagação causal.
+- **Prometheus:** métricas de serviços, Kubernetes e dependências; **Loki:** logs estruturados com escopo; **Tempo/OpenTelemetry:** traces e propagação causal. O **Datadog** (métricas, logs e traces APM, somente leitura) pode substituí-los por cluster; veja os [backends de telemetria](docs/adr/0001-telemetry-interface.md) e o [guia de operações](docs/operations.pt-BR.md#backend-datadog-métricas-logs-e-traces). A evidência é rotulada com o backend que a produziu.
 - **Argo CD / GitHub:** contexto coletado de implantação e revisão; proximidade temporal não comprova causalidade.
 - **Analisadores de PostgreSQL, Redis e Kafka:** exigem telemetria atual correspondente à identidade da dependência obtida dos traces. A validação real de falha e recuperação do Kafka está pendente.
 - **Alertmanager:** ingestão; **Slack/PagerDuty:** notificações opcionais após persistência.
@@ -107,7 +107,8 @@ Para fontes reais, configure o ambiente do backend/valores Helm conforme [.env.e
 | --- | --- |
 | `DEMO_MODE=false`, `DATABASE_URL` | Adaptadores reais e PostgreSQL/pgvector persistente; sem banco, o repositório funciona em memória. |
 | `AUTH_ENABLED=true`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URL` | Validação de tokens; mapeie claims de papel, tenant e clusters nas configurações `OIDC_*_CLAIM`. |
-| `CLUSTER_CONFIG_JSON` | Endpoints/credenciais confiáveis por cluster para Kubernetes, Prometheus, Loki e Tempo. |
+| `CLUSTER_CONFIG_JSON` | Endpoints/credenciais confiáveis por cluster para Kubernetes, Prometheus, Loki e Tempo, e seleção por cluster de `metrics_backend` / `logs_backend` / `traces_backend`. |
+| `DATADOG_API_KEY`, `DATADOG_APP_KEY`, `DATADOG_SITE` | Credenciais opcionais do backend Datadog; somente ambiente. |
 | `AWARENESS_INVENTORY_CLUSTERS`, `AWARENESS_INVENTORY_TENANT_ID` | Escopo explícito do coletor autoritativo; consulte o [guia do grafo](docs/persistent-awareness-graph.pt-BR.md). |
 | `AGENTIC_EXECUTION_ENABLED=true` | Ativa investigações orquestradas somente leitura e propostas do Copilot. |
 | `QUERY_BUDGET_*` | Limites globais de chamadas, chamadas por fonte e tempo; escopo dinâmico exige orçamentos positivos e ativos. |
