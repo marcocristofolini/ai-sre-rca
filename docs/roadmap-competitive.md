@@ -1,6 +1,6 @@
 # Competitive roadmap
 
-Gaps between Tracecroft AI and hosted AI SRE products, ordered by impact. Each item is one GitHub issue that carries the problem, the safety boundary, a recommended model and a ready-to-run agent prompt.
+Gaps between Tracecroft AI and hosted AI SRE products, ordered by impact. Each item is one GitHub issue that carries the problem, the safety boundary, a recommended model and, where relevant, its blockers.
 
 Tracecroft's differentiator is auditable, deterministic verdicts. No item here may weaken evidence integrity, authorization or the read-only investigator boundary.
 
@@ -33,7 +33,7 @@ Model recommendations are a judgment by task risk and ambiguity, not a measured 
 ## Keeping token use low
 
 - One issue per session; start with `/clear` so earlier context is not carried along.
-- Paste only the issue's agent prompt. It names the few files to read first; everything else is located with `rg`.
+- Give the agent a short prompt that names the few files to read first; everything else is located with `rg`.
 - For ADR-first items, do the design with the stronger model, review it, then implement in a new session with the cheaper one.
 - Verify with the `focused-tests` skill before any broader suite.
 - Use the `security-reviewer` and `evidence-integrity-reviewer` agents on the diff instead of re-reading the code in the main session.
