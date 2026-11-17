@@ -37,6 +37,7 @@ from app.awareness.models import (
     canonicalize_investigation,
 )
 from app.db.models import (
+    AlertOccurrenceRecord,
     AuditEventRecord,
     AwarenessEntityRecord,
     AwarenessObservationRecord,
@@ -49,7 +50,8 @@ from app.db.models import (
     RemediationPlanRecord,
 )
 from app.memory.embedding import cosine_similarity, hash_embedding
-from app.schemas import AuditEvent, IncidentInput, IncidentSummary, InvestigationResult, RemediationPlan, SimilarIncident
+from app.core.alert_grouping import merge_alert_notification, select_group
+from app.schemas import AlertOccurrence, AuditEvent, IncidentInput, IncidentSummary, InvestigationResult, RemediationPlan, SimilarIncident
 
 
 class InvestigationRepository(Protocol):
@@ -137,6 +139,11 @@ class InvestigationRepository(Protocol):
     ) -> list[RemediationPlan]: ...
     async def append_audit(self, event: AuditEvent) -> None: ...
     async def list_audit(self, incident_id: str, tenant_id: str) -> list[AuditEvent]: ...
+    async def record_alert_occurrence(self, occurrence: AlertOccurrence, group_window_seconds: int) -> AlertOccurrence: ...
+    async def list_alert_occurrences(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None, since: datetime, limit: int = 5000,
+    ) -> list[AlertOccurrence]: ...
     async def purge_awareness_retention(
         self,
         tenant_id: str,
@@ -241,6 +248,8 @@ class MemoryRepository:
         self._items: dict[str, InvestigationResult] = {}
         self._remediation: dict[str, RemediationPlan] = {}
         self._audit: list[AuditEvent] = []
+        self._alerts: dict[tuple[str, str, str, datetime], AlertOccurrence] = {}
+        self._alert_lock = asyncio.Lock()
         self._awareness_entities: dict[str, AwarenessEntity] = {}
         self._awareness_relationships: dict[str, AwarenessRelationship] = {}
         self._awareness_observations: dict[str, AwarenessObservation] = {}
@@ -984,6 +993,34 @@ class MemoryRepository:
             for event in self._audit
             if event.incident_id == incident_id and event.tenant_id == tenant_id
         ]
+
+    async def record_alert_occurrence(self, occurrence: AlertOccurrence, group_window_seconds: int) -> AlertOccurrence:
+        key = (occurrence.tenant_id, occurrence.cluster, occurrence.fingerprint, occurrence.starts_at)
+        async with self._alert_lock:
+            existing = self._alerts.get(key)
+            if existing is not None:
+                stored = merge_alert_notification(existing, occurrence)
+            else:
+                group_id = select_group(
+                    self._alerts.values(), occurrence, timedelta(seconds=group_window_seconds),
+                ) or f"grp-{uuid4().hex[:16]}"
+                stored = occurrence.model_copy(update={"group_id": group_id})
+            self._alerts[key] = stored
+            return stored.model_copy()
+
+    async def list_alert_occurrences(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None, since: datetime, limit: int = 5000,
+    ) -> list[AlertOccurrence]:
+        rows = [
+            item for item in self._alerts.values()
+            if (tenant_id is None or item.tenant_id == tenant_id)
+            and (allowed_clusters is None or item.cluster in allowed_clusters)
+            and (cluster is None or item.cluster == cluster)
+            and item.last_received_at >= since
+        ]
+        rows.sort(key=lambda item: (item.last_received_at, item.id), reverse=True)
+        return [item.model_copy() for item in rows[:limit]]
 
     async def purge_awareness_retention(
         self,
@@ -2522,6 +2559,70 @@ class SQLRepository:
             )
             for row in rows
         ]
+
+    @staticmethod
+    def _alert_from_row(row: AlertOccurrenceRecord) -> AlertOccurrence:
+        return AlertOccurrence(
+            id=row.id, tenant_id=row.tenant_id, cluster=row.cluster, namespace=row.namespace,
+            target_kind=row.target_kind, target=row.target, group_key=row.group_key,
+            group_id=row.group_id, alert_name=row.alert_name, severity=row.severity,
+            fingerprint=row.fingerprint, status=row.status, starts_at=row.starts_at,
+            ends_at=row.ends_at, received_at=row.received_at,
+            last_received_at=row.last_received_at, notifications=row.notifications,
+        )
+
+    async def record_alert_occurrence(self, occurrence: AlertOccurrence, group_window_seconds: int) -> AlertOccurrence:
+        async with self.sessions() as session:
+            async with session.begin():
+                # Serialize group assignment for one scope so concurrent alerts join the same group.
+                await session.execute(
+                    text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                    {"key": f"alert-group:{occurrence.group_key}"},
+                )
+                row = await session.scalar(select(AlertOccurrenceRecord).where(
+                    AlertOccurrenceRecord.tenant_id == occurrence.tenant_id,
+                    AlertOccurrenceRecord.cluster == occurrence.cluster,
+                    AlertOccurrenceRecord.fingerprint == occurrence.fingerprint,
+                    AlertOccurrenceRecord.starts_at == occurrence.starts_at,
+                ))
+                if row is not None:
+                    stored = merge_alert_notification(self._alert_from_row(row), occurrence)
+                    row.status = stored.status
+                    row.ends_at = stored.ends_at
+                    row.last_received_at = stored.last_received_at
+                    row.notifications = stored.notifications
+                    return stored
+                candidates = (await session.scalars(
+                    select(AlertOccurrenceRecord).where(
+                        AlertOccurrenceRecord.tenant_id == occurrence.tenant_id,
+                        AlertOccurrenceRecord.group_key == occurrence.group_key,
+                    ).order_by(AlertOccurrenceRecord.starts_at.desc()).limit(200)
+                )).all()
+                group_id = select_group(
+                    [self._alert_from_row(item) for item in candidates],
+                    occurrence, timedelta(seconds=group_window_seconds),
+                ) or f"grp-{uuid4().hex[:16]}"
+                stored = occurrence.model_copy(update={"group_id": group_id})
+                session.add(AlertOccurrenceRecord(**stored.model_dump()))
+                return stored
+
+    async def list_alert_occurrences(
+        self, *, tenant_id: str | None, allowed_clusters: frozenset[str] | None,
+        cluster: str | None, since: datetime, limit: int = 5000,
+    ) -> list[AlertOccurrence]:
+        statement = select(AlertOccurrenceRecord).where(AlertOccurrenceRecord.last_received_at >= since)
+        if tenant_id is not None:
+            statement = statement.where(AlertOccurrenceRecord.tenant_id == tenant_id)
+        if allowed_clusters is not None:
+            statement = statement.where(AlertOccurrenceRecord.cluster.in_(sorted(allowed_clusters)))
+        if cluster is not None:
+            statement = statement.where(AlertOccurrenceRecord.cluster == cluster)
+        statement = statement.order_by(
+            AlertOccurrenceRecord.last_received_at.desc(), AlertOccurrenceRecord.id.desc(),
+        ).limit(limit)
+        async with self.sessions() as session:
+            rows = (await session.scalars(statement)).all()
+        return [self._alert_from_row(row) for row in rows]
 
     async def purge_awareness_retention(
         self,

@@ -356,6 +356,7 @@ class AlertmanagerAlert(BaseModel):
     annotations: dict[str, str] = Field(default_factory=dict)
     startsAt: datetime | None = None
     endsAt: datetime | None = None
+    fingerprint: str | None = None
 
 
 class AlertmanagerWebhook(BaseModel):
@@ -365,6 +366,27 @@ class AlertmanagerWebhook(BaseModel):
     commonLabels: dict[str, str] = Field(default_factory=dict)
     commonAnnotations: dict[str, str] = Field(default_factory=dict)
 
+
+
+class AlertOccurrence(BaseModel):
+    """One alert series instance, identified by tenant, cluster, fingerprint and start time."""
+    id: str = Field(default_factory=lambda: f"alert-{uuid4().hex[:16]}")
+    tenant_id: str
+    cluster: str
+    namespace: str | None = None
+    target_kind: str
+    target: str
+    group_key: str
+    group_id: str = ""
+    alert_name: str
+    severity: str = "warning"
+    fingerprint: str
+    status: Literal["firing", "resolved"]
+    starts_at: datetime
+    ends_at: datetime | None = None
+    received_at: datetime
+    last_received_at: datetime
+    notifications: int = 1
 
 
 class AuditEvent(BaseModel):

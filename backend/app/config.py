@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     remediator_role: str = "remediator"
     alertmanager_webhook_token: str | None = None
     alertmanager_tenant_id: str = "default"
+    # Records and groups incoming alerts for the noise report; never changes what is investigated.
+    alert_grouping_enabled: bool = False
+    alert_group_window_seconds: int = Field(default=900, ge=60, le=86400)
+    alert_noise_resolve_seconds: int = Field(default=300, ge=30, le=3600)
 
     slack_webhook_url: str | None = None
     pagerduty_routing_key: str | None = None

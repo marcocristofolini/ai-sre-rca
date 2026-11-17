@@ -92,3 +92,27 @@ CREATE INDEX IF NOT EXISTS idx_audit_incident_tenant ON audit_events(incident_id
 CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS investigations_embedding_hnsw
   ON investigations USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS alert_occurrences (
+  id VARCHAR(64) PRIMARY KEY,
+  tenant_id VARCHAR(255) NOT NULL,
+  cluster VARCHAR(255) NOT NULL,
+  namespace VARCHAR(255),
+  target_kind VARCHAR(32) NOT NULL,
+  target VARCHAR(255) NOT NULL,
+  group_key VARCHAR(64) NOT NULL,
+  group_id VARCHAR(64) NOT NULL,
+  alert_name VARCHAR(255) NOT NULL,
+  severity VARCHAR(64) NOT NULL,
+  fingerprint VARCHAR(64) NOT NULL,
+  status VARCHAR(16) NOT NULL,
+  starts_at TIMESTAMPTZ NOT NULL,
+  ends_at TIMESTAMPTZ,
+  received_at TIMESTAMPTZ NOT NULL,
+  last_received_at TIMESTAMPTZ NOT NULL,
+  notifications INTEGER NOT NULL DEFAULT 1,
+  CONSTRAINT uq_alert_occurrence_identity UNIQUE (tenant_id, cluster, fingerprint, starts_at)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_occurrences_group ON alert_occurrences(tenant_id, group_key, starts_at);
+CREATE INDEX IF NOT EXISTS idx_alert_occurrences_seen ON alert_occurrences(tenant_id, last_received_at);
+CREATE INDEX IF NOT EXISTS ix_alert_occurrences_group_id ON alert_occurrences(group_id);

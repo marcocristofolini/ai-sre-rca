@@ -49,6 +49,33 @@ class AuditEventRecord(Base):
     )
 
 
+class AlertOccurrenceRecord(Base):
+    __tablename__ = "alert_occurrences"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "cluster", "fingerprint", "starts_at", name="uq_alert_occurrence_identity"),
+        Index("idx_alert_occurrences_group", "tenant_id", "group_key", "starts_at"),
+        Index("idx_alert_occurrences_seen", "tenant_id", "last_received_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(255))
+    cluster: Mapped[str] = mapped_column(String(255))
+    namespace: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_kind: Mapped[str] = mapped_column(String(32))
+    target: Mapped[str] = mapped_column(String(255))
+    group_key: Mapped[str] = mapped_column(String(64))
+    group_id: Mapped[str] = mapped_column(String(64), index=True)
+    alert_name: Mapped[str] = mapped_column(String(255))
+    severity: Mapped[str] = mapped_column(String(64))
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    notifications: Mapped[int] = mapped_column(Integer, default=1)
+
+
 class RemediationPlanRecord(Base):
     __tablename__ = "remediation_plans"
 

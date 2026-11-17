@@ -212,6 +212,21 @@ ALERTMANAGER_TENANT_ID=platform
 
 Envie o token em `X-Webhook-Token`.
 
+## Agrupamento de alertas e relatório de ruído
+
+Desabilitado por padrão. Quando habilitado, todo alerta recebido no webhook do Alertmanager (disparando e resolvido) é registrado e atribuído a um grupo; o relatório é somente leitura.
+
+```text
+ALERT_GROUPING_ENABLED=true
+ALERT_GROUP_WINDOW_SECONDS=900
+ALERT_NOISE_RESOLVE_SECONDS=300
+```
+
+- **Chave do grupo:** tenant, cluster, namespace e o alvo estável mais específico citado pelo alerta (`service`, depois `pod`, depois `node`, senão o nome do alerta). Grupos nunca cruzam tenants ou clusters.
+- **Entrada em um grupo:** o alerta entra em um grupo da mesma chave que ainda esteja aberto ou cuja última atividade esteja dentro da janela. Um alerta disparando sem nova notificação por 24 horas é tratado como fechado.
+- **Alcance:** o agrupamento é apenas registro. Cada alerta disparando continua sendo investigado como antes, e o agrupamento nunca altera um veredito.
+- **Relatório:** `GET /api/v1/alerts/report?hours=168&cluster=<nome>` (papel viewer, limitado por tenant e cluster) lista problemas agrupados, alertas que disparam juntos e, por alerta, quantas ocorrências foram resolvidas dentro do limite de ruído. `noise_candidate` é verdadeiro quando pelo menos metade das ocorrências foi.
+
 ## CronJob automático de inventário Kubernetes
 
 O inventory collector da v0.8 começa desabilitado. Habilite somente com uma lista explícita de clusters lógicos e um Secret dedicado contendo as credenciais do collector, principalmente `DATABASE_URL`:

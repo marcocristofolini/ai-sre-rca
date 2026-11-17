@@ -1,11 +1,15 @@
+from datetime import datetime, timezone
 import hmac
+import logging
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
+from app.core.alert_grouping import occurrence_from_alert
 from app.operations import append_audit, persist_investigation
 from app.schemas import AlertmanagerWebhook, IncidentInput
 
 router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
 
 
 def _authorize_webhook(request: Request, token: str | None) -> None:
@@ -26,9 +30,28 @@ async def alertmanager(
 
     settings = request.app.state.settings
     results = []
+    recorded = 0
+    received_at = datetime.now(timezone.utc)
     for alert in payload.alerts:
         labels = {**payload.commonLabels, **alert.labels}
         annotations = {**payload.commonAnnotations, **alert.annotations}
+        group_id = None
+        if settings.alert_grouping_enabled:
+            # Recording is bookkeeping for the noise report: resolved alerts are kept,
+            # and a storage failure must not stop the investigation below.
+            try:
+                stored = await request.app.state.repo.record_alert_occurrence(
+                    occurrence_from_alert(
+                        tenant_id=settings.alertmanager_tenant_id, labels=labels,
+                        status=alert.status, starts_at=alert.startsAt, ends_at=alert.endsAt,
+                        fingerprint=alert.fingerprint, received_at=received_at,
+                    ),
+                    settings.alert_group_window_seconds,
+                )
+                group_id = stored.group_id
+                recorded += 1
+            except Exception:
+                logger.exception("alert occurrence could not be recorded")
         if alert.status == "resolved":
             continue
 
@@ -68,6 +91,10 @@ async def alertmanager(
             "incident_id": result.incident_id,
             "status": result.status,
             "root_cause": result.root_cause.title,
+            **({"group_id": group_id} if group_id else {}),
         })
 
-    return {"accepted": len(results), "investigations": results}
+    response = {"accepted": len(results), "investigations": results}
+    if settings.alert_grouping_enabled:
+        response["recorded"] = recorded
+    return response
