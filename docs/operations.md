@@ -212,6 +212,21 @@ ALERTMANAGER_TENANT_ID=platform
 
 Send the token in `X-Webhook-Token`.
 
+## Alert grouping and noise report
+
+Disabled by default. When enabled, every alert received on the Alertmanager webhook (firing and resolved) is recorded and assigned to a group; the report is read-only.
+
+```text
+ALERT_GROUPING_ENABLED=true
+ALERT_GROUP_WINDOW_SECONDS=900
+ALERT_NOISE_RESOLVE_SECONDS=300
+```
+
+- **Group key:** tenant, cluster, namespace and the most specific stable target the alert names (`service`, then `pod`, then `node`, otherwise the alert name). Groups never span tenants or clusters.
+- **Joining a group:** an alert joins a group on the same key that is still open, or whose last activity is within the window. A firing alert not re-notified for 24 hours is treated as closed.
+- **Scope of the feature:** grouping is bookkeeping. Each firing alert is still investigated as before, and grouping never changes a verdict.
+- **Report:** `GET /api/v1/alerts/report?hours=168&cluster=<name>` (viewer role, tenant and cluster scoped) lists grouped problems, alerts that fire together and, per alert, how many occurrences resolved within the noise threshold. `noise_candidate` is true when at least half of an alert's occurrences did.
+
 ## Automatic Kubernetes inventory CronJob
 
 The v0.8 inventory collector is disabled by default. Enable it only with an explicit logical cluster list and a dedicated Secret containing the collector credentials, especially `DATABASE_URL`:

@@ -12,6 +12,7 @@ from app.api.incidents import router as incidents_router
 from app.api.copilot_investigations import router as copilot_investigations_router
 from app.api.planner import router as planner_router
 from app.api.planner import orchestration_worker
+from app.api.alerts import router as alerts_router
 from app.api.webhooks import router as webhooks_router
 from app.api.system import router as system_router
 from app.auth import AuthManager
@@ -129,4 +130,5 @@ app.include_router(copilot_investigations_router)
 app.include_router(awareness_router)
 app.include_router(planner_router)
 app.include_router(webhooks_router)
+app.include_router(alerts_router)
 app.include_router(system_router)
