@@ -1,6 +1,6 @@
 # ADR-0001: Source-neutral telemetry interface
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-17)
 **Date:** 2026-11-17
 **Deciders:** Marco (maintainer)
 **Issue:** #73 (prerequisite for #74 Datadog and #75 CloudWatch)
@@ -97,14 +97,26 @@ C costs more than A or B once, but is the only option where evidence stays hones
 - **Harder:** adding a new signal requires a catalogue entry and a translator in every supported backend (or an explicit "unsupported" there).
 - **To revisit:** whether `service_graph` and the stateful dependency helpers belong in the catalogue or stay Prometheus-only until a second backend needs them; whether the facade can be deleted once no test double depends on the old names.
 
-## Open questions for review
+## Decisions on the open questions
 
-1. Is the first catalogue limited to the signals the current playbooks already use (recommended), or should it be broader?
-2. Should the `NativeQuery` escape hatch exist at all, or should the two remaining PromQL call sites be catalogued before step 2 ends?
-3. Is renaming the budget keys to capability names acceptable once the facade is removed, or must the old keys stay public (they appear in budget snapshots)?
+1. **Catalogue scope:** start with the signals the current playbooks already use and add entries only when a playbook needs them. A broad speculative catalogue would force every backend to translate signals nobody asks for.
+2. **No `NativeQuery` escape hatch.** A free-form string would let PromQL leak back into callers and make non-Prometheus adapters unverifiable. The remaining PromQL/TraceQL call sites (`service_graph`, the Postgres/Kafka/Redis dependency helpers, `tempo_*`) are catalogued in follow-up PRs before the facade is removed.
+3. **Budget keys stay public and stable.** Snapshots and tests read the method-name keys (`prometheus_query`, `loki_query_range`, ...). Capability-level keys are added alongside them; the old keys are removed only in a deliberate, documented breaking change.
+
+## Implementation status (step 2 of #73)
+
+Delivered in the first implementation PR, with the existing test suite passing unmodified:
+
+- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`.
+- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`.
+- Migrated call sites: `core/engine.py` (filesystem capacity, logs) and `core/kubernetes_investigator.py` (memory working set, logs).
+- Query strings and `raw_reference` values are byte-identical to the previous code (golden tests).
+
+Still to do before #74 and #75 can rely on the interface: Tempo source and `TracesSource` protocol, `service_graph`, the stateful dependency helpers, capability-level budget keys, and a shared contract test that every source must pass.
 
 ## Action items
 
 1. [ ] Review and accept or amend this ADR.
-2. [ ] Step 2 of #73: implement the interface behind the facade with no behavior change.
-3. [ ] Unblock #74 (Datadog) and #75 (CloudWatch).
+2. [x] Step 2 of #73, first slice: interface, Prometheus and Loki sources, four migrated call sites.
+3. [ ] Remaining slices listed under Implementation status.
+4. [ ] Unblock #74 (Datadog) and #75 (CloudWatch).
