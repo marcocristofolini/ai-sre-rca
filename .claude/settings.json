@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./website/architecture/ai-sre-rca.html)",
+      "Read(./docs/archify/ai-sre-rca.html)",
+      "Read(./website/assets/ai-sre-rca-architecture-rc3.svg)",
+      "Read(./docs/images/ai-sre-rca-architecture-rc3.svg)",
+      "Read(./frontend/package-lock.json)",
+      "Read(./docs/benchmarks/*.json)"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "caveman@caveman": true
+  }
+}
