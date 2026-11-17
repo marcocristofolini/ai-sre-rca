@@ -186,6 +186,11 @@ class Settings(BaseSettings):
 
     github_api_url: str = "https://api.github.com"
     github_token: str | None = None
+    # Datadog read-only adapter (metrics_backend / logs_backend = "datadog"); keys only via env.
+    datadog_site: str = "datadoghq.com"
+    datadog_api_key: str | None = None
+    datadog_app_key: str | None = None
+    datadog_timeout_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
 
     change_correlation_window_minutes: int = 180
     service_graph_window_minutes: int = 15

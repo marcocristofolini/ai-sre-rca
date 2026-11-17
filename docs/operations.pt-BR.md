@@ -91,6 +91,20 @@ O cluster selecionado fica em `ContextVar`, impedindo vazamento de estado entre 
 
 `CLUSTER_CONFIG_JSON` é validado em modo fail-closed ao carregar as settings. JSON inválido, registry que não seja um objeto ou entrada de cluster que não seja um objeto impedem o carregamento da configuração, em vez de virar silenciosamente um registry vazio.
 
+### Backend Datadog (métricas e logs)
+
+Selecione o Datadog por cluster, no lugar de Prometheus/Loki, com `metrics_backend` e `logs_backend` em `CLUSTER_CONFIG_JSON`:
+
+```json
+{ "prod-us": { "metrics_backend": "datadog", "logs_backend": "datadog", "datadog_site": "datadoghq.eu" } }
+```
+
+As credenciais vêm só do ambiente: `DATADOG_API_KEY`, `DATADOG_APP_KEY` (e opcionalmente `DATADOG_SITE`, padrão `datadoghq.com`, `DATADOG_TIMEOUT_SECONDS`). `datadog_site` precisa ser um dos sites regionais do Datadog; qualquer outro valor é rejeitado antes da requisição, então as chaves nunca são enviadas a outro host.
+
+Sinais suportados: working set de memória do container (`sum:kubernetes.memory.working_set{kube_namespace,pod_name}`) via `GET /api/v1/query` e logs do pod (`kube_namespace:<ns> pod_name:<pod>`) via o `POST /api/v2/logs/events/search` somente leitura. Filesystem de nó, dependências stateful e grafo de serviços não são suportados por este backend e retornam sem dados com explicação (fail closed). Traces APM ainda não fazem parte deste adaptador.
+
+Os orçamentos de consulta são contados como `datadog_metrics` e `datadog_logs` (capabilities `metrics` e `logs`). Ainda não verificado e a confirmar em uma conta real: as permissões mínimas da application key e se os nomes de métrica `kubernetes.*` e das tags `kube_namespace`/`pod_name` batem com a configuração do seu Agent.
+
 ## Query budget
 
 Cada investigação possui budget independente:
