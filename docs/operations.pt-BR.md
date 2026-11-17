@@ -105,6 +105,29 @@ Sinais suportados: working set de memória do container (`sum:kubernetes.memory.
 
 Os orçamentos de consulta são contados como `datadog_metrics`, `datadog_logs` e `datadog_traces` (capabilities `metrics`, `logs` e `traces`). Ainda não verificado e a confirmar em uma conta real: as permissões mínimas da application key e se os nomes de métrica `kubernetes.*` e das tags `kube_namespace`/`pod_name` batem com a configuração do seu Agent; para traces, o formato dos ids de span (os ids são repassados sem alteração), a consulta `status:error` e o campo de status do span (`attributes.status`, senão a tag `error:true`; sem nenhum dos dois o status fica desconhecido, nunca presumido).
 
+### Backend CloudWatch (métricas e logs)
+
+Selecione o CloudWatch por cluster com `metrics_backend` e/ou `logs_backend` em `cloudwatch`:
+
+```json
+{
+  "prod-br": {
+    "metrics_backend": "cloudwatch", "logs_backend": "cloudwatch",
+    "aws_region": "sa-east-1",
+    "cloudwatch_cluster_name": "prod-eks",
+    "cloudwatch_log_groups": ["/aws/containerinsights/prod-eks/application"]
+  }
+}
+```
+
+As credenciais vêm da cadeia padrão da AWS (IRSA, EKS Pod Identity, role da instância ou ambiente); nenhuma chave fica em settings nem na configuração do cluster. O endpoint é derivado pelo `botocore` a partir de `aws_region` (validada; `AWS_REGION` é o padrão global), então nenhuma URL é configurável. As chaves opcionais por cluster `cloudwatch_log_namespace_field` e `cloudwatch_log_pod_field` substituem os nomes dos campos do Logs Insights (padrões `kubernetes.namespace_name`, `kubernetes.pod_name`).
+
+Sinais suportados: working set de memória do container (`pod_memory_working_set` do Container Insights, dimensões `ClusterName`, `Namespace`, `PodName`, `Maximum` em 60 s) via `GetMetricData`, e logs do pod via Logs Insights (`StartQuery` e depois polling limitado de `GetQueryResults`; uma consulta que passa de `CLOUDWATCH_QUERY_TIMEOUT_SECONDS` é interrompida e reportada como falha). Filesystem de nó, dependências stateful, grafo de serviços e traces não são suportados por este backend e falham fechado. Erros da AWS são reportados só pelo código de erro.
+
+Os orçamentos de consulta são contados como `cloudwatch_metrics` e `cloudwatch_logs`: cada chamada `GetMetricData` e cada consulta do Logs Insights conta uma vez; o polling do resultado é limitado pelo timeout, não contado.
+
+Chamadas de API somente leitura usadas: `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `logs:StartQuery`, `logs:GetQueryResults`, `logs:StopQuery`, `logs:DescribeLogGroups`. Não verificado em uma conta real: se essas são as únicas ações de IAM necessárias, se os seus clusters publicam o Container Insights com esses nomes de métrica e dimensão, e se o seu pipeline de logs grava os campos Kubernetes acima.
+
 ## Query budget
 
 Cada investigação possui budget independente:
