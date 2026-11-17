@@ -15,6 +15,7 @@ from app.integrations.telemetry.types import (
 
 class MetricsSource(Protocol):
     source: str
+    capability: str
 
     def supports(self, request: MetricRequest) -> bool: ...
     def native_query(self, request: MetricRequest) -> str: ...
@@ -24,6 +25,7 @@ class MetricsSource(Protocol):
 
 class LogsSource(Protocol):
     source: str
+    capability: str
 
     def supports(self, request: LogRequest) -> bool: ...
     def native_query(self, request: LogRequest) -> str: ...
@@ -32,6 +34,7 @@ class LogsSource(Protocol):
 
 class TracesSource(Protocol):
     source: str
+    capability: str
 
     def supports(self, request: ServiceRed) -> bool: ...
     def native_query(self, request: ServiceRed) -> str: ...

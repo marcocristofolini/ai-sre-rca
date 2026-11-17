@@ -43,6 +43,7 @@ class TempoTracesSource:
     """Trace signals backed by Tempo, run through the existing tools (budget included)."""
 
     source = "tempo"
+    capability = "traces"
 
     def __init__(self, tools: Any):
         self._tools = tools

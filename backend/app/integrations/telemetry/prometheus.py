@@ -191,6 +191,7 @@ class PrometheusMetricsSource:
     """
 
     source = "prometheus"
+    capability = "metrics"
 
     def __init__(self, tools: Any):
         self._tools = tools
@@ -381,6 +382,7 @@ class PrometheusMetricsSource:
 
 class LokiLogsSource:
     source = "loki"
+    capability = "logs"
 
     def __init__(self, tools: Any):
         self._tools = tools

@@ -2,6 +2,16 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.config import Settings
+from app.core import query_budget
+from app.core.query_budget import (
+    begin_query_budget,
+    capability_for,
+    consume_query,
+    end_query_budget,
+    query_budget_snapshot,
+    register_source_capability,
+)
 from app.core.query_safety import quoted_string
 from app.integrations.telemetry import (
     ContainerMemoryWorkingSet,
@@ -303,3 +313,42 @@ def test_dependency_signals_are_supported_and_render_native_queries():
     requests = (PostgresDependency("d", "i"), KafkaDependency("t", None, "i"), RedisDependency("i"), ServiceGraph("s"))
     for request in requests:
         assert source.supports(request) and source.native_query(request)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [PrometheusMetricsSource(FakeTools()), LokiLogsSource(FakeTools()), TempoTracesSource(FakeTempo())],
+)
+def test_source_capability_matches_budget_registry(source):
+    assert capability_for(source.source) == source.capability
+
+
+def test_budget_snapshot_reports_per_capability_without_changing_existing_keys():
+    settings = Settings(
+        query_budget_enabled=True,
+        query_budget_max_calls=10,
+        query_budget_max_calls_per_source=2,
+        query_budget_max_wall_seconds=60,
+    )
+    token = begin_query_budget(settings)
+    try:
+        assert consume_query("prometheus") and consume_query("prometheus")
+        assert not consume_query("prometheus")  # per-source limit still enforced
+        assert consume_query("loki") and consume_query("argocd")
+        snapshot = query_budget_snapshot()
+    finally:
+        end_query_budget(token)
+    assert snapshot["per_source"] == {"argocd": 1, "loki": 1, "prometheus": 2}
+    assert snapshot["per_capability"] == {"logs": 1, "metrics": 2}  # unmapped sources are not invented
+    assert snapshot["total_calls"] == 4 and snapshot["denied"][0]["reason"] == "source_calls"
+
+
+def test_registering_a_new_backend_adds_its_capability_and_rejects_conflicts():
+    try:
+        register_source_capability("datadog-test", "metrics")
+        assert capability_for("datadog-test") == "metrics"
+        register_source_capability("datadog-test", "metrics")  # idempotent
+        with pytest.raises(ValueError):
+            register_source_capability("datadog-test", "logs")
+    finally:
+        query_budget._CAPABILITY_BY_SOURCE.pop("datadog-test", None)
