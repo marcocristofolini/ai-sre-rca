@@ -7,7 +7,6 @@ from typing import Any
 
 from app.config import Settings
 from app.core.dependency_identity import dependency_instance
-from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.trace_ids import canonical_trace_id
 from app.integrations.base import InvestigationTools
@@ -406,13 +405,13 @@ async def _trace_red_evidence(
     latest_errors = error_values[-1] if error_values else None
     latest_p95 = p95_values[-1] if p95_values else None
     summary = (
-        f"TraceQL RED metrics for {service}: "
+        f"{getattr(traces, 'red_label', 'TraceQL RED metrics')} for {service}: "
         f"rate={latest_rate if latest_rate is not None else 'n/a'} spans/s, "
         f"error_rate={latest_errors if latest_errors is not None else 'n/a'} spans/s, "
         f"p95={latest_p95 if latest_p95 is not None else 'n/a'} seconds."
     )
     return Evidence(
-        source="tempo",
+        source=traces.source,
         category="trace-red",
         summary=summary,
         facts={
@@ -501,7 +500,7 @@ async def enrich_with_trace_causality(
             for hop in analysis.causal_chain
         ) or "no deterministic causal candidate"
         ev = Evidence(
-            source="tempo",
+            source=traces.source,
             category="trace-causal-chain",
             summary=(
                 f"Trace {trace_id[:16]} root={analysis.root_service}:{analysis.root_operation}; "
@@ -520,7 +519,7 @@ async def enrich_with_trace_causality(
                 "causal_chain": [hop.model_dump() for hop in analysis.causal_chain],
             },
             query=analysis.source_query,
-            raw_reference=f"tempo://trace/{trace_id}",
+            raw_reference=f"{traces.source}://trace/{trace_id}",
             strength=analysis.candidate_strength,
         )
         trace_evidence.append(ev)
@@ -531,10 +530,10 @@ async def enrich_with_trace_causality(
 
     result.trace_analyses.extend(analyses)
     search_ev = Evidence(
-        source="tempo",
+        source=traces.source,
         category="trace-search",
         summary=(
-            f"Tempo returned {len(search_results)} representative traces for service {service}; "
+            f"{getattr(traces, 'display_name', traces.source)} returned {len(search_results)} representative traces for service {service}; "
             f"{len(analyses)} were fetched and structurally analyzed."
         ),
         facts={
@@ -543,8 +542,8 @@ async def enrich_with_trace_causality(
             "analyzed": len(analyses),
             "trace_ids": [analysis.trace_id for analysis in analyses],
         },
-        query=f'{{ resource.service.name = "{quoted_string(service)}" }}',
-        raw_reference="tempo:/api/search",
+        query=traces.search_query(service),
+        raw_reference=traces.search_reference,
         strength="medium",
     )
     result.evidence.append(search_ev)
@@ -696,7 +695,7 @@ async def enrich_with_trace_causality(
                 )
             )
             correlation_ev = Evidence(
-                source="tempo",
+                source=traces.source,
                 category="trace-deployment-correlation",
                 summary=(
                     f"Trace resource attributes map service {traced_service} "
@@ -718,7 +717,7 @@ async def enrich_with_trace_causality(
                     "matches_argo_revision": matches_revision,
                     "resource_attributes": context,
                 },
-                raw_reference=f"tempo://trace/{analysis.trace_id}",
+                raw_reference=f"{traces.source}://trace/{analysis.trace_id}",
                 strength="strong" if deployment_name else "medium",
             )
             result.evidence.append(correlation_ev)

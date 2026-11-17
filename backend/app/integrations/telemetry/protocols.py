@@ -37,6 +37,11 @@ class LogsSource(Protocol):
 class TracesSource(Protocol):
     source: str
     capability: str
+    display_name: str  # how summaries name the backend, e.g. "Tempo"
+    red_label: str  # prefix of the RED summary, e.g. "TraceQL RED metrics"
+    search_reference: str  # raw_reference of the trace-search evidence
+
+    def search_query(self, service: str) -> str: ...
 
     def supports(self, request: ServiceRed) -> bool: ...
     def native_query(self, request: ServiceRed) -> str: ...

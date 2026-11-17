@@ -9,6 +9,7 @@ instead of escaped; errors never include URLs or credentials.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -25,6 +26,8 @@ from app.integrations.telemetry.types import (
     MetricResult,
     PodLogs,
     Provenance,
+    ServiceRed,
+    TraceRedResult,
     UnsupportedSignal,
 )
 
@@ -43,6 +46,7 @@ ALLOWED_SITES = frozenset(
 )
 BUDGET_METRICS = "datadog_metrics"
 BUDGET_LOGS = "datadog_logs"
+BUDGET_TRACES = "datadog_traces"
 _TAG_VALUE = re.compile(r"[A-Za-z0-9_./-]{1,253}")
 _MAX_LOG_LIMIT = 1000
 _MAX_MESSAGE_CHARS = 4000
@@ -226,7 +230,207 @@ class DatadogLogsSource:
         return await _health(self._tools)
 
 
+
+_ID = re.compile(r"[A-Za-z0-9]{1,64}")
+_SPAN_LIMIT = 1000
+_MAX_SPAN_ATTRS = 20
+
+
+def _span_id(value: Any) -> str:
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise UnsupportedSignal("id cannot be used safely in a Datadog query")
+    return value
+
+
+def _epoch_nanos(value: Any) -> int | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return int(moment.timestamp() * 1_000_000_000)
+
+
+def _span_is_error(attributes: dict[str, Any]) -> bool | None:
+    """True/False only when the span says so; None keeps the status unknown (never guessed)."""
+    inner = attributes.get("attributes")
+    status = inner.get("status") if isinstance(inner, dict) else None
+    if isinstance(status, str):
+        return status.lower() == "error"
+    tags = attributes.get("tags")
+    if isinstance(tags, list) and "error:true" in tags:
+        return True
+    return None
+
+
+def _otlp_attributes(items: Any) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    if not isinstance(items, dict):
+        return output
+    for key, value in list(items.items())[:_MAX_SPAN_ATTRS]:
+        if isinstance(value, bool):
+            output.append({"key": str(key), "value": {"boolValue": value}})
+        elif isinstance(value, int):
+            output.append({"key": str(key), "value": {"intValue": value}})
+        elif isinstance(value, str):
+            output.append({"key": str(key), "value": {"stringValue": value[:500]}})
+    return output
+
+
+class DatadogTracesSource:
+    """APM traces from the Spans API. Span/trace id wire format is passed through unchanged."""
+
+    source = "datadog"
+    capability = "traces"
+    display_name = "Datadog"
+    red_label = "Datadog span RED metrics"
+    search_reference = "datadog:/api/v2/spans/events/search"
+
+    def __init__(self, tools: Any):
+        self._tools = tools
+        self._client = _Client(tools, BUDGET_TRACES)
+
+    def supports(self, request: Any) -> bool:
+        return isinstance(request, ServiceRed)
+
+    def search_query(self, service: str) -> str:
+        return f"service:{_tag(service)}"
+
+    def native_query(self, request: ServiceRed) -> str:
+        if not isinstance(request, ServiceRed):
+            raise UnsupportedSignal(type(request).__name__)
+        base = self.search_query(request.service)
+        return f"count{{{base}}}; count{{{base} status:error}}"
+
+    @staticmethod
+    def _filter(query: str, start: datetime, end: datetime) -> dict[str, str]:
+        return {"query": query, "from": _millis(start), "to": _millis(end)}
+
+    async def _search_spans(self, query: str, start: datetime, end: datetime, limit: int) -> list[dict[str, Any]] | None:
+        body = await self._client.request(
+            "POST",
+            "/api/v2/spans/events/search",
+            json={
+                "data": {
+                    "type": "search_request",
+                    "attributes": {
+                        "filter": self._filter(query, start, end),
+                        "page": {"limit": max(1, min(limit, _SPAN_LIMIT))},
+                        "sort": "-timestamp",
+                    },
+                }
+            },
+        )
+        if body is None:
+            return None
+        return [item["attributes"] for item in body.get("data") or [] if isinstance(item, dict) and isinstance(item.get("attributes"), dict)]
+
+    async def search(self, service: str, start: datetime, end: datetime, limit: int = 8) -> list[dict[str, Any]]:
+        base = self.search_query(service)
+        hits: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for query in (f"{base} status:error", base):  # failing traces first, then recent ones
+            spans = await self._search_spans(query, start, end, max(limit * 4, limit))
+            for span in spans or []:
+                trace_id = span.get("trace_id")
+                if not isinstance(trace_id, str) or not _ID.fullmatch(trace_id) or trace_id in seen:
+                    continue
+                seen.add(trace_id)
+                hits.append({"traceID": trace_id, "_source_query": query})
+                if len(hits) >= limit:
+                    return hits
+        return hits
+
+    async def get_trace(
+        self, trace_id: str, start: datetime | None = None, end: datetime | None = None
+    ) -> dict[str, Any]:
+        end = end or datetime.now(UTC)
+        start = start or end - timedelta(hours=1)
+        spans = await self._search_spans(f"trace_id:{_span_id(trace_id)}", start, end, _SPAN_LIMIT)
+        by_service: dict[str, list[dict[str, Any]]] = {}
+        for span in spans or []:
+            started = _epoch_nanos(span.get("start_timestamp"))
+            finished = _epoch_nanos(span.get("end_timestamp"))
+            span_id = span.get("span_id")
+            if started is None or finished is None or not isinstance(span_id, str) or not span_id:
+                continue
+            error = _span_is_error(span)
+            otlp: dict[str, Any] = {
+                "traceId": span.get("trace_id") or trace_id,
+                "spanId": span_id,
+                "name": str(span.get("resource_name") or "unnamed-span"),
+                "startTimeUnixNano": str(started),
+                "endTimeUnixNano": str(finished),
+                "attributes": _otlp_attributes(span.get("attributes")),
+            }
+            parent = span.get("parent_id")
+            if isinstance(parent, str) and parent and parent != "0":
+                otlp["parentSpanId"] = parent
+            if error is not None:
+                otlp["status"] = {"code": 2 if error else 1}
+            by_service.setdefault(str(span.get("service") or "unknown-service"), []).append(otlp)
+        if not by_service:
+            return {}
+        return {
+            "resourceSpans": [
+                {
+                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": service}}]},
+                    "scopeSpans": [{"spans": items}],
+                }
+                for service, items in by_service.items()
+            ]
+        }
+
+    async def _count(self, query: str, start: datetime, end: datetime) -> float | None:
+        body = await self._client.request(
+            "POST",
+            "/api/v2/spans/analytics/aggregate",
+            json={
+                "data": {
+                    "type": "aggregate_request",
+                    "attributes": {
+                        "compute": [{"aggregation": "count", "type": "total"}],
+                        "filter": self._filter(query, start, end),
+                    },
+                }
+            },
+        )
+        if body is None:
+            return None
+        for bucket in body.get("data") or []:
+            computes = (bucket.get("attributes") or {}).get("computes") if isinstance(bucket, dict) else None
+            if isinstance(computes, dict):
+                for value in computes.values():
+                    if isinstance(value, (int, float)) and not isinstance(value, bool):
+                        return float(value)
+        return 0.0  # an empty aggregate means no matching spans
+
+    async def red(self, request: ServiceRed, start: datetime, end: datetime, step: str = "30s") -> TraceRedResult:
+        if not isinstance(request, ServiceRed):
+            raise UnsupportedSignal(type(request).__name__)
+        base = self.search_query(request.service)
+        seconds = max((end - start).total_seconds(), 1.0)
+        total, errors = await asyncio.gather(
+            self._count(base, start, end), self._count(f"{base} status:error", start, end)
+        )
+        # p95 stays empty: the unit of Datadog span durations is not verified.
+        return TraceRedResult(
+            provenance=Provenance(self.source, self.native_query(request), "datadog:/api/v2/spans/analytics/aggregate"),
+            rate=(total / seconds,) if total else (),
+            errors=(errors / seconds,) if errors else (),
+            p95=(),
+        )
+
+    async def health(self) -> dict[str, Any]:
+        return await _health(self._tools)
+
+
 register_source_capability(BUDGET_METRICS, "metrics")
 register_source_capability(BUDGET_LOGS, "logs")
+register_source_capability(BUDGET_TRACES, "traces")
 register_backend("metrics", "datadog", DatadogMetricsSource)
 register_backend("logs", "datadog", DatadogLogsSource)
+register_backend("traces", "datadog", DatadogTracesSource)

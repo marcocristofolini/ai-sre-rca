@@ -44,6 +44,12 @@ class TempoTracesSource:
 
     source = "tempo"
     capability = "traces"
+    display_name = "Tempo"
+    red_label = "TraceQL RED metrics"
+    search_reference = "tempo:/api/search"
+
+    def search_query(self, service: str) -> str:
+        return f'{{ resource.service.name = "{quoted_string(service)}" }}'
 
     def __init__(self, tools: Any):
         self._tools = tools
