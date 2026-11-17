@@ -3,8 +3,22 @@ name: GitHub-first gate
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.claude/**'
+      - '.mcp.json'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
+      - 'LICENSE'
+      - '.claude/**'
+      - '.mcp.json'
   workflow_dispatch:
 
 permissions:
@@ -24,10 +38,12 @@ jobs:
 
   codeql:
     name: CodeQL
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/codeql.yml
 
   real-environment:
     name: Real environment validation
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/real-environment-validation.yml
 
   gate:
@@ -44,6 +60,7 @@ jobs:
           CI_RESULT: ${{ needs.ci.result }}
           CODEQL_RESULT: ${{ needs.codeql.result }}
           REAL_ENV_RESULT: ${{ needs.real-environment.result }}
+          EVENT: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,8 +68,14 @@ jobs:
             "$CI_RESULT" "$CODEQL_RESULT" "$REAL_ENV_RESULT"
 
           test "$CI_RESULT" = success
-          test "$CODEQL_RESULT" = success
-          test "$REAL_ENV_RESULT" = success
+          # CodeQL and kind validation are skipped on PRs (cost); required on main.
+          if [ "$EVENT" = pull_request ]; then
+            test "$CODEQL_RESULT" = skipped
+            test "$REAL_ENV_RESULT" = skipped
+          else
+            test "$CODEQL_RESULT" = success
+            test "$REAL_ENV_RESULT" = success
+          fi
 
       - name: Publish gate summary
         env:
