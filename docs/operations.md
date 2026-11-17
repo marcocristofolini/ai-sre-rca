@@ -105,6 +105,29 @@ Supported signals: container memory working set (`sum:kubernetes.memory.working_
 
 Query budgets are tracked as `datadog_metrics`, `datadog_logs` and `datadog_traces` (capabilities `metrics`, `logs` and `traces`). Not verified yet and to confirm against a real account: the minimum Datadog permissions for the application key, and that the `kubernetes.*` metric and `kube_namespace`/`pod_name` tag names match your Agent configuration; for traces, the span id wire format (ids are passed through unchanged), the `status:error` span query and the span status field (`attributes.status`, otherwise the `error:true` tag; without either the status stays unknown, never guessed).
 
+### CloudWatch backend (metrics and logs)
+
+Select CloudWatch per cluster with `metrics_backend` and/or `logs_backend` set to `cloudwatch`:
+
+```json
+{
+  "prod-br": {
+    "metrics_backend": "cloudwatch", "logs_backend": "cloudwatch",
+    "aws_region": "sa-east-1",
+    "cloudwatch_cluster_name": "prod-eks",
+    "cloudwatch_log_groups": ["/aws/containerinsights/prod-eks/application"]
+  }
+}
+```
+
+Credentials come from the AWS default chain (IRSA, EKS Pod Identity, instance role or environment); no keys are stored in settings or cluster config. The endpoint is derived by `botocore` from `aws_region` (validated; `AWS_REGION` is the global default), so no URL is configurable. Optional per-cluster keys `cloudwatch_log_namespace_field` and `cloudwatch_log_pod_field` override the Logs Insights field names (defaults `kubernetes.namespace_name`, `kubernetes.pod_name`).
+
+Supported signals: container memory working set (Container Insights `pod_memory_working_set`, dimensions `ClusterName`, `Namespace`, `PodName`, `Maximum` at 60 s) via `GetMetricData`, and pod logs via Logs Insights (`StartQuery` then bounded `GetQueryResults` polling; a query that exceeds `CLOUDWATCH_QUERY_TIMEOUT_SECONDS` is stopped and reported as a failure). Node filesystem, stateful dependencies, the service graph and traces are not supported by this backend and fail closed. AWS errors are reported by error code only.
+
+Query budgets are tracked as `cloudwatch_metrics` and `cloudwatch_logs`: each `GetMetricData` call and each Logs Insights query counts once; result polling is bounded by the timeout rather than counted.
+
+Read-only API calls used: `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, `logs:StartQuery`, `logs:GetQueryResults`, `logs:StopQuery`, `logs:DescribeLogGroups`. Not verified against a real account: that these are the only IAM actions required, that your clusters publish Container Insights with these metric and dimension names, and that your log pipeline writes the Kubernetes fields listed above.
+
 ## Query budget
 
 Each investigation owns an independent budget:

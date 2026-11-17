@@ -2,6 +2,7 @@ from app.integrations.telemetry.prometheus import (
     LokiLogsSource,
     PrometheusMetricsSource,
 )
+from app.integrations.telemetry import cloudwatch as _cloudwatch  # noqa: F401  (registers backend)
 from app.integrations.telemetry import datadog as _datadog  # noqa: F401  (registers backend)
 from app.integrations.telemetry.protocols import LogsSource, MetricsSource, TracesSource
 from app.integrations.telemetry.registry import (

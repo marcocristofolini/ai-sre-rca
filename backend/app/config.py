@@ -186,6 +186,10 @@ class Settings(BaseSettings):
 
     github_api_url: str = "https://api.github.com"
     github_token: str | None = None
+    # CloudWatch read-only adapter. Credentials come from the AWS default chain (IRSA,
+    # Pod Identity, instance role); nothing secret is stored in settings.
+    aws_region: str | None = None
+    cloudwatch_query_timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
     # Datadog read-only adapter (metrics_backend / logs_backend = "datadog"); keys only via env.
     datadog_site: str = "datadoghq.com"
     datadog_api_key: str | None = None
