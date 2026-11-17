@@ -10,12 +10,19 @@ from app.core.k8s_signals import classify_pod_scenario
 from app.core.kubernetes_investigator import investigate_node_not_ready, investigate_pod_scenario
 from app.core.playbooks import pod_eviction_hypotheses
 from app.core.query_budget import begin_query_budget, end_query_budget
-from app.core.query_safety import prom_regex_literal, quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.stateful_dependency import enrich_with_stateful_dependencies
 from app.core.trace_analysis import enrich_with_trace_causality
 from app.memory.base import IncidentMemory
 from app.integrations.base import InvestigationTools
+from app.integrations.telemetry import (
+    LogResult,
+    LokiLogsSource,
+    MetricResult,
+    NodeFilesystemAvailable,
+    PodLogs,
+    PrometheusMetricsSource,
+)
 from app.llm.hypotheses import HypothesisGenerator, NullHypothesisGenerator
 from app.schemas import (
     Entity,
@@ -47,27 +54,6 @@ def _parse_dt(value: str | None, fallback: datetime) -> datetime:
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except ValueError:
         return fallback
-
-
-def _prom_value(payload: dict[str, Any]) -> float | None:
-    try:
-        return float(payload["data"]["result"][0]["value"][1])
-    except (KeyError, IndexError, TypeError, ValueError):
-        return None
-
-
-def _prom_range_values(payload: dict[str, Any]) -> list[float]:
-    try:
-        values = payload["data"]["result"][0]["values"]
-    except (KeyError, IndexError, TypeError):
-        return []
-    output: list[float] = []
-    for value in values:
-        try:
-            output.append(float(value[1]))
-        except (IndexError, TypeError, ValueError):
-            continue
-    return output
 
 
 def _owner(resource: dict[str, Any], kind: str | None = None) -> dict[str, Any] | None:
@@ -376,17 +362,14 @@ class InvestigationEngine:
             if node_name
             else asyncio.sleep(0, result={})
         )
-        namespace_label = quoted_string(incident.namespace)
-        pod_label = quoted_string(incident.pod)
-        logs_query = f'{{namespace="{namespace_label}", pod="{pod_label}"}}'
+        prom_source = PrometheusMetricsSource(self.tools)
+        loki_source = LokiLogsSource(self.tools)
+        logs_request = PodLogs(incident.namespace, incident.pod, 100)
+        logs_query = loki_source.native_query(logs_request)
         logs_task = optional(
             "loki",
-            self.tools.loki_query_range(
-                logs_query,
-                *incident.query_window(20),
-                100,
-            ),
-            {"data": {"result": []}},
+            loki_source.query(logs_request, *incident.query_window(20)),
+            LogResult.empty("loki"),
         )
         graph_task = optional(
             "service-graph",
@@ -420,27 +403,25 @@ class InvestigationEngine:
             event_task, node_task, logs_task, graph_task, argo_task, nodeclaim_task, node_pods_task
         )
 
-        fs_current: dict[str, Any] = {}
-        fs_trend: dict[str, Any] = {}
+        fs_current = MetricResult.empty("prometheus")
+        fs_trend = MetricResult.empty("prometheus")
         if node_name:
-            node_pattern = prom_regex_literal(node_name)
-            fs_query = (
-                f'node_filesystem_avail_bytes{{instance=~"^{node_pattern}(:[0-9]+)?$",mountpoint="/"}}'
-            )
+            fs_request = NodeFilesystemAvailable(node_name)
+            fs_query = prom_source.native_query(fs_request)
             fs_current, fs_trend = await asyncio.gather(
                 optional(
                     "prometheus-current",
-                    self.tools.prometheus_query(fs_query, start),
-                    {},
+                    prom_source.instant(fs_request, start),
+                    MetricResult.empty("prometheus"),
                 ),
                 optional(
                     "prometheus-range",
-                    self.tools.prometheus_query_range(
-                        fs_query,
+                    prom_source.range(
+                        fs_request,
                         *incident.query_window(30, 2),
                         "60s",
                     ),
-                    {},
+                    MetricResult.empty("prometheus"),
                 ),
             )
         else:
@@ -560,8 +541,8 @@ class InvestigationEngine:
         evidence.append(resource_ev)
 
         fs_ev: Evidence | None = None
-        available = _prom_value(fs_current)
-        trend_values = _prom_range_values(fs_trend)
+        available = fs_current.value
+        trend_values = list(fs_trend.values)
         if available is not None:
             trend_summary = ""
             if len(trend_values) >= 2:
@@ -582,7 +563,7 @@ class InvestigationEngine:
             )
             evidence.append(fs_ev)
 
-        log_count = sum(len(stream.get("values", [])) for stream in logs.get("data", {}).get("result", []))
+        log_count = logs.entry_count
         logs_ev = Evidence(
             source="loki",
             category="logs",

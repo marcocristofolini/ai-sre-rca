@@ -16,9 +16,16 @@ from app.core.k8s_signals import (
     waiting_states,
 )
 from app.core.playbooks import hypotheses_for_scenario, kubernetes_root_priority
-from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.integrations.base import InvestigationTools
+from app.integrations.telemetry import (
+    ContainerMemoryWorkingSet,
+    LogResult,
+    LokiLogsSource,
+    MetricResult,
+    PodLogs,
+    PrometheusMetricsSource,
+)
 from app.llm.hypotheses import HypothesisGenerator
 from app.schemas import (
     Entity,
@@ -55,13 +62,6 @@ def _owner(resource: dict[str, Any], kind: str | None = None) -> dict[str, Any] 
 def _condition_status(resource: dict[str, Any], condition_type: str) -> str | None:
     item = condition(resource, condition_type)
     return str(item.get("status")) if item else None
-
-
-def _prom_value(payload: dict[str, Any]) -> float | None:
-    try:
-        return float(payload["data"]["result"][0]["value"][1])
-    except (KeyError, IndexError, TypeError, ValueError):
-        return None
 
 
 def _quantity_bytes(value: str | None) -> float | None:
@@ -307,16 +307,13 @@ async def investigate_pod_scenario(
 
     node_name = incident.node or pod.get("spec", {}).get("nodeName")
     node_task = _optional(tools.get_node(node_name), {}) if node_name else _empty_dict()
-    namespace_label = quoted_string(incident.namespace)
-    pod_label = quoted_string(incident.pod)
-    logs_query = f'{{namespace="{namespace_label}", pod="{pod_label}"}}'
+    prom_source = PrometheusMetricsSource(tools)
+    loki_source = LokiLogsSource(tools)
+    logs_request = PodLogs(incident.namespace, incident.pod, 200)
+    logs_query = loki_source.native_query(logs_request)
     logs_task = _optional(
-        tools.loki_query_range(
-            logs_query,
-            *incident.query_window(20),
-            200,
-        ),
-        {"data": {"result": []}},
+        loki_source.query(logs_request, *incident.query_window(20)),
+        LogResult.empty("loki"),
     )
     argo_task = _optional(tools.argocd_application(argo_app_name), {})
     hpa_task = (
@@ -432,12 +429,7 @@ async def investigate_pod_scenario(
             evidence.append(ev)
             event_evidence.append(ev)
 
-    log_entries = [
-        value[1]
-        for stream in logs.get("data", {}).get("result", [])
-        for value in stream.get("values", [])
-        if len(value) > 1
-    ]
+    log_entries = list(logs.entries)
     logs_ev = Evidence(
         source="loki",
         category="logs",
@@ -462,12 +454,12 @@ async def investigate_pod_scenario(
 
     working_set_ev: Evidence | None = None
     if scenario in {"oomkilled", "crashloop"}:
-        query = (
-            f'sum(container_memory_working_set_bytes{{namespace="{namespace_label}",pod="{pod_label}",'
-            'container!="",image!=""})'
+        memory_request = ContainerMemoryWorkingSet(incident.namespace, incident.pod)
+        query = prom_source.native_query(memory_request)
+        memory_result = await _optional(
+            prom_source.instant(memory_request, start), MetricResult.empty("prometheus")
         )
-        payload = await _optional(tools.prometheus_query(query, start), {})
-        working_set = _prom_value(payload)
+        working_set = memory_result.value
         if working_set is not None:
             working_set_ev = Evidence(
                 source="prometheus",

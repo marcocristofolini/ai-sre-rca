@@ -7,6 +7,26 @@ from typing import Any
 
 from app.config import Settings
 
+# Telemetry capability each budget source belongs to. Additive reporting only:
+# limits still apply per source and in total. Adapters for new backends register
+# their source here so snapshots can show usage per capability (ADR-0001).
+_CAPABILITY_BY_SOURCE: dict[str, str] = {
+    "prometheus": "metrics",
+    "loki": "logs",
+    "tempo": "traces",
+}
+
+
+def register_source_capability(source: str, capability: str) -> None:
+    existing = _CAPABILITY_BY_SOURCE.get(source)
+    if existing is not None and existing != capability:
+        raise ValueError(f"source {source!r} is already registered as {existing!r}")
+    _CAPABILITY_BY_SOURCE[source] = capability
+
+
+def capability_for(source: str) -> str | None:
+    return _CAPABILITY_BY_SOURCE.get(source)
+
 
 @dataclass
 class QueryBudgetState:
@@ -17,6 +37,7 @@ class QueryBudgetState:
     started_at: float = field(default_factory=time.monotonic)
     total_calls: int = 0
     per_source: dict[str, int] = field(default_factory=dict)
+    per_capability: dict[str, int] = field(default_factory=dict)
     denied: list[dict[str, Any]] = field(default_factory=list)
 
     def consume(self, source: str, cost: int = 1) -> bool:
@@ -52,6 +73,9 @@ class QueryBudgetState:
 
         self.total_calls += cost
         self.per_source[source] = source_calls + cost
+        capability = capability_for(source)
+        if capability:
+            self.per_capability[capability] = self.per_capability.get(capability, 0) + cost
         return True
 
     def snapshot(self) -> dict[str, Any]:
@@ -59,6 +83,7 @@ class QueryBudgetState:
             "enabled": self.enabled,
             "total_calls": self.total_calls,
             "per_source": dict(sorted(self.per_source.items())),
+            "per_capability": dict(sorted(self.per_capability.items())),
             "denied": list(self.denied),
             "elapsed_seconds": round(time.monotonic() - self.started_at, 3),
             "limits": {

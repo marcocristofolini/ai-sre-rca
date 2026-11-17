@@ -11,6 +11,7 @@ from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.trace_ids import canonical_trace_id
 from app.integrations.base import InvestigationTools
+from app.integrations.telemetry import ServiceRed, TempoTracesSource
 from app.schemas import (
     Entity,
     Evidence,
@@ -382,53 +383,22 @@ def _service_for_incident(incident: IncidentInput, result: InvestigationResult) 
     return None
 
 
-def _metric_values(payload: dict[str, Any]) -> list[float]:
-    output: list[float] = []
-    for series in payload.get("series", []):
-        for sample in series.get("samples", []):
-            try:
-                output.append(float(sample.get("value")))
-            except (TypeError, ValueError):
-                pass
-        for value in series.get("values", []):
-            try:
-                output.append(float(value[1] if isinstance(value, list) else value))
-            except (TypeError, ValueError, IndexError):
-                pass
-    for row in payload.get("data", {}).get("result", []):
-        values = row.get("values") or ([row.get("value")] if row.get("value") else [])
-        for value in values:
-            try:
-                output.append(float(value[1]))
-            except (TypeError, ValueError, IndexError):
-                pass
-    return output
-
-
 async def _trace_red_evidence(
     tools: InvestigationTools,
     service: str,
     incident: IncidentInput,
 ) -> Evidence | None:
-    escaped = quoted_string(service)
+    traces = TempoTracesSource(tools)
+    request = ServiceRed(service)
     start, end = incident.query_window(10)
-    queries = {
-        "rate": f'{{ resource.service.name = "{escaped}" }} | rate()',
-        "errors": f'{{ resource.service.name = "{escaped}" && status = error }} | rate()',
-        "p95": f'{{ resource.service.name = "{escaped}" }} | quantile_over_time(span:duration, .95)',
-    }
     try:
-        rate, errors, p95 = await asyncio.gather(
-            tools.tempo_metrics_query(queries["rate"], start, end, "30s"),
-            tools.tempo_metrics_query(queries["errors"], start, end, "30s"),
-            tools.tempo_metrics_query(queries["p95"], start, end, "30s"),
-        )
+        red = await traces.red(request, start, end, "30s")
     except Exception:
         return None
 
-    rate_values = _metric_values(rate)
-    error_values = _metric_values(errors)
-    p95_values = _metric_values(p95)
+    rate_values = list(red.rate)
+    error_values = list(red.errors)
+    p95_values = list(red.p95)
     if not rate_values and not error_values and not p95_values:
         return None
 
@@ -451,8 +421,8 @@ async def _trace_red_evidence(
             "error_spans_per_second": latest_errors,
             "p95_seconds": latest_p95,
         },
-        query="; ".join(queries.values()),
-        raw_reference="tempo:/api/metrics/query_range",
+        query=red.provenance.native_query,
+        raw_reference=red.provenance.raw_reference,
         strength="medium",
     )
 
@@ -470,9 +440,10 @@ async def enrich_with_trace_causality(
     if not service:
         return result
 
+    traces = TempoTracesSource(tools)
     start, end = result.incident.query_window(settings.trace_window_minutes)
     try:
-        search_results = await tools.tempo_search_traces(
+        search_results = await traces.search(
             service,
             start,
             end,
@@ -487,7 +458,7 @@ async def enrich_with_trace_causality(
     selected = search_results[: settings.trace_fetch_limit]
     payloads = await asyncio.gather(
         *[
-            tools.tempo_get_trace(
+            traces.get_trace(
                 str(item.get("traceID")),
                 start,
                 end,

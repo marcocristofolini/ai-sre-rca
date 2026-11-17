@@ -101,18 +101,20 @@ C costs more than A or B once, but is the only option where evidence stays hones
 
 1. **Catalogue scope:** start with the signals the current playbooks already use and add entries only when a playbook needs them. A broad speculative catalogue would force every backend to translate signals nobody asks for.
 2. **No `NativeQuery` escape hatch.** A free-form string would let PromQL leak back into callers and make non-Prometheus adapters unverifiable. The remaining PromQL/TraceQL call sites (`service_graph`, the Postgres/Kafka/Redis dependency helpers, `tempo_*`) are catalogued in follow-up PRs before the facade is removed.
-3. **Budget keys stay public and stable.** Snapshots and tests read the method-name keys (`prometheus_query`, `loki_query_range`, ...). Capability-level keys are added alongside them; the old keys are removed only in a deliberate, documented breaking change.
+3. **Budget keys stay public and stable.** `QueryBudgetState` counts per source (`prometheus`, `loki`, `tempo`, ...) and the specialist wrappers count per method name; both stay as they are. Capability usage (`metrics`, `logs`, `traces`) is added alongside as `per_capability` in the snapshot. It is reporting only: limits keep applying per source and in total. Any removal of the old keys would be a deliberate, documented breaking change.
 
 ## Implementation status (step 2 of #73)
 
 Delivered in the first implementation PR, with the existing test suite passing unmodified:
 
-- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`.
-- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`.
-- Migrated call sites: `core/engine.py` (filesystem capacity, logs) and `core/kubernetes_investigator.py` (memory working set, logs).
+- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`, `TempoTracesSource` (`TracesSource` protocol).
+- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`, `ServiceGraph`, `PostgresDependency`, `KafkaDependency`, `RedisDependency`; Tempo trace search and fetch go through the same source.
+- Migrated call sites: `core/engine.py` (filesystem capacity, logs), `core/kubernetes_investigator.py` (memory working set, logs) and `core/trace_analysis.py` (RED metrics, trace search, trace fetch).
 - Query strings and `raw_reference` values are byte-identical to the previous code (golden tests).
 
-Still to do before #74 and #75 can rely on the interface: Tempo source and `TracesSource` protocol, `service_graph`, the stateful dependency helpers, capability-level budget keys, and a shared contract test that every source must pass.
+Query authoring for `service_graph` and the Postgres/Kafka/Redis dependency helpers moved out of `integrations/http_tools.py` into `PrometheusMetricsSource`; the `ReadOnlyHTTPTools` methods are now thin facades over it. A differential check against the previous implementation (163 queries and all result dicts over a matrix of hostile and missing inputs) matched exactly, and golden tests pin the strings. Callers such as `stateful_dependency` still go through the facade methods on purpose: the test doubles override those methods, so switching callers to the sources is a separate step.
+
+A parametrized contract test (`test_source_contract`) now covers every source. Budget snapshots now include `per_capability`, and each source declares its `capability`; new backends call `register_source_capability` (a contract test checks that the registry and the source agree). Still to do before #74 and #75 can rely on the interface: switching callers (`stateful_dependency`, `trace_analysis` service graph) from the facade methods to the sources.
 
 ## Action items
 
