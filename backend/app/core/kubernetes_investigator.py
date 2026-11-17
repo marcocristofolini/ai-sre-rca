@@ -21,10 +21,10 @@ from app.integrations.base import InvestigationTools
 from app.integrations.telemetry import (
     ContainerMemoryWorkingSet,
     LogResult,
-    LokiLogsSource,
     MetricResult,
     PodLogs,
-    PrometheusMetricsSource,
+    logs_source_for,
+    metrics_source_for,
 )
 from app.llm.hypotheses import HypothesisGenerator
 from app.schemas import (
@@ -307,8 +307,8 @@ async def investigate_pod_scenario(
 
     node_name = incident.node or pod.get("spec", {}).get("nodeName")
     node_task = _optional(tools.get_node(node_name), {}) if node_name else _empty_dict()
-    prom_source = PrometheusMetricsSource(tools)
-    loki_source = LokiLogsSource(tools)
+    prom_source = metrics_source_for(tools)
+    loki_source = logs_source_for(tools)
     logs_request = PodLogs(incident.namespace, incident.pod, 200)
     logs_query = loki_source.native_query(logs_request)
     logs_task = _optional(

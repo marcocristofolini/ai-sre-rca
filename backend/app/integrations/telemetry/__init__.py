@@ -3,6 +3,16 @@ from app.integrations.telemetry.prometheus import (
     PrometheusMetricsSource,
 )
 from app.integrations.telemetry.protocols import LogsSource, MetricsSource, TracesSource
+from app.integrations.telemetry.registry import (
+    UnavailableSource,
+    build_source,
+    logs_source_for,
+    metrics_source_for,
+    register_backend,
+    registered_backends,
+    traces_source_for,
+    unsupported_dependency_result,
+)
 from app.integrations.telemetry.tempo import TempoTracesSource
 from app.integrations.telemetry.types import (
     ContainerMemoryWorkingSet,
@@ -41,5 +51,13 @@ __all__ = [
     "TempoTracesSource",
     "TraceRedResult",
     "TracesSource",
+    "UnavailableSource",
     "UnsupportedSignal",
+    "build_source",
+    "logs_source_for",
+    "metrics_source_for",
+    "register_backend",
+    "registered_backends",
+    "traces_source_for",
+    "unsupported_dependency_result",
 ]

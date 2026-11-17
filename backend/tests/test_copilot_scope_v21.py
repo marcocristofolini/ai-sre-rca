@@ -261,3 +261,39 @@ def test_service_queries_use_selected_window_without_inventing_a_pod():
         for kind, start, end in calls:
             assert end == datetime.fromisoformat(selection['ends_at'])
             if kind != 'metrics': assert start == datetime.fromisoformat(selection['starts_at'])
+
+
+def _reports(cluster, **overrides):
+    base = {name: {'source': name, 'status': 'healthy', 'cluster': cluster} for name in ('kubernetes', 'prometheus', 'loki', 'tempo')}
+    base.update(overrides)
+    return list(base.values())
+
+
+def _proposal_code_with_reports(reports_for):
+    app, _principal = scoped_api()
+    class Tools(DemoTools):
+        async def capability_report(self, cluster): return reports_for(cluster)
+    with TestClient(app) as client:
+        app.state.tools = Tools()
+        response = proposal(client, scope())[0]
+        return response.status_code, (response.json().get('detail') or {}).get('code') if response.status_code != 200 else None
+
+
+def test_alternate_metrics_backend_replaces_the_default_probe_when_healthy():
+    status, _ = _proposal_code_with_reports(lambda c: _reports(
+        c, prometheus={'source': 'prometheus', 'status': 'unavailable', 'cluster': c},
+        datadog={'source': 'datadog', 'capability': 'metrics', 'status': 'healthy', 'cluster': c}))
+    assert status == 200
+
+
+@pytest.mark.parametrize('alternate_status', ['unavailable', 'degraded', 'unsupported_backend', 'unknown'])
+def test_unhealthy_alternate_backend_fails_closed_even_if_default_probe_is_healthy(alternate_status):
+    status, code = _proposal_code_with_reports(lambda c: _reports(
+        c, datadog={'source': 'datadog', 'capability': 'metrics', 'status': alternate_status, 'cluster': c}))
+    assert (status, code) == (503, 'telemetry_unavailable')
+
+
+def test_default_backends_still_require_prometheus_and_loki_healthy():
+    for missing in ('prometheus', 'loki'):
+        status, code = _proposal_code_with_reports(lambda c, m=missing: _reports(c, **{m: {'source': m, 'status': 'unavailable', 'cluster': c}}))
+        assert (status, code) == (503, 'telemetry_unavailable')

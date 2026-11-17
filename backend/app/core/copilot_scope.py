@@ -124,9 +124,18 @@ async def resolve_scope(source, selection, request, principal, question):
         capabilities = await asyncio.wait_for(request.app.state.tools.capability_report(selection.cluster), timeout=8)
     except Exception:
         scope_error('telemetry_unavailable', 'Telemetry readiness could not be verified.', 503)
-    needed = {'prometheus', 'loki'} | ({'kubernetes'} if selection.kind != 'Service' else set())
-    healthy = {item.get('source') for item in capabilities if isinstance(item, dict) and item.get('status') == 'healthy' and item.get('cluster') == selection.cluster}
-    if not needed <= healthy:
+    needed = {'kubernetes'} if selection.kind != 'Service' else set()
+    items = [item for item in capabilities if isinstance(item, dict) and item.get('cluster') == selection.cluster]
+    healthy = {item.get('source') for item in items if item.get('status') == 'healthy'}
+    # Metrics and logs are satisfied by the active backend: an alternate backend
+    # reports its own capability entry and replaces the default product probe.
+    telemetry_ready = all(
+        any(item.get('status') == 'healthy' for item in items if item.get('capability') == capability)
+        if any(item.get('capability') == capability for item in items)
+        else default in healthy
+        for capability, default in (('metrics', 'prometheus'), ('logs', 'loki'))
+    )
+    if not needed <= healthy or not telemetry_ready:
         scope_error('telemetry_unavailable', 'Required telemetry is unavailable. No investigation was started.', 503)
     service = None
     if selection.kind in ('Service', 'Deployment', 'StatefulSet'):
