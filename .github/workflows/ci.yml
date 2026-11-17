@@ -370,7 +370,7 @@ jobs:
               "/awareness",
           ):
               html = get(f"{FRONTEND}{path}")
-              assert b"AI SRE RCA" in html or b"SRE" in html
+              assert b"Tracecroft AI" in html
 
           saved_html = get(f"{FRONTEND}/incidents/{incident_id}")
           assert "Investigação persistida".encode() in saved_html
