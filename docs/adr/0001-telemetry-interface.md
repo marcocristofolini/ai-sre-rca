@@ -108,11 +108,13 @@ C costs more than A or B once, but is the only option where evidence stays hones
 Delivered in the first implementation PR, with the existing test suite passing unmodified:
 
 - `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`, `TempoTracesSource` (`TracesSource` protocol).
-- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`; Tempo trace search and fetch go through the same source.
+- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`, `ServiceGraph`, `PostgresDependency`, `KafkaDependency`, `RedisDependency`; Tempo trace search and fetch go through the same source.
 - Migrated call sites: `core/engine.py` (filesystem capacity, logs), `core/kubernetes_investigator.py` (memory working set, logs) and `core/trace_analysis.py` (RED metrics, trace search, trace fetch).
 - Query strings and `raw_reference` values are byte-identical to the previous code (golden tests).
 
-A parametrized contract test (`test_source_contract`) now covers every source. Still to do before #74 and #75 can rely on the interface: `service_graph`, the stateful dependency helpers (Postgres, Kafka, Redis), and capability-level budget keys.
+Query authoring for `service_graph` and the Postgres/Kafka/Redis dependency helpers moved out of `integrations/http_tools.py` into `PrometheusMetricsSource`; the `ReadOnlyHTTPTools` methods are now thin facades over it. A differential check against the previous implementation (163 queries and all result dicts over a matrix of hostile and missing inputs) matched exactly, and golden tests pin the strings. Callers such as `stateful_dependency` still go through the facade methods on purpose: the test doubles override those methods, so switching callers to the sources is a separate step.
+
+A parametrized contract test (`test_source_contract`) now covers every source. Still to do before #74 and #75 can rely on the interface: capability-level budget keys, and switching callers (`stateful_dependency`, `trace_analysis` service graph) from the facade methods to the sources.
 
 ## Action items
 

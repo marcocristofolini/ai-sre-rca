@@ -42,6 +42,36 @@ class PodLogs:
 
 
 @dataclass(frozen=True)
+class PostgresDependency:
+    database: str
+    instance_hint: str | None = None
+    window_minutes: int = 15
+
+
+@dataclass(frozen=True)
+class KafkaDependency:
+    topic: str | None
+    consumer_group: str | None = None
+    instance_hint: str | None = None
+    window_minutes: int = 15
+
+
+@dataclass(frozen=True)
+class RedisDependency:
+    instance_hint: str | None = None
+    window_minutes: int = 15
+
+
+@dataclass(frozen=True)
+class ServiceGraph:
+    service: str
+    window_minutes: int = 15
+
+
+DependencyRequest = PostgresDependency | KafkaDependency | RedisDependency
+
+
+@dataclass(frozen=True)
 class ServiceRed:
     """Rate, error rate and p95 latency of a service, from traces."""
 

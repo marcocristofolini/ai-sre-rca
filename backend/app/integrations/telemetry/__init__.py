@@ -6,11 +6,16 @@ from app.integrations.telemetry.protocols import LogsSource, MetricsSource, Trac
 from app.integrations.telemetry.tempo import TempoTracesSource
 from app.integrations.telemetry.types import (
     ContainerMemoryWorkingSet,
+    DependencyRequest,
+    KafkaDependency,
     LogResult,
     MetricResult,
     NodeFilesystemAvailable,
     PodLogs,
+    PostgresDependency,
     Provenance,
+    RedisDependency,
+    ServiceGraph,
     ServiceRed,
     TraceRedResult,
     UnsupportedSignal,
@@ -18,6 +23,8 @@ from app.integrations.telemetry.types import (
 
 __all__ = [
     "ContainerMemoryWorkingSet",
+    "DependencyRequest",
+    "KafkaDependency",
     "LogResult",
     "LogsSource",
     "LokiLogsSource",
@@ -25,8 +32,11 @@ __all__ = [
     "MetricsSource",
     "NodeFilesystemAvailable",
     "PodLogs",
+    "PostgresDependency",
     "PrometheusMetricsSource",
     "Provenance",
+    "RedisDependency",
+    "ServiceGraph",
     "ServiceRed",
     "TempoTracesSource",
     "TraceRedResult",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import time
 from contextvars import ContextVar
 from datetime import datetime
@@ -13,8 +12,16 @@ import httpx
 
 from app.config import Settings
 from app.core.query_budget import consume_query
+from app.core.query_safety import path_segment, quoted_string
 from app.core.trace_ids import canonical_trace_id
-from app.core.query_safety import path_segment, prom_regex_literal as escape_prom_regex_literal, quoted_string
+from app.integrations.telemetry import (
+    KafkaDependency,
+    PostgresDependency,
+    PrometheusMetricsSource,
+    RedisDependency,
+    ServiceGraph,
+)
+from app.integrations.telemetry.prometheus import finite_scalar, instance_matcher
 
 
 class UnknownClusterError(ValueError):
@@ -291,49 +298,11 @@ class ReadOnlyHTTPTools:
 
     @staticmethod
     def _prometheus_scalar(payload: dict[str, Any]) -> float | None:
-        try:
-            value = float(payload["data"]["result"][0]["value"][1])
-        except (KeyError, IndexError, TypeError, ValueError):
-            return None
-        return value if math.isfinite(value) else None
+        return finite_scalar(payload)
 
     @staticmethod
-    def _prom_label(value: str) -> str:
-        return quoted_string(value)
-
-    @staticmethod
-    def _prom_regex_literal(value: str) -> str:
-        return escape_prom_regex_literal(value)
-
-    @classmethod
-    def _prom_instance_matcher(cls, value: str) -> str:
-        raw = str(value).strip()
-        explicit_port = raw.count(":") == 1 and raw.rsplit(":", 1)[1].isdigit()
-        safe = cls._prom_regex_literal(raw)
-        suffix = "" if explicit_port else "(:[0-9]+)?"
-        return f'instance=~"^{safe}{suffix}$"'
-
-    async def _named_prometheus_scalars(
-        self,
-        queries: dict[str, str],
-        at: datetime,
-    ) -> dict[str, Any]:
-        names = list(queries)
-        payloads = await asyncio.gather(
-            *[self.prometheus_query(queries[name], at) for name in names],
-            return_exceptions=True,
-        )
-        output: dict[str, Any] = {}
-        for name, payload in zip(names, payloads):
-            query = queries[name]
-            if isinstance(payload, Exception):
-                output[name] = {"value": None, "query": query, "error": str(payload)}
-                continue
-            output[name] = {
-                "value": self._prometheus_scalar(payload),
-                "query": query,
-            }
-        return output
+    def _prom_instance_matcher(value: str) -> str:
+        return instance_matcher(value)
 
     async def postgres_dependency_metrics(
         self,
@@ -342,60 +311,9 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        signal_names = (
-            "connections",
-            "database_connections",
-            "active_connections",
-            "idle_in_transaction",
-            "max_connections",
-            "locks",
-            "access_exclusive_locks",
-            "deadlocks_delta",
-            "replication_lag_bytes",
-            "long_tx_seconds",
+        return await PrometheusMetricsSource(self).dependency(
+            PostgresDependency(database, instance_hint, window_minutes), at
         )
-        if not instance_hint:
-            return {
-                "kind": "postgresql",
-                "database": database,
-                "instance_hint": None,
-                "window_minutes": window_minutes,
-                "signals": {
-                    name: {
-                        "value": None,
-                        "query": None,
-                        "error": "instance identity required to scope PostgreSQL telemetry",
-                    }
-                    for name in signal_names
-                },
-            }
-
-        db = self._prom_label(database)
-        instance_label_matcher = self._prom_instance_matcher(instance_hint)
-        instance_matcher = f",{instance_label_matcher}"
-        instance_selector = f"{{{instance_label_matcher}}}"
-        db_selector = f'{{datname="{db}"{instance_matcher}}}'
-
-        queries = {
-            "connections": f"sum(pg_stat_activity_count{instance_selector})",
-            "database_connections": f"sum(pg_stat_activity_count{db_selector})",
-            "active_connections": f'sum(pg_stat_activity_count{{datname="{db}",state="active"{instance_matcher}}})',
-            "idle_in_transaction": f'sum(pg_stat_activity_count{{datname="{db}",state=~"idle in transaction.*"{instance_matcher}}})',
-            "max_connections": f"max(pg_settings_max_connections{instance_selector})",
-            "locks": f"sum(pg_locks_count{db_selector})",
-            "access_exclusive_locks": f'sum(pg_locks_count{{datname="{db}",mode="accessexclusivelock"{instance_matcher}}})',
-            "deadlocks_delta": f"sum(increase(pg_stat_database_deadlocks{db_selector}[{window_minutes}m]))",
-            "replication_lag_bytes": f"max(pg_stat_replication_pg_wal_lsn_diff{instance_selector})",
-            "long_tx_seconds": f"max(pg_stat_activity_max_tx_duration{db_selector})",
-        }
-        result = await self._named_prometheus_scalars(queries, at)
-        return {
-            "kind": "postgresql",
-            "database": database,
-            "instance_hint": instance_hint,
-            "window_minutes": window_minutes,
-            "signals": result,
-        }
 
     async def kafka_dependency_metrics(
         self,
@@ -405,71 +323,9 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        signal_names = (
-            "consumer_lag",
-            "under_replicated_partitions",
-            "offline_partitions",
-            "consumer_group_members",
+        return await PrometheusMetricsSource(self).dependency(
+            KafkaDependency(topic, consumer_group, instance_hint, window_minutes), at
         )
-        if not topic or not instance_hint:
-            missing = (
-                "topic identity required to scope Kafka telemetry"
-                if not topic
-                else "instance identity required to scope Kafka telemetry"
-            )
-            return {
-                "kind": "kafka",
-                "topic": topic,
-                "consumer_group": consumer_group,
-                "instance_hint": instance_hint,
-                "window_minutes": window_minutes,
-                "signals": {
-                    name: {"value": None, "query": None, "error": missing}
-                    for name in signal_names
-                },
-            }
-
-        topic_label = self._prom_label(topic)
-        instance_label_matcher = self._prom_instance_matcher(instance_hint)
-        instance_matcher = f",{instance_label_matcher}"
-        topic_selector = f'{{topic="{topic_label}"{instance_matcher}}}'
-        queries: dict[str, str] = {
-            "under_replicated_partitions": (
-                f"sum(kafka_topic_partition_under_replicated_partition{topic_selector})"
-            ),
-            "offline_partitions": (
-                f"sum(kafka_topic_partition_leader{topic_selector} < bool 0)"
-            ),
-        }
-
-        if consumer_group:
-            group = self._prom_label(consumer_group)
-            group_selector = (
-                f'{{topic="{topic_label}",consumergroup="{group}"{instance_matcher}}}'
-            )
-            member_selector = f'{{consumergroup="{group}"{instance_matcher}}}'
-            queries["consumer_lag"] = f"sum(kafka_consumergroup_lag{group_selector})"
-            queries["consumer_group_members"] = (
-                f"min(kafka_consumergroup_members{member_selector})"
-            )
-
-        result = await self._named_prometheus_scalars(queries, at)
-        if not consumer_group:
-            for name in ("consumer_lag", "consumer_group_members"):
-                result[name] = {
-                    "value": None,
-                    "query": None,
-                    "error": "consumer group identity required for consumer-specific telemetry",
-                }
-
-        return {
-            "kind": "kafka",
-            "topic": topic,
-            "consumer_group": consumer_group,
-            "instance_hint": instance_hint,
-            "window_minutes": window_minutes,
-            "signals": result,
-        }
 
     async def redis_dependency_metrics(
         self,
@@ -477,124 +333,13 @@ class ReadOnlyHTTPTools:
         at: datetime,
         window_minutes: int = 15,
     ) -> dict[str, Any]:
-        signal_names = (
-            "memory_used_bytes",
-            "memory_max_bytes",
-            "config_maxmemory_bytes",
-            "evictions_delta",
-            "blocked_clients",
-            "connected_clients",
-            "max_clients",
-            "command_latency_seconds",
+        return await PrometheusMetricsSource(self).dependency(
+            RedisDependency(instance_hint, window_minutes), at
         )
-        if not instance_hint:
-            return {
-                "kind": "redis",
-                "instance_hint": None,
-                "window_minutes": window_minutes,
-                "signals": {
-                    name: {
-                        "value": None,
-                        "query": None,
-                        "error": "instance identity required to scope Redis telemetry",
-                    }
-                    for name in signal_names
-                },
-            }
-
-        selector = f"{{{self._prom_instance_matcher(instance_hint)}}}"
-        queries = {
-            "memory_used_bytes": f"max(redis_memory_used_bytes{selector})",
-            "memory_max_bytes": f"max(redis_memory_max_bytes{selector})",
-            "config_maxmemory_bytes": f"max(redis_config_maxmemory{selector})",
-            "evictions_delta": f"sum(increase(redis_evicted_keys_total{selector}[{window_minutes}m]))",
-            "blocked_clients": f"max(redis_blocked_clients{selector})",
-            "connected_clients": f"max(redis_connected_clients{selector})",
-            "max_clients": f"max(redis_config_maxclients{selector})",
-            "command_latency_seconds": (
-                f"max(rate(redis_commands_duration_seconds_total{selector}[5m]) "
-                f"/ clamp_min(rate(redis_commands_total{selector}[5m]), 0.001))"
-            ),
-        }
-        result = await self._named_prometheus_scalars(queries, at)
-        return {
-            "kind": "redis",
-            "instance_hint": instance_hint,
-            "window_minutes": window_minutes,
-            "signals": result,
-        }
 
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
-        window = self.settings.service_graph_window_minutes
-        escaped = self._prom_label(service)
-        selector_server = f'{{server="{escaped}"}}'
-        selector_client = f'{{client="{escaped}"}}'
-        grouping = "by (client, server, connection_type)"
-
-        request_query = (
-            f'sum(increase(traces_service_graph_request_total{selector_server}[{window}m])) {grouping} > 0 '
-            f'or sum(increase(traces_service_graph_request_total{selector_client}[{window}m])) {grouping} > 0'
-        )
-        failed_query = (
-            f'sum(increase(traces_service_graph_request_failed_total{selector_server}[{window}m])) {grouping} '
-            f'or sum(increase(traces_service_graph_request_failed_total{selector_client}[{window}m])) {grouping}'
-        )
-        latency_query = (
-            f'histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_server}[5m])) '
-            f'by (client, server, connection_type, le)) '
-            f'or histogram_quantile(0.95, sum(rate(traces_service_graph_request_server_seconds_bucket{selector_client}[5m])) '
-            f'by (client, server, connection_type, le))'
-        )
-        request_payload, failed_payload, latency_payload = await asyncio.gather(
-            self.prometheus_query(request_query, at),
-            self.prometheus_query(failed_query, at),
-            self.prometheus_query(latency_query, at),
-        )
-
-        merged: dict[tuple[str, str, str], dict[str, Any]] = {}
-
-        def merge_payload(payload: dict[str, Any], field: str) -> None:
-            for row in payload.get("data", {}).get("result", []):
-                metric = row.get("metric", {})
-                client = metric.get("client")
-                server = metric.get("server")
-                if not client or not server:
-                    continue
-                connection_type = metric.get("connection_type", "unset")
-                key = (str(client), str(server), str(connection_type))
-                try:
-                    value = float(row.get("value", [0, "0"])[1])
-                except (TypeError, ValueError, IndexError):
-                    value = 0.0
-                merged.setdefault(
-                    key,
-                    {
-                        "client": str(client),
-                        "server": str(server),
-                        "connection_type": str(connection_type),
-                        "requests": 0.0,
-                        "failures": 0.0,
-                        "p95_seconds": None,
-                    },
-                )[field] = value
-
-        merge_payload(request_payload, "requests")
-        merge_payload(failed_payload, "failures")
-        merge_payload(latency_payload, "p95_seconds")
-
-        edges: list[dict[str, Any]] = []
-        for item in merged.values():
-            requests = float(item.get("requests") or 0.0)
-            failures = float(item.get("failures") or 0.0)
-            item["error_ratio"] = failures / requests if requests > 0 else 0.0
-            item["query"] = request_query
-            item["red_queries"] = {
-                "requests": request_query,
-                "failures": failed_query,
-                "p95": latency_query,
-            }
-            edges.append(item)
-        return edges
+        request = ServiceGraph(service, self.settings.service_graph_window_minutes)
+        return await PrometheusMetricsSource(self).service_graph(request, at)
 
     def _tempo_headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
