@@ -104,6 +104,10 @@ Implementados: jobs/SSE persistentes, escopos dinâmicos, coleta por UID, citaç
 
 O harness descartável reutiliza Kind, workload instrumentado, Prometheus, Loki, Tempo e PostgreSQL existentes. Injeção controlada de falhas pertence somente a esse ambiente, não à investigação em execução. [Resultados locais registrados](real-world-rca-validation-v1.md): 6/6 casos com escopo, 325 testes de backend/harness, 8 de telemetria, 50 verificações de navegador e build Next.js de produção aprovado. Recuperação e zero réplicas são casos negativos; rollout comprova saída do processo, não causalidade da revisão Git. Relatórios brutos são artefatos locais. Esses resultados não satisfazem os controles de promoção de release; esta mudança documental não reexecuta as suítes da aplicação.
 
+## Backends de telemetria
+
+Métricas, logs e traces são lidos por uma interface neutra quanto à fonte ([ADR-0001](adr/0001-telemetry-interface.md)): requisições de sinais tipadas são traduzidas por backend e os resultados carregam a sua proveniência. Prometheus/Loki/Tempo são o padrão; um cluster pode escolher outro backend (hoje, Datadog) com `metrics_backend`, `logs_backend` e `traces_backend`. Sinais não suportados falham fechado em vez de gerar evidência, e cada backend mantém a sua própria fonte de orçamento de consultas.
+
 ## Diagramas e referências detalhadas
 
 Os SVGs possuem títulos/descrições acessíveis e fundos opacos de alto contraste. Fonte editável do layout: [generate-diagrams.mjs](images/generate-diagrams.mjs); grafos Mermaid equivalentes: [sistema](images/ai-sre-rca-architecture.mmd), [ciclo](images/investigation-pipeline.mmd), [segurança](images/security-boundaries.mmd). Gere novamente com `node docs/images/generate-diagrams.mjs` na raiz. O repositório não possui dependência Mermaid CLI; os SVGs usam o pequeno gerador local, sem renderizador remoto nem fontes embutidas.

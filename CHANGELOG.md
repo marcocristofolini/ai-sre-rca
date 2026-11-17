@@ -5,6 +5,9 @@ All notable changes to AI SRE RCA are documented here. The project follows Seman
 ## [Unreleased]
 
 ### Added
+- Source-neutral telemetry interface (ADR-0001): typed signal requests, per-backend translators and per-cluster backend selection; Prometheus, Loki and Tempo query strings are unchanged.
+- Read-only Datadog backend for metrics, logs and APM traces (`metrics_backend`/`logs_backend`/`traces_backend`), with a site allow-list, validated tag values, per-capability query budgets and capability-aware Copilot readiness. p95 from Datadog spans is not reported.
+- Trace evidence is labelled with the backend that produced it instead of a fixed `tempo`.
 - Digest-pinned disposable Redis + redis_exporter with exact trace/exporter instance identity.
 - Bounded Redis memory-pressure injection with real OOM write rejection, classic/agentic `redis-memory-pressure` parity, fresh SET/GET recovery and stale-cause suppression.
 - Redis failure/recovery sections in the v3 validation report and regression checks for bounded cleanup, malformed replies and missing/non-finite exporter telemetry.
