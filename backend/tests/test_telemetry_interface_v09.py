@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -352,3 +353,137 @@ def test_registering_a_new_backend_adds_its_capability_and_rejects_conflicts():
             register_source_capability("datadog-test", "logs")
     finally:
         query_budget._CAPABILITY_BY_SOURCE.pop("datadog-test", None)
+
+
+# --- backend selection (ADR-0001: source chosen per cluster from trusted config) ---
+import asyncio
+
+from app.integrations.http_tools import ReadOnlyHTTPTools
+from app.integrations.telemetry import (
+    UnavailableSource,
+    logs_source_for,
+    metrics_source_for,
+    register_backend,
+    registered_backends,
+    traces_source_for,
+)
+from app.integrations.telemetry import registry as telemetry_registry
+
+
+class FakeDatadog:
+    source = "datadog-test"
+    capability = "metrics"
+
+    def __init__(self, tools):
+        self.tools = tools
+
+    def supports(self, request):
+        return False
+
+    def native_query(self, request):
+        return "dd"
+
+    async def dependency(self, request, at):
+        raise UnsupportedSignal("no dependency telemetry")
+
+    async def service_graph(self, request, at):
+        raise UnsupportedSignal("no service graph")
+
+    async def health(self):
+        return {"status": "healthy", "detail": "fake"}
+
+
+@pytest.fixture
+def datadog_registered():
+    register_backend("metrics", "datadog-test", FakeDatadog)
+    yield
+    telemetry_registry._FACTORIES["metrics"].pop("datadog-test", None)
+
+
+def _tools(**cluster):
+    settings = Settings(cluster_config_json=json.dumps({"prod": cluster, "plain": {}}))
+    return ReadOnlyHTTPTools(settings)
+
+
+def test_default_backends_are_prometheus_loki_tempo():
+    tools = _tools()
+    token = tools.set_cluster("plain")
+    try:
+        assert (tools.metrics_source.source, tools.logs_source.source, tools.traces_source.source) == (
+            "prometheus",
+            "loki",
+            "tempo",
+        )
+    finally:
+        tools.reset_cluster(token)
+
+
+def test_backend_is_chosen_per_cluster(datadog_registered):
+    tools = _tools(metrics_backend="datadog-test")
+    token = tools.set_cluster("prod")
+    try:
+        assert isinstance(tools.metrics_source, FakeDatadog)
+    finally:
+        tools.reset_cluster(token)
+    token = tools.set_cluster("plain")
+    try:
+        assert tools.metrics_source.source == "prometheus"
+    finally:
+        tools.reset_cluster(token)
+
+
+def test_unregistered_backend_fails_closed_without_raising_on_access():
+    tools = _tools(metrics_backend="nope")
+    token = tools.set_cluster("prod")
+    try:
+        source = tools.metrics_source
+        assert isinstance(source, UnavailableSource) and not source.supports(NodeFilesystemAvailable("n"))
+        assert source.native_query(NodeFilesystemAvailable("n")) == ""
+        with pytest.raises(UnsupportedSignal):
+            asyncio.run(source.instant(NodeFilesystemAvailable("n")))
+    finally:
+        tools.reset_cluster(token)
+
+
+async def test_unsupported_dependency_telemetry_degrades_to_explained_no_data(datadog_registered):
+    tools = _tools(metrics_backend="datadog-test")
+    token = tools.set_cluster("prod")
+    try:
+        pg = await tools.postgres_dependency_metrics("orders", T0, 15, "pg-1")
+        kafka = await tools.kafka_dependency_metrics("t", "g", T0, 15, "k")
+        redis = await tools.redis_dependency_metrics("r", T0, 15)
+        assert await tools.service_graph("web", T0) == []
+    finally:
+        tools.reset_cluster(token)
+    for result, kind in ((pg, "postgresql"), (kafka, "kafka"), (redis, "redis")):
+        assert result["kind"] == kind
+        assert all(
+            item["value"] is None and item["query"] is None and "datadog-test" in item["error"]
+            for item in result["signals"].values()
+        )
+
+
+async def test_capability_report_lists_alternate_backends(datadog_registered):
+    tools = _tools(metrics_backend="datadog-test", logs_backend="missing-logs")
+    reports = await tools.capability_report("prod")
+    extra = {r["source"]: r for r in reports if "capability" in r}
+    assert extra["datadog-test"]["status"] == "healthy" and extra["datadog-test"]["capability"] == "metrics"
+    assert extra["missing-logs"]["status"] == "unsupported_backend"
+
+
+def test_resolvers_fall_back_to_default_sources_for_test_doubles():
+    class Bare:
+        pass
+
+    assert metrics_source_for(Bare()).source == "prometheus"
+    assert logs_source_for(Bare()).source == "loki"
+    assert traces_source_for(Bare()).source == "tempo"
+
+
+def test_register_backend_rejects_unknown_capability_and_duplicates(datadog_registered):
+    with pytest.raises(ValueError):
+        register_backend("nonsense", "x", FakeDatadog)
+    with pytest.raises(ValueError):
+        register_backend("metrics", "datadog-test", lambda tools: None)
+    assert "datadog-test" in registered_backends("metrics")
+

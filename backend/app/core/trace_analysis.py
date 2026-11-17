@@ -11,7 +11,7 @@ from app.core.query_safety import quoted_string
 from app.core.scoring import score_hypothesis
 from app.core.trace_ids import canonical_trace_id
 from app.integrations.base import InvestigationTools
-from app.integrations.telemetry import ServiceRed, TempoTracesSource
+from app.integrations.telemetry import ServiceRed, traces_source_for
 from app.schemas import (
     Entity,
     Evidence,
@@ -388,7 +388,7 @@ async def _trace_red_evidence(
     service: str,
     incident: IncidentInput,
 ) -> Evidence | None:
-    traces = TempoTracesSource(tools)
+    traces = traces_source_for(tools)
     request = ServiceRed(service)
     start, end = incident.query_window(10)
     try:
@@ -440,7 +440,7 @@ async def enrich_with_trace_causality(
     if not service:
         return result
 
-    traces = TempoTracesSource(tools)
+    traces = traces_source_for(tools)
     start, end = result.incident.query_window(settings.trace_window_minutes)
     try:
         search_results = await traces.search(

@@ -17,11 +17,11 @@ from app.memory.base import IncidentMemory
 from app.integrations.base import InvestigationTools
 from app.integrations.telemetry import (
     LogResult,
-    LokiLogsSource,
     MetricResult,
     NodeFilesystemAvailable,
     PodLogs,
-    PrometheusMetricsSource,
+    logs_source_for,
+    metrics_source_for,
 )
 from app.llm.hypotheses import HypothesisGenerator, NullHypothesisGenerator
 from app.schemas import (
@@ -362,8 +362,8 @@ class InvestigationEngine:
             if node_name
             else asyncio.sleep(0, result={})
         )
-        prom_source = PrometheusMetricsSource(self.tools)
-        loki_source = LokiLogsSource(self.tools)
+        prom_source = metrics_source_for(self.tools)
+        loki_source = logs_source_for(self.tools)
         logs_request = PodLogs(incident.namespace, incident.pod, 100)
         logs_query = loki_source.native_query(logs_request)
         logs_task = optional(

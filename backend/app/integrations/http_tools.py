@@ -17,11 +17,15 @@ from app.core.trace_ids import canonical_trace_id
 from app.integrations.telemetry import (
     KafkaDependency,
     PostgresDependency,
-    PrometheusMetricsSource,
     RedisDependency,
     ServiceGraph,
+    UnavailableSource,
+    UnsupportedSignal,
+    build_source,
+    unsupported_dependency_result,
 )
 from app.integrations.telemetry.prometheus import finite_scalar, instance_matcher
+from app.integrations.telemetry.registry import CONFIG_KEYS, DEFAULT_BACKENDS
 
 
 class UnknownClusterError(ValueError):
@@ -304,6 +308,28 @@ class ReadOnlyHTTPTools:
     def _prom_instance_matcher(value: str) -> str:
         return instance_matcher(value)
 
+    def _backend(self, capability: str) -> str:
+        return str(self._cluster_value(CONFIG_KEYS[capability], DEFAULT_BACKENDS[capability]))
+
+    @property
+    def metrics_source(self) -> Any:
+        return build_source("metrics", self, self._backend("metrics"))
+
+    @property
+    def logs_source(self) -> Any:
+        return build_source("logs", self, self._backend("logs"))
+
+    @property
+    def traces_source(self) -> Any:
+        return build_source("traces", self, self._backend("traces"))
+
+    async def _dependency(self, request: Any, at: datetime) -> dict[str, Any]:
+        source = self.metrics_source
+        try:
+            return await source.dependency(request, at)
+        except UnsupportedSignal:
+            return unsupported_dependency_result(request, source.source)
+
     async def postgres_dependency_metrics(
         self,
         database: str,
@@ -311,9 +337,7 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        return await PrometheusMetricsSource(self).dependency(
-            PostgresDependency(database, instance_hint, window_minutes), at
-        )
+        return await self._dependency(PostgresDependency(database, instance_hint, window_minutes), at)
 
     async def kafka_dependency_metrics(
         self,
@@ -323,9 +347,7 @@ class ReadOnlyHTTPTools:
         window_minutes: int = 15,
         instance_hint: str | None = None,
     ) -> dict[str, Any]:
-        return await PrometheusMetricsSource(self).dependency(
-            KafkaDependency(topic, consumer_group, instance_hint, window_minutes), at
-        )
+        return await self._dependency(KafkaDependency(topic, consumer_group, instance_hint, window_minutes), at)
 
     async def redis_dependency_metrics(
         self,
@@ -333,13 +355,14 @@ class ReadOnlyHTTPTools:
         at: datetime,
         window_minutes: int = 15,
     ) -> dict[str, Any]:
-        return await PrometheusMetricsSource(self).dependency(
-            RedisDependency(instance_hint, window_minutes), at
-        )
+        return await self._dependency(RedisDependency(instance_hint, window_minutes), at)
 
     async def service_graph(self, service: str, at: datetime) -> list[dict[str, Any]]:
         request = ServiceGraph(service, self.settings.service_graph_window_minutes)
-        return await PrometheusMetricsSource(self).service_graph(request, at)
+        try:
+            return await self.metrics_source.service_graph(request, at)
+        except UnsupportedSignal:
+            return []
 
     def _tempo_headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}
@@ -612,6 +635,30 @@ class ReadOnlyHTTPTools:
                     headers=github_headers,
                 )
             )
-            return list(await asyncio.gather(*probes))
+            reports = list(await asyncio.gather(*probes))
+            reports.extend(await self._alternate_backend_reports(cluster))
+            return reports
         finally:
             self.reset_cluster(token)
+
+    async def _alternate_backend_reports(self, cluster: str) -> list[dict[str, Any]]:
+        """Report telemetry capabilities served by a non-default backend (ADR-0001)."""
+        reports: list[dict[str, Any]] = []
+        for capability, default in DEFAULT_BACKENDS.items():
+            backend = self._backend(capability)
+            if backend == default:
+                continue
+            source = build_source(capability, self, backend)
+            entry: dict[str, Any] = {"source": backend, "capability": capability, "cluster": cluster}
+            health = getattr(source, "health", None)
+            if isinstance(source, UnavailableSource):
+                entry.update(status="unsupported_backend", detail="backend is not registered")
+            elif health is None:
+                entry.update(status="unknown", detail="backend exposes no health check")
+            else:
+                try:
+                    entry.update(await health())
+                except Exception as exc:  # noqa: BLE001 - report, never raise
+                    entry.update(status="unavailable", detail=exc.__class__.__name__)
+            reports.append(entry)
+        return reports

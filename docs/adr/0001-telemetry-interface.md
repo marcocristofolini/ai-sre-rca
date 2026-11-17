@@ -103,22 +103,22 @@ C costs more than A or B once, but is the only option where evidence stays hones
 2. **No `NativeQuery` escape hatch.** A free-form string would let PromQL leak back into callers and make non-Prometheus adapters unverifiable. The remaining PromQL/TraceQL call sites (`service_graph`, the Postgres/Kafka/Redis dependency helpers, `tempo_*`) are catalogued in follow-up PRs before the facade is removed.
 3. **Budget keys stay public and stable.** `QueryBudgetState` counts per source (`prometheus`, `loki`, `tempo`, ...) and the specialist wrappers count per method name; both stay as they are. Capability usage (`metrics`, `logs`, `traces`) is added alongside as `per_capability` in the snapshot. It is reporting only: limits keep applying per source and in total. Any removal of the old keys would be a deliberate, documented breaking change.
 
-## Implementation status (step 2 of #73)
+## Implementation status
 
-Delivered in the first implementation PR, with the existing test suite passing unmodified:
+Complete for the first backends, with the existing suite passing unmodified (new tests in `backend/tests/test_telemetry_interface_v09.py`, plus three in `test_copilot_scope_v21.py`):
 
-- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`, `TempoTracesSource` (`TracesSource` protocol).
-- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`, `ServiceGraph`, `PostgresDependency`, `KafkaDependency`, `RedisDependency`; Tempo trace search and fetch go through the same source.
-- Migrated call sites: `core/engine.py` (filesystem capacity, logs), `core/kubernetes_investigator.py` (memory working set, logs) and `core/trace_analysis.py` (RED metrics, trace search, trace fetch).
-- Query strings and `raw_reference` values are byte-identical to the previous code (golden tests).
+- **Package:** `app/integrations/telemetry/` with types, protocols (`MetricsSource`, `LogsSource`, `TracesSource`), `PrometheusMetricsSource`, `LokiLogsSource`, `TempoTracesSource` and a backend registry.
+- **Catalogue:** `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`, `ServiceGraph`, `PostgresDependency`, `KafkaDependency`, `RedisDependency`; Tempo trace search and fetch use the same source.
+- **No behavior change:** query authoring moved out of `http_tools.py` and the call sites. Golden tests pin the strings, and a differential check against the previous implementation (163 queries and every result dict over hostile and missing inputs) matched exactly.
+- **Backend selection:** `metrics_backend`, `logs_backend` and `traces_backend` in a cluster's trusted config pick the source per cluster (default `prometheus`, `loki`, `tempo`). `ReadOnlyHTTPTools` exposes `metrics_source`, `logs_source` and `traces_source`; core code resolves them with `metrics_source_for(tools)` and friends, and test doubles without those attributes fall back to the default sources. New backends call `register_backend(capability, name, factory)`.
+- **Fail closed:** a configured but unregistered backend resolves to `UnavailableSource`, which answers nothing; callers record "no evidence". A backend that lacks dependency or service-graph telemetry returns the existing no-data shape with an explicit reason per signal.
+- **Readiness:** `capability_report` adds an entry (with `capability`) for each non-default backend, using its `health()` when it has one. `copilot_scope` now requires the active backend per capability to be healthy: an alternate backend replaces the default product probe, and an unhealthy or unregistered alternate blocks the investigation even if the default probe is healthy.
+- **Budgets:** snapshots include `per_capability`; each source declares its `capability` and new backends call `register_source_capability`. Limits still apply per source and in total.
 
-Query authoring for `service_graph` and the Postgres/Kafka/Redis dependency helpers moved out of `integrations/http_tools.py` into `PrometheusMetricsSource`; the `ReadOnlyHTTPTools` methods are now thin facades over it. A differential check against the previous implementation (163 queries and all result dicts over a matrix of hostile and missing inputs) matched exactly, and golden tests pin the strings. Callers such as `stateful_dependency` still go through the facade methods on purpose: the test doubles override those methods, so switching callers to the sources is a separate step.
-
-A parametrized contract test (`test_source_contract`) now covers every source. Budget snapshots now include `per_capability`, and each source declares its `capability`; new backends call `register_source_capability` (a contract test checks that the registry and the source agree). Still to do before #74 and #75 can rely on the interface: switching callers (`stateful_dependency`, `trace_analysis` service graph) from the facade methods to the sources.
+Not done, by decision: the `ReadOnlyHTTPTools` telemetry methods (`prometheus_query`, `loki_query_range`, `tempo_*`, `service_graph`, the dependency helpers) and the specialist wrappers remain the public tool surface. They are the injection point for test doubles and `DemoTools`, so removing them is a separate, breaking change that nothing currently needs.
 
 ## Action items
 
-1. [ ] Review and accept or amend this ADR.
-2. [x] Step 2 of #73, first slice: interface, Prometheus and Loki sources, four migrated call sites.
-3. [ ] Remaining slices listed under Implementation status.
-4. [ ] Unblock #74 (Datadog) and #75 (CloudWatch).
+1. [x] Review and accept or amend this ADR.
+2. [x] Step 2 of #73: interface, sources, registry, per-cluster backend selection, readiness and budgets.
+3. [ ] #74 (Datadog) and #75 (CloudWatch) implement the protocols and call `register_backend`.
