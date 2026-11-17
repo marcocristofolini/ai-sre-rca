@@ -41,6 +41,13 @@ class PodLogs:
     limit: int = 100
 
 
+@dataclass(frozen=True)
+class ServiceRed:
+    """Rate, error rate and p95 latency of a service, from traces."""
+
+    service: str
+
+
 MetricRequest = NodeFilesystemAvailable | ContainerMemoryWorkingSet
 LogRequest = PodLogs
 
@@ -70,3 +77,11 @@ class LogResult:
     @classmethod
     def empty(cls, source: str) -> LogResult:
         return cls(provenance=Provenance(source=source, native_query="", raw_reference=""))
+
+
+@dataclass(frozen=True)
+class TraceRedResult:
+    provenance: Provenance
+    rate: tuple[float, ...] = ()
+    errors: tuple[float, ...] = ()
+    p95: tuple[float, ...] = ()

@@ -107,12 +107,12 @@ C costs more than A or B once, but is the only option where evidence stays hones
 
 Delivered in the first implementation PR, with the existing test suite passing unmodified:
 
-- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`.
-- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`.
-- Migrated call sites: `core/engine.py` (filesystem capacity, logs) and `core/kubernetes_investigator.py` (memory working set, logs).
+- `app/integrations/telemetry/`: types, protocols, `PrometheusMetricsSource`, `LokiLogsSource`, `TempoTracesSource` (`TracesSource` protocol).
+- Signals catalogued: `NodeFilesystemAvailable`, `ContainerMemoryWorkingSet`, `PodLogs`, `ServiceRed`; Tempo trace search and fetch go through the same source.
+- Migrated call sites: `core/engine.py` (filesystem capacity, logs), `core/kubernetes_investigator.py` (memory working set, logs) and `core/trace_analysis.py` (RED metrics, trace search, trace fetch).
 - Query strings and `raw_reference` values are byte-identical to the previous code (golden tests).
 
-Still to do before #74 and #75 can rely on the interface: Tempo source and `TracesSource` protocol, `service_graph`, the stateful dependency helpers, capability-level budget keys, and a shared contract test that every source must pass.
+A parametrized contract test (`test_source_contract`) now covers every source. Still to do before #74 and #75 can rely on the interface: `service_graph`, the stateful dependency helpers (Postgres, Kafka, Redis), and capability-level budget keys.
 
 ## Action items
 

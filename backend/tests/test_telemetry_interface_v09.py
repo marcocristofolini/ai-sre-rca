@@ -9,6 +9,8 @@ from app.integrations.telemetry import (
     NodeFilesystemAvailable,
     PodLogs,
     PrometheusMetricsSource,
+    ServiceRed,
+    TempoTracesSource,
     UnsupportedSignal,
 )
 
@@ -107,3 +109,84 @@ def test_unsupported_signal_fails_closed():
         prom.native_query(PodLogs("ns", "p"))
     with pytest.raises(UnsupportedSignal):
         LokiLogsSource(FakeTools()).native_query(NodeFilesystemAvailable("n"))
+
+
+class FakeTempo:
+    def __init__(self, payloads=None, fail=False):
+        self.calls = []
+        self._payloads = payloads or {}
+        self._fail = fail
+
+    async def tempo_metrics_query(self, query, start, end, step="30s"):
+        self.calls.append(("metrics", query, step))
+        if self._fail:
+            raise RuntimeError("tempo down")
+        key = "errors" if "status = error" in query else "p95" if "quantile" in query else "rate"
+        return self._payloads.get(key, {})
+
+    async def tempo_search_traces(self, service, start, end, limit=8):
+        self.calls.append(("search", service, limit))
+        return [{"traceID": "abc"}]
+
+    async def tempo_get_trace(self, trace_id, start=None, end=None):
+        self.calls.append(("get", trace_id))
+        return {"batches": []}
+
+
+def test_trace_red_query_is_byte_identical_to_legacy():
+    assert TempoTracesSource(FakeTempo()).native_query(ServiceRed("checkout")) == (
+        '{ resource.service.name = "checkout" } | rate(); '
+        '{ resource.service.name = "checkout" && status = error } | rate(); '
+        '{ resource.service.name = "checkout" } | quantile_over_time(span:duration, .95)'
+    )
+
+
+async def test_trace_red_values_and_provenance():
+    tools = FakeTempo(
+        payloads={
+            "rate": {"series": [{"samples": [{"value": "2"}, {"value": "x"}]}]},
+            "errors": {"data": {"result": [{"values": [[1, "0.5"]]}]}},
+        }
+    )
+    red = await TempoTracesSource(tools).red(ServiceRed("checkout"), T0, T1)
+    assert red.rate == (2.0,) and red.errors == (0.5,) and red.p95 == ()
+    assert red.provenance.source == "tempo"
+    assert red.provenance.raw_reference == "tempo:/api/metrics/query_range"
+    assert len(tools.calls) == 3 and all(call[2] == "30s" for call in tools.calls)
+
+
+async def test_trace_red_propagates_backend_errors_so_callers_can_fail_closed():
+    with pytest.raises(RuntimeError):
+        await TempoTracesSource(FakeTempo(fail=True)).red(ServiceRed("s"), T0, T1)
+
+
+async def test_trace_search_and_get_forward_arguments():
+    tools = FakeTempo()
+    source = TempoTracesSource(tools)
+    assert await source.search("svc", T0, T1, 5) == [{"traceID": "abc"}]
+    assert await source.get_trace("abc", T0, T1) == {"batches": []}
+    assert tools.calls == [("search", "svc", 5), ("get", "abc")]
+
+
+def test_tempo_rejects_unsupported_signal():
+    source = TempoTracesSource(FakeTempo())
+    assert not source.supports(PodLogs("ns", "p"))
+    with pytest.raises(UnsupportedSignal):
+        source.native_query(PodLogs("ns", "p"))
+
+
+@pytest.mark.parametrize(
+    "source,supported,unsupported",
+    [
+        (PrometheusMetricsSource(FakeTools()), NodeFilesystemAvailable("n"), PodLogs("ns", "p")),
+        (LokiLogsSource(FakeTools()), PodLogs("ns", "p"), NodeFilesystemAvailable("n")),
+        (TempoTracesSource(FakeTempo()), ServiceRed("s"), PodLogs("ns", "p")),
+    ],
+)
+def test_source_contract(source, supported, unsupported):
+    """Every source: names itself, renders a non-empty native query, fails closed on foreign signals."""
+    assert source.source
+    assert source.supports(supported) and not source.supports(unsupported)
+    assert source.native_query(supported)
+    with pytest.raises(UnsupportedSignal):
+        source.native_query(unsupported)
