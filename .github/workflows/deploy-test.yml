@@ -166,7 +166,7 @@ jobs:
           assert health["status"] == "ok"
           assert health["version"] == "0.8.0-rc.3"
           html = get("http://127.0.0.1:13000/")
-          assert b"AI SRE RCA" in html or b"SRE" in html
+          assert b"Tracecroft AI" in html
           print("test environment smoke passed")
           PY
 
