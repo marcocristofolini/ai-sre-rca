@@ -5,3 +5,4 @@
 - Prefer deterministic local checks over unnecessary model calls.
 - Run focused tests before broader suites; rebuild only when inputs change.
 - Never trade correctness, security, authorization, or evidence integrity for speed or tokens.
+- Do not read generated artifacts whole (Archify HTML, architecture SVGs, lockfiles, benchmark JSON dumps); query them with `rg` or `jq`.
